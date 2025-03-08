@@ -5,9 +5,9 @@ OEIS A112389 is "Number of ways, counted up to symmetry, to build a contiguous b
 
 https://oeis.org/A112389
 
-Known values of the sequence a(N). a~sym~(N) are those of a(N) that are symmetric at 180 degrees of rotation.
+Known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are symmetric at 180 degrees of rotation.
 
-| n  | a(N)              | a~sym~(N)| Author(s)              | 
+| n  | a(N)              | a<sup>180</sup>(N)| Author(s)              | 
 |:--:|------------------:|--------:|:-----------------------|
 |  1 |                 1 |       1 |                        |
 |  2 |                24 |       2 | Kristiansen 1974       |
