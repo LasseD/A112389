@@ -1,4 +1,5 @@
 #include <set>
+#include <vector>
 #include <algorithm>
 #include <assert.h>
 #include <chrono>
@@ -80,7 +81,7 @@ namespace rectilinear {
     symmetric90 = 0;
   }
 
-  Brick::Brick() : isVertical(true), x(0), y(0) {
+  Brick::Brick() : isVertical(true), x(PLANE_MID), y(PLANE_MID) {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::Brick()");
 #endif
@@ -228,6 +229,40 @@ namespace rectilinear {
       inner = NULL;
     }
   }
+
+  void BrickPlane::unsetAll() {
+#ifdef PROFILING
+    Profiler::countInvocation("BrickPlane::unsetAll()");
+#endif
+    for(uint8_t i = 0; i < 2; i++) {
+      for(uint8_t j = 0; j < PLANE_WIDTH; j++) {
+	for(uint8_t k = 0; k < PLANE_WIDTH; k++) {
+	  bricks[i][j][k] = false;
+	}
+      }
+    }
+  }
+
+  void BrickPlane::set(const Brick &b) {
+#ifdef PROFILING
+    Profiler::countInvocation("BrickPlane::set(Brick&)");
+#endif
+    bricks[b.isVertical][b.x][b.y] = true;
+  }
+
+  void BrickPlane::unset(const Brick &b) {
+#ifdef PROFILING
+    Profiler::countInvocation("BrickPlane::unset(Brick&)");
+#endif
+    bricks[b.isVertical][b.x][b.y] = false;
+  }
+
+  bool BrickPlane::contains(const Brick &b) {
+#ifdef PROFILING
+    Profiler::countInvocation("BrickPlane::contains(Brick&)");
+#endif
+    return bricks[b.isVertical][b.x][b.y];
+  }
   
   Combination::Combination() : height(1), size(1) {
 #ifdef PROFILING
@@ -346,7 +381,7 @@ namespace rectilinear {
     sortBricks();
   }
 
-  void Combination::getLayerCenter(const uint8_t layer, int8_t &cx, int8_t &cy) const {
+  void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::getLayerCenter(int, int8_t&, int8_t&)");
 #endif
@@ -362,7 +397,7 @@ namespace rectilinear {
     cy /= layerSizes[layer];
   }
 
-  bool Combination::isLayerSymmetric(const uint8_t layer, const int8_t &cx, const int8_t &cy) const {
+  bool Combination::isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::isLayerSymmetric(int, int8_t&, int8_t&)");
 #endif
@@ -434,6 +469,7 @@ namespace rectilinear {
   ./run.o 5  2.10s user 0.00s system 91% cpu 2.302 total
   ./run.o 5  2.15s user 0.00s system 91% cpu 2.357 total
   ./run.o 5  1.06s user 0.00s system 98% cpu 1.072 total
+  ./run.o 5  1.02s user 0.00s system 86% cpu 1.176 total // Using BrickPlane
 
   g++ -std=c++11 -O3 *.cpp -DNDEBUG -o run.o && time ./run.o 6
      Total for size 6: 915103765 (15682)
@@ -446,6 +482,7 @@ namespace rectilinear {
   ./run.o 6  185.23s user 0.11s system 99% cpu 3:06.46 total // After using removeLastBrick in CombinationBuilder
   ./run.o 6  101.39s user 0.04s system 99% cpu 1:42.08 total // Sorting vectors instead of using map<LayerBrick>
   ./run.o 6  100.08s user 0.06s system 99% cpu 1:40.58 total // Initialize all layerSize values to 0
+  ./run.o 6  96.16s user 0.11s system 98% cpu 1:37.26 total // Using BrickPlane
 
   vs old rectilinear algorithm (no countX2):
   g++ -std=c++11 -O3 *.cpp -DNDEBUG -o runCompare.o && time ./runCompare.o ->
@@ -455,7 +492,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is180Symmetric()");
 #endif
-    int8_t cx0, cy0;
+    int16_t cx0, cy0;
     getLayerCenter(0, cx0, cy0);
 
     if(!isLayerSymmetric(0, cx0, cy0)) {
@@ -463,7 +500,7 @@ namespace rectilinear {
     }
 
     for(uint8_t i = 1; i < height; i++) {
-      int8_t cx1, cy1;
+      int16_t cx1, cy1;
       getLayerCenter(i, cx1, cy1);
 
       if(cx0 != cx1 || cy0 != cy1) {
@@ -592,6 +629,21 @@ namespace rectilinear {
 					 const uint8_t waveSize,
 					 const uint8_t maxSize) :
     baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize) {
+    neighbours = new BrickPlane[MAX_BRICKS];
+    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
+      neighbours[i].unsetAll();
+    }
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(Combination, uint8_t, uint8_t, uint8_t)");
+#endif
+  }
+
+  CombinationBuilder::CombinationBuilder(Combination &c,
+					 const uint8_t waveStart,
+					 const uint8_t waveSize,
+					 const uint8_t maxSize,
+					 BrickPlane *neighbours) :
+    neighbours(neighbours), baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(Combination, uint8_t, uint8_t, uint8_t)");
 #endif
@@ -607,10 +659,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::build()");
 #endif
-    std::vector<Brick> neighbours[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
-      neighbours[i].clear();
-    }
+    std::vector<LayerBrick> v;
 
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
@@ -640,8 +689,9 @@ namespace rectilinear {
 		}
 	      }
 	    }
-	    if(ok) {
-	      neighbours[layer2].push_back(b);
+	    if(ok && !neighbours[layer2].contains(b)) {
+	      neighbours[layer2].set(b);
+	      v.push_back(LayerBrick(b, layer2));
 	    }
 	  }
 	}
@@ -668,33 +718,27 @@ namespace rectilinear {
 		}
 	      }
 	    }
-	    if(ok) {
-	      neighbours[layer2].push_back(b);
+	    if(ok && !neighbours[layer2].contains(b)) {
+	      neighbours[layer2].set(b);
+	      v.push_back(LayerBrick(b, layer2));
 	    }
 	  }
 	}
       }
     }
 
-    std::vector<LayerBrick> v;
-    for(uint8_t layer4 = 0; layer4 < MAX_BRICKS; layer4++) {
-      std::sort(neighbours[layer4].begin(), neighbours[layer4].end());
-      Brick prev(true, -128, -128); // Impossible position
-      for(std::vector<Brick>::iterator it = neighbours[layer4].begin(); it != neighbours[layer4].end(); it++) {
-	if(*it != prev) {
-	  v.push_back(LayerBrick(*it, layer4));
-	  prev = *it;
-	}
-      }
+    // Cleanup, so that neighbours can be shared by all:
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      neighbours[it->LAYER].unset(it->BRICK);
     }
-    
+
     uint8_t leftToPlace = maxSize - baseCombination.size;
     LayerBrick bricks[MAX_BRICKS];
 
     for(uint8_t toPick = 1; toPick <= leftToPlace; toPick++) {
       bool spam = false;
       if(baseCombination.size == 1) {
-	spam = true;
+	//spam = true;
 	std::cout << " Picking waves of size " << (int)toPick << std::endl;
       }
 #ifdef TRACE
@@ -729,7 +773,7 @@ namespace rectilinear {
 	}
 	else { // toPick < leftToPlace)
 	  // Recurse:
-	  CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize);
+	  CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours);
 	  builder.build();
 
 	  for(CountsMap::iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {

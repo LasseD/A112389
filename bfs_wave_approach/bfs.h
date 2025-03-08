@@ -8,6 +8,8 @@
 #define MAX_BRICKS 8
 // At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
 #define MAX_LAYER_SIZE 7
+#define PLANE_MID 32
+#define PLANE_WIDTH 64
 #define BRICK first
 #define LAYER second
 
@@ -94,6 +96,14 @@ namespace rectilinear {
 
     bool next();
   };
+
+  struct BrickPlane {
+    bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
+    void unsetAll();
+    void set(const Brick &b);
+    void unset(const Brick &b);
+    bool contains(const Brick &b);
+  };
   
   class Combination {
   public:
@@ -117,8 +127,8 @@ namespace rectilinear {
     void copy(const Combination &b);
     void rotate90();
 
-    void getLayerCenter(const uint8_t layer, int8_t &cx, int8_t &cy) const;
-    bool isLayerSymmetric(const uint8_t layer, const int8_t &cx, const int8_t &cy) const;
+    void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
+    bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
     bool is180Symmetric() const;
     bool is90Symmetric() const;
     void sortBricks();
@@ -133,12 +143,15 @@ namespace rectilinear {
   };
 
   class CombinationBuilder {
+    BrickPlane *neighbours;
   public:
     Combination &baseCombination;
     const uint8_t waveStart, waveSize, maxSize;
     CountsMap counts; // token -> counts
 
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize);
+
+    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, BrickPlane *neighbours);
 
     void build();
     void report();
