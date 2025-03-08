@@ -8,7 +8,7 @@ https://oeis.org/A112389
 Known values of the sequence a(N). a_sym(N) are those of a(N) that are symmetric at 180 degrees of rotation.
 
 | n  | a(N)              | a_sym(N)| Author(s)              | 
-|:----------------------:|--------:|-----------------------:|
+|:--:|------------------:|--------:|-----------------------:|
 |  1 |                 1 |       1 |                        |
 |  2 |                24 |       2 | Kristiansen 1974       |
 |  3 |              1560 |      44 | Anonymous 2002         |
@@ -20,6 +20,7 @@ Known values of the sequence a(N). a_sym(N) are those of a(N) that are symmetric
 |  9 |   816630819554486 |         | Nilsson 2014           |
 | 10 | 82052796578652749 |         | Simon 2018             |
 | 11 |                   |         |                        |
+
 
 
 # Overview
