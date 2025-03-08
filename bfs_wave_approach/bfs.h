@@ -5,9 +5,9 @@
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
 // Goal of 2025 is to construct models with at most 11 bricks
-#define MAX_BRICKS 8
+#define MAX_BRICKS 9
 // At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
-#define MAX_LAYER_SIZE 7
+#define MAX_LAYER_SIZE 8
 #define PLANE_MID 32
 #define PLANE_WIDTH 64
 #define BRICK first
@@ -143,15 +143,16 @@ namespace rectilinear {
   };
 
   class CombinationBuilder {
-    BrickPlane *neighbours;
-  public:
     Combination &baseCombination;
-    const uint8_t waveStart, waveSize, maxSize;
+    const uint8_t waveStart, waveSize, maxSize, indent;
     CountsMap counts; // token -> counts
+    BrickPlane *neighbours;
+    uint8_t *maxLayerSizes;
+  public:
 
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize);
+    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, uint8_t *maxLayerSizes);
 
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, BrickPlane *neighbours);
+    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, const uint8_t indent, BrickPlane *neighbours, uint8_t *maxLayerSizes);
 
     void build();
     void report();
