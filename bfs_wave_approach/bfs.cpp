@@ -155,7 +155,7 @@ namespace rectilinear {
 
   BrickPicker::BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx) : v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), bricksIdx(bricksIdx), bricks(bricks), inner(NULL) {
 #ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::BrickPicker(std::vector<LayerBrick>&, int, int, LayerBrick*, int)");
+    Profiler::countInvocation("BrickPicker::BrickPicker()");
 #endif
 #ifdef TRACE
     std::cout << "   BrickPicker for " << numberOfBricksToPick << " bricks, starting at " << v[vIdx].BRICK << " at layer " << (int)v[vIdx].LAYER << " created with " << bricksIdx << " previous bricks added " <<std::endl;
@@ -473,6 +473,7 @@ namespace rectilinear {
   ./run.o 6  100.08s user 0.06s system 99% cpu 1:40.58 total // Initialize all layerSize values to 0
   ./run.o 6  96.16s user 0.11s system 98% cpu 1:37.26 total // Using BrickPlane
   ./run.o 6  75.16s user 0.03s system 99% cpu 1:15.84 total // Shared BrickPlane
+  ./run.o 6  71.80s user 0.03s system 96% cpu 1:14.63 total // Use canBeSymmetric180
 
   Performance of code by Eilers: 2.33 seconds for size 6. This goal should be reached.
 
@@ -638,18 +639,10 @@ namespace rectilinear {
 #endif
   }
 
-  /*
-    BFS construction of models:
-    Assume a non-empty wave:
-     Pick 1..|wave| bricks from wave:
-      Find next wave and recurse until model contains n bricks.
-   */
-  void CombinationBuilder::build() {
+  void CombinationBuilder::findPotentialBricksForNextWave(std::vector<LayerBrick> &v) {
 #ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::build()");
+    Profiler::countInvocation("CombinationBuilder::findPotentialBricksForNextWave()");
 #endif
-    std::vector<LayerBrick> v;
-
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
@@ -725,13 +718,120 @@ namespace rectilinear {
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
       neighbours[it->LAYER].unset(it->BRICK);
     }
+  }
+
+  bool CombinationBuilder::nextCombinationCanBeSymmetric180() {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::nextCombinationCanBeSymmetric180()");
+#endif
+    bool canBeSymmetric180 = true;
+
+    int fullLayers = 0; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
+    int16_t cx0, cy0, cx1, cy1;
+#ifdef REFINEMENT
+    /*
+      Speed up if model cannot be made symmetric
+      when placing all leftToPlace bricks.
+    */
+    if(maxLayerSizes != NULL) {
+      for(uint8_t i = 0; i < MAX_BRICKS; i++) {
+	uint8_t diff = maxLayerSizes[i] - baseCombination.layerSizes[i];
+	if(diff == 0) {
+	  // Full layer: Check if can be symmetric:
+	  if(fullLayers == 0) {
+	    baseCombination.getLayerCenter(i, cx0, cy0);
+	    if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	      canBeSymmetric180 = false;
+	      break;
+	    }
+	  }
+	  else {
+	    baseCombination.getLayerCenter(i, cx1, cy1);
+	    if(cx0 != cx1 || cy0 != cy1) {
+	      canBeSymmetric180 = false;
+	      break;
+	    }
+	    if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	      canBeSymmetric180 = false;
+	      break;
+	    }
+	  }
+	}
+	else if(diff == 1 && baseCombination.layerSizes[i] % 2 == 1) {
+	  // There is an odd number of bricks on the layer and 1 is added: If already symmetric, then the result cannot be symmtric (if even, a brick placed in center would uphold symmetry)
+	  baseCombination.getLayerCenter(i, cx1, cy1);
+	  if(baseCombination.isLayerSymmetric(i, cx1, cy1)) {
+	    canBeSymmetric180 = false;
+	    break;
+	  }
+	}
+	fullLayers++;
+      }
+    }
+#else
+    /*
+      Early check for symmetry:
+     */
+    bool solidLayers[MAX_BRICKS];
+    for(uint8_t i = 0; i < baseCombination.height; i++) {
+      solidLayers[i] = true;
+    }
+    for(uint8_t i = 0; i < waveSize; i++) {
+      const BrickIdentifier &bi = baseCombination.history[waveStart+i];
+      const uint8_t &layer = bi.first;
+      if(layer > 0)
+	solidLayers[i-1] = false;
+      solidLayers[i] = false;
+      solidLayers[i+1] = false;
+    }
+    for(uint8_t i = 0; i < baseCombination.height; i++) {
+      if(!solidLayers[i])
+	continue;
+      if(fullLayers == 0) {
+	baseCombination.getLayerCenter(i, cx0, cy0);
+	if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	  canBeSymmetric180 = false;
+	  break;
+	}
+      }
+      else {
+	baseCombination.getLayerCenter(i, cx1, cy1);
+	if(cx0 != cx1 || cy0 != cy1) {
+	  canBeSymmetric180 = false;
+	  break;
+	}
+	if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	  canBeSymmetric180 = false;
+	  break;
+	}
+      }
+      fullLayers++;
+    }
+#endif
+
+    return canBeSymmetric180;
+  }
+
+  /*
+    BFS construction of models:
+    Assume a non-empty wave:
+     Pick 1..|wave| bricks from wave:
+      Find next wave and recurse until model contains n bricks.
+   */
+  void CombinationBuilder::build() {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::build()");
+#endif
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
 
     uint8_t leftToPlace = maxSize - baseCombination.size;
+    bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
+
     LayerBrick bricks[MAX_BRICKS];
     const bool spam = leftToPlace > 5;
 
     for(uint8_t toPick = 1; toPick <= leftToPlace; toPick++) {
-
       // Pick toPick from neighbours:
       BrickPicker picker(v, 0, toPick, bricks, 0);
 
@@ -773,7 +873,7 @@ namespace rectilinear {
 	  int token = baseCombination.getTokenFromLayerSizes();
 	  Counts cx;
 	  cx.all++;
-	  if(baseCombination.is180Symmetric()) {
+	  if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
 	    cx.symmetric180++;
 	    if(baseCombination.is90Symmetric())
 	      cx.symmetric90++;
@@ -817,7 +917,6 @@ namespace rectilinear {
       C[i].reset();
     }
 
-    std::cout << "Counted models of size " << maxSize << " (" << counts.size() << " refinement types):" << std::endl;
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
       int token = it->first;
       //int reverseToken = Combination::reverseToken(token);
@@ -838,10 +937,6 @@ namespace rectilinear {
       else if(layerSizes[height-1] > 1 && fat) {
 	C[layerSizes[0]] += countsForToken;		       
       }
-      // Count for <> token:
-#ifdef TRACE
-      std::cout << " ORIG! <" << token << "> " << countsForToken << " with first layer size " << layerSizes[0] << std::endl;
-#endif
       countsForToken.all += countsForToken.symmetric180;
       countsForToken.all /= 2 * layerSizes[0];
       countsForToken.symmetric180 /= layerSizes[0];
@@ -849,25 +944,24 @@ namespace rectilinear {
       std::cout << " <" << token << "> " << countsForToken << std::endl;
       total += countsForToken;
     }
+#ifndef REFINEMENT
+    std::cout << "Total for size " << (int)maxSize << ": " << total << std::endl;
 
     // Reporting for Figure 7 in Eilers (2016):
-    std::cout << "Figure 7 numbers for Eilers (2016)" << std::endl;
+    std::cout << std::endl << "Figure 7 numbers for Eilers (2016)" << std::endl;
     std::cout << "n\tf(n)\tf180(n)";
-    for(uint8_t i = 1; i < maxSize; i++) {
+    for(uint8_t i = 1; i < maxSize; i++)
       std::cout << "\tC(n," << (int)i << ")\tC180(n," << (int)i << ")";
-    }
     std::cout << std::endl;
     std::cout << maxSize-1 << "\t" << f.all << "\t" << f.symmetric180;
-    for(uint8_t i = 1; i < maxSize; i++) {
+    for(uint8_t i = 1; i < maxSize; i++)
       std::cout << "\t-\t-";
-    }
     std::cout << std::endl;
     std::cout << (int)maxSize << "\t-\t-";
-    for(uint8_t i = 1; i < maxSize; i++) {
+    for(uint8_t i = 1; i < maxSize; i++)
       std::cout << "\t" << C[i].all << "\t" << C[i].symmetric180;
-    }
-    std::cout << std::endl;    
-    std::cout << "Total for size " << (int)maxSize << ": " << total << std::endl;
+    std::cout << std::endl;
+#endif
   }
 
   void CombinationBuilder::fast() {

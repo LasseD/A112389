@@ -157,6 +157,8 @@ namespace rectilinear {
     void build();
     void report();
   private:
+    void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
+    bool nextCombinationCanBeSymmetric180();
     void fast();
   };
 
