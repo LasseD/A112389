@@ -1,7 +1,7 @@
 # Algorithms for OEIS A112389
 
 
-OEIS A112389 is "Number of ways, counted up to symmetry, to build a contiguous building with n LEGO blocks of size 2 X 4."
+OEIS A112389 is "Number of ways, counted up to symmetry, to build a contiguous building with n LEGO bricks of size 2 X 4."
 
 https://oeis.org/A112389
 
