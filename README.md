@@ -1,9 +1,7 @@
 # Algorithms for OEIS A112389
 
 
-OEIS A112389 is "Number of ways, counted up to symmetry, to build a contiguous building with n LEGO bricks of size 2 X 4."
-
-https://oeis.org/A112389
+[OEIS A112389](https://oeis.org/A112389) is "Number of ways, counted up to symmetry, to build a contiguous building with n LEGO bricks of size 2 X 4."
 
 Known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are symmetric at 180 degrees of rotation.
 
@@ -30,7 +28,7 @@ This repository is divided into different approaches to computing OEIS A112389. 
 
 ## Brute-Force Approach
 
-The folder /brute_force_approach contains the source code for the brute force algorithm.
+The folder [/brute_force_approach](brute_force_approach/) contains the source code for the brute force algorithm.
 
 The "brute force" algorithm constructs a(N) from a(N-1) by iterating over all models of a(N-1) and adding 1 brick at every location.
 
@@ -55,4 +53,4 @@ Waves are iteratively constructed until all models have been exhautively counted
 
 This approach has the waved behaving like the classic BFS approach of graph traversal, hence the name "BFS Wave".
 
-The folder /bfs_wave_approach contains the source code for this approach.
+The folder [/bfs_wave_approach](bfs_wave_approach/) contains the source code for this approach.
