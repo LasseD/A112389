@@ -20,11 +20,14 @@ int main(int argc, char** argv) {
 
   uint8_t *maxLayerSizes = NULL;
   if(argc == 2) {
-    // OK
+#ifdef REFINEMENT
+    std::cerr << "-DREFINEMENT compilation flag used. Program must be run with MAX_TOKEN!" << std::endl;
+    return 4;
+#endif
   }
   else if(argc == 3) {
-#ifndef DEBUG
-    std::cerr << "DEBUG flag missing when using MAX_TOKEN!" << std::endl;
+#ifndef REFINEMENT
+    std::cerr << "-DREFINEMENT compilation flag missing when using MAX_TOKEN!" << std::endl;
     return 3;
 #endif
     sum = 0;

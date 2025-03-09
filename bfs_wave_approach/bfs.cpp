@@ -460,18 +460,6 @@ namespace rectilinear {
   }
 
   /* 
-  g++ -std=c++11 -O3 *.cpp -DNDEBUG -o run.o && time ./run.o 5
-     Total for size 5: 10166403 (3276)
-  ./run.o 5  3.69s user 0.01s system 93% cpu 3.975 total
-  ./run.o 5  2.57s user 0.00s system 92% cpu 2.774 total
-  ./run.o 5  2.17s user 0.00s system 89% cpu 2.443 total
-  ./run.o 5  2.09s user 0.00s system 91% cpu 2.294 total
-  ./run.o 5  2.10s user 0.00s system 91% cpu 2.302 total
-  ./run.o 5  2.15s user 0.00s system 91% cpu 2.357 total
-  ./run.o 5  1.06s user 0.00s system 98% cpu 1.072 total
-  ./run.o 5  1.02s user 0.00s system 86% cpu 1.176 total // Using BrickPlane
-  ./run.o 5  0.78s user 0.00s system 73% cpu 1.069 total // Shared BrickPlane
-
   g++ -std=c++11 -O3 *.cpp -DNDEBUG -o run.o && time ./run.o 6
      Total for size 6: 915103765 (15682)
   ./run.o 6  6370.01s user 0.23s system 67% cpu 9:06.73 total
@@ -672,6 +660,11 @@ namespace rectilinear {
 	if(layer2 < 0) {
 	  continue; // Do not allow building below base layer
 	}
+#ifdef REFINEMENT
+	if(baseCombination.layerSizes[layer2] == maxLayerSizes[layer2]) {
+	  continue; // Already at maximum allowed for layer!
+	}
+#endif
 
 	// Add crossing bricks (one vertical, one horizontal):
 	for(int x = -2; x < 3; x++) {
@@ -758,7 +751,7 @@ namespace rectilinear {
 	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
 	}
 
-#ifdef DEBUG
+#ifdef REFINEMENT
 	// Check if layer sizes are restricted:
 	if(maxLayerSizes != NULL) {
 	  bool ok = true;
@@ -859,7 +852,7 @@ namespace rectilinear {
 
     // Reporting for Figure 7 in Eilers (2016):
     std::cout << "Figure 7 numbers for Eilers (2016)" << std::endl;
-    std::cout << "n\tC(n)\tC180(n)";
+    std::cout << "n\tf(n)\tf180(n)";
     for(uint8_t i = 1; i < maxSize; i++) {
       std::cout << "\tC(n," << (int)i << ")\tC180(n," << (int)i << ")";
     }
