@@ -1,9 +1,9 @@
 # Algorithms for OEIS A112389
 
 
-[OEIS A112389](https://oeis.org/A112389) is "Number of ways, counted up to symmetry, to build a contiguous building with n LEGO bricks of size 2 X 4."
+[OEIS A112389](https://oeis.org/A112389) is the number of ways, counted up to symmetry, to build a contiguous model with n LEGO bricks of size 2 X 4.
 
-Known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are symmetric at 180 degrees of rotation.
+The following table contains the known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are symmetric at 180 degrees of rotation.
 
 | n  | a(N)              | a<sup>180</sup>(N)| Author(s)              | 
 |:--:|------------------:|--------:|:-----------------------|
@@ -21,9 +21,9 @@ Known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are
 
 
 
-# Overview
+# Project Overview
 
-This repository is divided into different approaches to computing OEIS A112389. Each approach is contained in a sub-folder.
+This repository contains different approaches to computing OEIS A112389.
 
 
 ## Brute-Force Approach

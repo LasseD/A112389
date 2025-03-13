@@ -19,6 +19,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <thread>
 
 #ifdef PROFILING
 typedef std::pair<uint64_t,std::string> InvocationPair;
@@ -46,6 +47,7 @@ namespace rectilinear {
     Counts(const Counts& c);
     Counts& operator +=(const Counts &c);
     Counts operator -(const Counts &c);
+    bool operator !=(const Counts &c);
     friend std::ostream& operator <<(std::ostream &os, const Counts &c);
     void reset(); // Sets counts to 0.
   };
@@ -143,23 +145,29 @@ namespace rectilinear {
   };
 
   class CombinationBuilder {
-    Combination &baseCombination;
-    const uint8_t waveStart, waveSize, maxSize, indent;
+    Combination baseCombination;
+    uint8_t waveStart, waveSize, maxSize, indent;
     CountsMap counts; // token -> counts
     BrickPlane *neighbours;
     uint8_t *maxLayerSizes;
+    bool done;
   public:
 
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, uint8_t *maxLayerSizes);
 
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, const uint8_t indent, BrickPlane *neighbours, uint8_t *maxLayerSizes);
 
-    void build();
+    CombinationBuilder(const CombinationBuilder& b);
+
+    CombinationBuilder();
+
+    void build(bool hasSplitIntoThreads);
     void report();
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
-    void fast();
+    void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
+    void joinOne(CombinationBuilder *builders, std::thread **threads, int n);
   };
 
 }

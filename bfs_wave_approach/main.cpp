@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
   std::cout << "Building models for size " << n << std::endl;
   rectilinear::Combination combination;
   rectilinear::CombinationBuilder b(combination, 0, 1, n, maxLayerSizes);
-  b.build();
+  b.build(false);
   b.report();
 
 #ifdef PROFILING
