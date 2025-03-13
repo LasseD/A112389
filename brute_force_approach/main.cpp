@@ -38,7 +38,7 @@ void countRefinements(char* input, bool saveOutput) {
 }
 
 int main(int argc, char** argv) {
-  bool saveFiles = false;
+  bool saveFiles = true;
   rectilinear::Counter c;
   switch(argc) {
   case 1:

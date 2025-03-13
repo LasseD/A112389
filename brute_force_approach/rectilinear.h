@@ -60,6 +60,8 @@ namespace rectilinear {
     int cmp(const Brick& b) const;
     bool intersects(const Brick &b) const;
     uint64_t encode15() const; // Encode the brick into the lowest 15 bits.
+    void mirror(Brick &b, const int8_t &cx, const int8_t &cy) const;
+    bool mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const;
   };
 
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
@@ -91,6 +93,8 @@ namespace rectilinear {
     void translateMinToOrigo();
     void sortBricks();
     void rotate90();
+    void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
+    bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
     void rotate180();
     bool is180Symmetric() const;
     bool isSymmetricAboveFirstLayer() const;

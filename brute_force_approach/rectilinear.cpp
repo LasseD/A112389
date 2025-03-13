@@ -76,6 +76,18 @@ namespace rectilinear {
     else
       return DIFFLT(b.x, x, 4) && DIFFLT(b.y, y, 2);
   }
+  void Brick::mirror(Brick &b, const int8_t &cx, const int8_t &cy) const {
+    b.isVertical = isVertical;
+    b.x = cx - x; // cx/2 + (cx/2 - x) = cx - x
+    b.y = cy - y;
+  }
+  bool Brick::mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const {
+    if(b.isVertical != isVertical)
+      return false;
+    if(b.x != cx - x)
+      return false;
+    return b.y == cy - y;
+  }
   uint64_t Brick::encode15() const {
     uint64_t X = x+30;
     uint64_t Y = y+30;
@@ -250,18 +262,89 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::reverse fast enough?
   }
 
-  // TODO: Optimize by:
-  // 1) Finding center of first layer.
-  // 2) For each layer:
-  //  - Check same center as first. If not, return false.
-  //  - If a brick is at center, disregard it.
-  //  - If odd number of remaining bricks: return false.
-  //  - All bricks must have a corresponding brick across the center.
-  // 3) return true
+  void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
+    cx = 0;
+    cy = 0;
+    for(uint8_t i = 0; i < layerSizes[layer]; i++) {
+      cx += bricks[layer][i].x;
+      cy += bricks[layer][i].y;
+    }
+    cx *= 2;
+    cy *= 2;
+    cx /= layerSizes[layer];
+    cy /= layerSizes[layer];
+  }
+
+  bool Combination::isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const {
+    const uint8_t layerSize = layerSizes[layer];
+    if(layerSize == 1) {
+      const Brick &b = bricks[layer][0];
+      return b.x*2 == cx && b.y*2 == cy;
+    }
+    else if(layerSize == 2) {
+      return bricks[layer][0].mirrorEq(bricks[layer][1], cx, cy);
+    }
+    else if(layerSize == 3) {
+      const Brick &b0 = bricks[layer][0];
+      const Brick &b1 = bricks[layer][1];
+      const Brick &b2 = bricks[layer][2];
+      if(b0.x*2 == cx && b0.y*2 == cy) {
+	return b1.mirrorEq(b2, cx, cy);
+      }
+      if(b1.x*2 == cx && b1.y*2 == cy) {
+	return b0.mirrorEq(b2, cx, cy);
+      }
+      if(b2.x*2 == cx && b2.y*2 == cy) {
+	return b0.mirrorEq(b1, cx, cy);
+      }
+      return false; // None in origo
+    }
+    else {
+      std::set<Brick> seen;
+      Brick mirror;
+      for(uint8_t i = 0; i < layerSize; i++) {
+	const Brick &b = bricks[layer][i];
+	if(b.x*2 == cx && b.y*2 == cy)
+	  continue; // Skip brick in center
+	b.mirror(mirror, cx, cy);
+	if(seen.find(mirror) == seen.end()) {
+	  seen.insert(b);
+	}
+	else {
+	  seen.erase(mirror);
+	}
+      }
+      return seen.empty();
+    }
+  }
+
+  /*
+    Performance improvement by optimizing this method.
+    Before:
+    ./run.o 423  20.19s user 0.47s system 99% cpu 20.676 total
+    After:
+    ./run.o 423  19.44s user 0.41s system 98% cpu 20.054 total ... half a second faster.
+   */
   bool Combination::is180Symmetric() const {
-    Combination c(*this);
-    c.rotate180();
-    return *this == c;
+    int16_t cx0, cy0;
+    getLayerCenter(0, cx0, cy0);
+
+    if(!isLayerSymmetric(0, cx0, cy0)) {
+      return false;
+    }
+
+    for(uint8_t i = 1; i < height; i++) {
+      int16_t cx1, cy1;
+      getLayerCenter(i, cx1, cy1);
+
+      if(cx0 != cx1 || cy0 != cy1) {
+	return false;
+      }
+      if(!isLayerSymmetric(i, cx0, cy0)) {
+	return false;
+      }
+    }
+    return true;
   }
 
   bool Combination::isSymmetricAboveFirstLayer() const {
@@ -273,10 +356,7 @@ namespace rectilinear {
 	c.bricks[i-1][j] = bricks[i][j];
       }
     }
-    c.normalize();
-    Combination c2(c);
-    c2.rotate180();
-    return c == c2;
+    return c.is180Symmetric();
   }
 
   bool Combination::isConnectedAboveFirstLayer() const {
@@ -1051,7 +1131,6 @@ namespace rectilinear {
   bool SingleBrickAdder::hasNextCombination() {
     std::lock_guard<std::mutex> guard(read_mutex); // Ensure no update while reading
     ensureToProduce();
-    std::cout << "HAS NEXT CALLED!" << std::endl;
     return !toProduce.empty();
   }
 
@@ -1331,9 +1410,7 @@ namespace rectilinear {
 
     // All OK! c can be added and counted:
     // Construct return value:
-    Combination rotated180(c);
-    rotated180.rotate180();
-    if(c == rotated180) {
+    if(c.is180Symmetric()) {
       if(c.height == 2 && c.layerSizes[0] == 4 && c.layerSizes[1] == 4) {
 	Combination rotated90(c);
 	rotated90.rotate90();
