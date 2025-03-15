@@ -16,7 +16,7 @@
 */
 int main(int argc, char** argv) {
   char c;
-  int sum;
+  int sum = 0;
 
   uint8_t *maxLayerSizes = NULL;
   if(argc == 2) {

@@ -5,9 +5,14 @@
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
 // Goal of 2025 is to construct models with at most 11 bricks
-#define MAX_BRICKS 9
+#define MAX_BRICKS 11
 // At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
-#define MAX_LAYER_SIZE 8
+#define MAX_LAYER_SIZE 10
+// Max height used to restrict constructions, not to reduce object size:
+#ifdef MAXHEIGHT
+#define MAX_HEIGHT 2
+#endif
+
 #define PLANE_MID 32
 #define PLANE_WIDTH 64
 #define BRICK first
@@ -70,6 +75,7 @@ namespace rectilinear {
     bool operator ==(const Brick& b) const;
     bool operator !=(const Brick& b) const;
     friend std::ostream& operator <<(std::ostream &os, const Brick &b);
+    int cmp(const Brick& b) const;
     bool intersects(const Brick &b) const;
     void mirror(Brick &b, const int8_t &cx, const int8_t &cy) const;
     bool mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const;
@@ -123,11 +129,13 @@ namespace rectilinear {
     Combination();
     Combination(const Combination &b);
 
+    bool operator <(const Combination& b) const;
     bool operator ==(const Combination& b) const;
     friend std::ostream& operator << (std::ostream &os, const Combination &b);
 
     void copy(const Combination &b);
     void rotate90();
+    void rotate180();
 
     void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
     bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
@@ -168,6 +176,7 @@ namespace rectilinear {
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
     void joinOne(CombinationBuilder *builders, std::thread **threads, int n);
+    void addCountsFrom(const CombinationBuilder &b, bool doubleCount);
   };
 
 }

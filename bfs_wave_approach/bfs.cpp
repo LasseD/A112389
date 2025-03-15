@@ -1,3 +1,4 @@
+
 #include <set>
 #include <vector>
 #include <algorithm>
@@ -125,6 +126,13 @@ namespace rectilinear {
   std::ostream& operator << (std::ostream &os,const Brick &b) {
     os << (b.isVertical?"|":"=") << (int)b.x << "," << (int)b.y << (b.isVertical?"|":"=");
     return os;
+  }
+  int Brick::cmp(const Brick& b) const {
+    if(isVertical != b.isVertical)
+      return - isVertical + b.isVertical;
+    if(x != b.x)
+      return x - b.x;
+    return y - b.y;
   }
   bool Brick::intersects(const Brick &b) const {
 #ifdef PROFILING
@@ -293,6 +301,21 @@ namespace rectilinear {
     copy(b);
   }
 
+  bool Combination::operator <(const Combination& b) const {
+    assert(height == b.height);
+    for(int i = 0; i < height; i++) {
+      assert(layerSizes[i] == b.layerSizes[i]);
+      int s = layerSizes[i];
+      for(int j = 0; j < s; j++) {
+	int res = bricks[i][j].cmp(b.bricks[i][j]);
+	if(res != 0) {
+	  return res < 0;
+	}
+      }
+    }
+    return false;
+  }
+
   bool Combination::operator ==(const Combination& b) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::operator ==");
@@ -393,6 +416,19 @@ namespace rectilinear {
     sortBricks();
   }
 
+  void Combination::rotate180() {
+    // Perform rotation:
+    for(int i = 0; i < height; i++) {
+      for(int j = 0; j < layerSizes[i]; j++) {
+	Brick &b = bricks[i][j];
+	b.x = -b.x;
+	b.y = -b.y;
+      }
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::reverse fast enough?
+  }
+
   void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::getLayerCenter()");
@@ -487,6 +523,7 @@ namespace rectilinear {
   ./run.o 6  75.16s user 0.03s system 99% cpu 1:15.84 total // Shared BrickPlane
   ./run.o 6  71.80s user 0.03s system 96% cpu 1:14.63 total // Use canBeSymmetric180
   ./run.o 6  72.28s user 1.93s system 251% cpu 29.527 total // 8 threads
+  ./run.o 6  36.11s user 1.02s system 240% cpu 15.467 total // Optimization 1
 
   Performance of code by Eilers: 2.33 seconds for size 6 single threaded.
   This performance should be matched if we want to compute for 11 bricks.
@@ -677,13 +714,15 @@ namespace rectilinear {
       const Brick &brick = baseCombination.bricks[waveBrickLayer][bi.second];
 
       for(int8_t layer2 = waveBrickLayer-1; layer2 <= waveBrickLayer+1; layer2+=2) {
-	if(layer2 < 0) {
+	if(layer2 < 0)
 	  continue; // Do not allow building below base layer
-	}
 #ifdef REFINEMENT
-	if(baseCombination.layerSizes[layer2] == maxLayerSizes[layer2]) {
+	if(baseCombination.layerSizes[layer2] == maxLayerSizes[layer2])
 	  continue; // Already at maximum allowed for layer!
-	}
+#endif
+#ifdef MAXHEIGHT
+	if(layer2 >= MAX_HEIGHT)
+	  continue;
 #endif
 
 	// Add crossing bricks (one vertical, one horizontal):
@@ -895,33 +934,44 @@ namespace rectilinear {
 
   void CombinationBuilder::joinOne(CombinationBuilder *builders, std::thread **threads, int n) {
     int waited = 0;
-    const int WAIT_COUNT = 200, WAIT_TIME_MS = 500;
+    const int WAIT_REPORT_TICKS = 200, WAIT_TIME_MS = 500;
     while(true) {
       for(int i = 0; i < n; i++) {
 	if(threads[i] == NULL)
 	  continue;
 	if(builders[i].done) {
 	  threads[i]->join();
-
-	  for(CountsMap::const_iterator it = builders[i].counts.begin(); it != builders[i].counts.end(); it++) {
-	    int token = it->first;
-	    if(counts.find(token) == counts.end())
-	      counts[token] = it->second;
-	    else
-	      counts[token] += it->second;
-	  }
+	  bool doubleCount = waveStart == 0 && !builders[i].baseCombination.is180Symmetric();
+	  addCountsFrom(builders[i], doubleCount);
 
 	  delete threads[i];
 	  threads[i] = NULL;
-	  std::cout << "Joined and counted thread " << i << std::endl;
+	  std::cout << "Thread " << i << " done" << std::endl;
 	  return;
 	}
       }
       waited++;
-      if(waited % WAIT_COUNT == 0)
-	std::cout << "Waited " << (waited*WAIT_TIME_MS/1000/60) << " minutes";
-      std::cout << "_" << std::flush;
+      if(waited % WAIT_REPORT_TICKS == 0)
+	std::cout << "Waited " << (waited*WAIT_TIME_MS/1000) << " seconds" << std::endl;
+      else if(waited % 10 == 0)
+	std::cout << "_" << std::flush;
       std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    }
+  }
+
+  void CombinationBuilder::addCountsFrom(const CombinationBuilder &b, bool doubleCount) {
+    for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
+      int token = it->first;
+      Counts toAdd = it->second;
+
+      if(doubleCount) {
+	toAdd += toAdd; // Since we skipped "the other time" (optimization 1)
+      }
+
+      if(counts.find(token) == counts.end())
+	counts[token] = toAdd;
+      else
+	counts[token] += toAdd;
     }
   }
 
@@ -939,6 +989,10 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxSize - baseCombination.size;
+#ifdef DEBUG
+    std::cout << "Building " << (int)leftToPlace << " on " << baseCombination << " of size " << (int)baseCombination.size << " up to size " << (int)maxSize << std::endl;
+#endif
+    assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
 
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
@@ -969,6 +1023,21 @@ namespace rectilinear {
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
 
+	// Optimization 1: Skip half of constructions in first builder (unless symmetric):
+	bool doubleCount = waveStart == 0 && !baseCombination.is180Symmetric();
+	if(doubleCount) {
+	  Combination rotated(baseCombination);
+	  Combination baseCopy(baseCombination);
+	  baseCopy.translateMinToOrigo();
+	  baseCopy.sortBricks();
+	  rotated.rotate180();
+	  if(rotated < baseCopy) {
+	    for(uint8_t i = 0; i < toPick; i++)
+	      baseCombination.removeLastBrick();
+	    continue; // Skip!
+	  }
+	}
+
 #ifdef REFINEMENT
 	// Check if layer sizes are restricted:
 	if(maxLayerSizes != NULL) {
@@ -993,7 +1062,7 @@ namespace rectilinear {
 	      continue;
 	    for(int j = 0; j < indent; j++)
 	      std::cout << " ";
-	    std::cout << "Starting thread " << i << " for " << baseCombination << " after picking " << (int)toPick << " bricks" << std::endl;
+	    std::cout << "Starting thread " << i << " for " << baseCombination << " after picking " << (int)toPick << std::endl;
 	    combinationBuilders[i] = CombinationBuilder(baseCombination, waveStart+waveSize, toPick, maxSize, maxLayerSizes);
 	    threads[i] = new std::thread(&CombinationBuilder::build, std::ref(combinationBuilders[i]), true);
 	    activeThreads++;
@@ -1007,13 +1076,7 @@ namespace rectilinear {
 	else {
 	  CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, indent+1, neighbours, maxLayerSizes);
 	  builder.build(hasSplitIntoThreads);
-	  for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
-	    int token = it->first;
-	    if(counts.find(token) == counts.end())
-	      counts[token] = it->second;
-	    else
-	      counts[token] += it->second;
-	  }
+	  addCountsFrom(builder, doubleCount);
 	}
 
 	for(uint8_t i = 0; i < toPick; i++)
@@ -1025,8 +1088,9 @@ namespace rectilinear {
       if(split) {
 	for(int j = 0; j < indent; j++)
 	  std::cout << " ";
-	std::cout << "Closing all threads." << std::endl;
+	std::cout << "Closing all remaining threads for picking " << (int)toPick << std::endl;
 	while(activeThreads > 0) {
+	  std::cout << activeThreads << " remaining" << std::endl;
 	  joinOne(combinationBuilders, threads, processorCount);
 	  activeThreads--;
 	}
@@ -1069,7 +1133,10 @@ namespace rectilinear {
       else if(layerSizes[height-1] > 1 && fat) {
 	C[layerSizes[0]] += countsForToken;		       
       }
+      countsForToken.symmetric180 += countsForToken.symmetric90;
+      countsForToken.all += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric180;
+
       countsForToken.all /= 2 * layerSizes[0];
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
