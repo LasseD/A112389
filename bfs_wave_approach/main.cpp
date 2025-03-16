@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 
   int n = 0;
   for(int i = 0; (c = argv[1][i]); i++) {
-    n += (c-'0');
+    n = 10 * n + (c-'0');
   }
 
   if(argc == 3 && sum != n) {
