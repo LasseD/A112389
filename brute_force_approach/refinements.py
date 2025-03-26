@@ -130,7 +130,12 @@ def getN(prefix):
 
 
 printed = {}
+cntRefinements = 0
+cntLemma1 = 0
+cntLemma2 = 0
 def printXY(X, Y, prefix, rem, actuallyPrint):
+    global cntRefinements, cntLemma1, cntLemma2
+
     if rem == 0 and len(prefix) == Y:
         s = getS(prefix)
         n = getN(prefix)
@@ -141,6 +146,11 @@ def printXY(X, Y, prefix, rem, actuallyPrint):
         printed[prefix[::-1]] = True
         if n == 0 and s == 0 or not actuallyPrint:
             return sum
+        cntRefinements = cntRefinements + 1
+        if '1' in prefix[1:-1]:
+            cntLemma1 = cntLemma1 + 1
+        elif '2' in prefix[1:-1]:
+            cntLemma2 = cntLemma2 + 1
         if n != None and s != None:
             print('  <' + prefix + '>', s + getN(prefix), '(' + str(s) + ')')
             printed[prefix[::-1]] = True
@@ -172,7 +182,10 @@ for X in range(2,to+1):
             print('   SUM', n+s, '(' + str(s) + ')')
     if X == to:
         print('TOTAL', sumN+sumS, '(' + str(sumS) + ')')
-
+print('Number of refinements:', cntRefinements)
+print('Found using Lemma 1:', cntLemma1)
+print('Computable using Lemma 2 and not Lemma 1:', cntLemma2)
+print('Remaining refinements:', cntRefinements-cntLemma1-cntLemma2)
 
 # Code below recreates Table 7 from Eilers (2016):
 def prep():
@@ -225,7 +238,7 @@ def multf(remainingCount, remainingN, product, ret, go180):
         return
     for i in range(1, remainingN+1):
         multf(remainingCount-1, remainingN-i, product * (f180[i-1] if go180 else f[i-1]), ret, go180)
-    
+
 # Compute a(n) using 2.3 from Eilers (2016):
 for n in range(1, to+1):
     an = 0
