@@ -7,7 +7,7 @@
 // Goal of 2025 is to construct models with at most 11 bricks
 #define MAX_BRICKS 11
 // At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
-#define MAX_LAYER_SIZE 10
+#define MAX_LAYER_SIZE 9
 // Max height used to restrict constructions, not to reduce object size:
 #ifdef MAXHEIGHT
 #define MAX_HEIGHT 2
