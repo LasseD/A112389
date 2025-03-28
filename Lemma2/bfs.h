@@ -39,7 +39,9 @@ namespace rectilinear {
     Counts& operator +=(const Counts &c);
     Counts operator -(const Counts &c) const;
     Counts operator /(const int &v) const;
-    bool operator !=(const Counts &c);
+    bool operator !=(const Counts &c) const;
+    bool operator ==(const Counts &c) const;
+    bool empty() const;
     friend std::ostream& operator <<(std::ostream &os, const Counts &c);
     void reset(); // Sets counts to 0.
   };
@@ -173,8 +175,10 @@ namespace rectilinear {
     int left, right, n;
     CountsMap counts;
   public:
+    Lemma2(int n);
     Lemma2(int left, int right, int n);
-    void execute();
+    void computeAllLeftAndRight();
+    void computeOnBase2();
     void report() const;
   };
 }

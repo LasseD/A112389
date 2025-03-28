@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <sstream>
+#include <iostream>
 
 #include "bfs.h"
 
@@ -29,8 +30,14 @@ namespace rectilinear {
     assert(symmetric180 % v == 0);
     return Counts(all/v, symmetric180/v);
   }
-  bool Counts::operator !=(const Counts& c) {
+  bool Counts::operator !=(const Counts& c) const {
     return all != c.all || symmetric180 != c.symmetric180;
+  }
+  bool Counts::operator ==(const Counts& c) const {
+    return all == c.all && symmetric180 == c.symmetric180;
+  }
+  bool Counts::empty() const {
+    return all == 0 && symmetric180 == 0;
   }
   std::ostream& operator << (std::ostream &os,const Counts &c) {
     os << c.all;
@@ -638,18 +645,28 @@ namespace rectilinear {
 	baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
       }
 
-      int token = baseCombination.getTokenFromLayerSizes();
-      if(!baseCombination.isConnected())
-	token = -token;
-      Counts cx;
-      cx.all++;
-      if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
-	cx.symmetric180++;
+      bool hasLayerWithOneBrick = false;
+      for(uint8_t i = 1; i < baseCombination.height-1; i++) {
+	if(baseCombination.layerSizes[i] == 1) {
+	  hasLayerWithOneBrick = true;
+	  break;
+	}
       }
-      if(counts.find(token) == counts.end())
-	counts[token] = cx;
-      else
-	counts[token] += cx;
+
+      if(!hasLayerWithOneBrick) {
+	int token = baseCombination.getTokenFromLayerSizes();
+	if(!baseCombination.isConnected())
+	  token = -token;
+	Counts cx;
+	cx.all++;
+	if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
+	  cx.symmetric180++;
+	}
+	if(counts.find(token) == counts.end())
+	  counts[token] = cx;
+	else
+	  counts[token] += cx;
+      }
 
       for(uint8_t i = 0; i < leftToPlace; i++) {
 	baseCombination.removeLastBrick();
@@ -809,6 +826,9 @@ namespace rectilinear {
     assert(n == left + right + 2);
   }
 
+  Lemma2::Lemma2(int n): left(0), right(n-2), n(n) {
+  }
+
   void Lemma2::report() const {
     std::cout << std::endl << " -- Results for Lemma 2 --" << std::endl << std::endl;
     Counts total;
@@ -819,7 +839,76 @@ namespace rectilinear {
     std::cout << std::endl << " Total for size " << n << " of shape [" << left << ":2:" << right << "]: " << total << std::endl;
   }
 
-  void Lemma2::execute() {
+  void Lemma2::computeOnBase2() {
+    uint8_t layerSizes[MAX_BRICKS];
+    Combination baseCombination; // Includes first brick
+
+    for(int rotation = 0; rotation <= 1; rotation++) {
+      Counts prevDisconnectedX;
+      for(int8_t dx = 0; true; dx++) {
+	Counts connectedX, disconnectedX;
+
+	Counts prevDisconnectedY;
+	for(int8_t dy = 0; true; dy++) {
+	  Brick b2((bool)rotation, FirstBrick.x + dx, FirstBrick.y + dy);
+	  if(FirstBrick.intersects(b2))
+	    continue;
+	  std::cout << " Handling " << b2 << std::endl;
+	  baseCombination.addBrick(b2, 0);
+
+	  Counts connectedY, disconnectedY;
+
+	  CombinationBuilder builder(baseCombination, 0, 2, n);
+	  builder.build(false);
+
+	  std::stringstream ss; ss << "base_2_size_" << n << "/";
+	  if(b2.isVertical)
+	    ss << "parallel_dx_";
+	  else
+	    ss << "crossing_dx_";
+	  ss << (int)dx << "_dy_" << (int)dy << ".txt";
+	  std::ofstream ostream(ss.str().c_str());
+
+	  for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+	    int token = it->first;
+#ifdef TRACE
+	    std::cout << "Handling tokens " << token << " on " << baseCombination << std::endl;
+	    std::cout << " " << it->second << std::endl;
+#endif
+	    if(token < 0) {
+	      ostream << "DISCONNECTED ";
+	      token = -token;
+	      disconnectedY += it->second;
+	      disconnectedX += it->second;
+	    }
+	    else {
+	      ostream << "CONNECTED ";
+	      connectedX += it->second;
+	      connectedY += it->second;
+	    }
+	    ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
+	  }
+
+	  baseCombination.removeLastBrick();
+	  ostream.flush();
+	  ostream.close();
+
+	  if(connectedY.empty() && prevDisconnectedY == disconnectedY) {
+	    break; // Nothing connects, and disconnects do not change
+	  }
+	  prevDisconnectedY = disconnectedY;
+	} // for dy
+
+	if(connectedX.empty() && prevDisconnectedX == disconnectedX) {
+	  break; // Nothing connects, and disconnects do not change
+	}
+	prevDisconnectedX = disconnectedX;
+
+      } // for dx
+    } // for rotation
+  }
+
+  void Lemma2::computeAllLeftAndRight() {
     uint8_t layerSizes[MAX_BRICKS];
     Combination baseCombination; // Includes first brick
 
@@ -832,8 +921,6 @@ namespace rectilinear {
 	    continue;
 	  std::cout << " Handling " << b2 << std::endl;
 	  baseCombination.addBrick(b2, 0);
-
-	  Counts yTotal;
 
 	  CombinationBuilder builder1(baseCombination, 0, 2, left + 2);
 	  builder1.build(false);
