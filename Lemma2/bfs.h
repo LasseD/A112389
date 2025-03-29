@@ -178,6 +178,7 @@ namespace rectilinear {
     Lemma2(int n);
     Lemma2(int left, int right, int n);
     void computeAllLeftAndRight();
+    void computeOnBase2(bool vertical, int8_t dx, int8_t dy, Counts &c, Counts &d);
     void computeOnBase2();
     void report() const;
   };

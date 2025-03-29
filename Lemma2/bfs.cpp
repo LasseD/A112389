@@ -839,10 +839,51 @@ namespace rectilinear {
     std::cout << std::endl << " Total for size " << n << " of shape [" << left << ":2:" << right << "]: " << total << std::endl;
   }
 
-  void Lemma2::computeOnBase2() {
+  void Lemma2::computeOnBase2(bool vertical, int8_t dx, int8_t dy, Counts &c, Counts &d) {
     uint8_t layerSizes[MAX_BRICKS];
-    Combination baseCombination; // Includes first brick
 
+    Brick b2(vertical, FirstBrick.x + dx, FirstBrick.y + dy);
+    if(FirstBrick.intersects(b2))
+      return;
+
+    std::cout << " Handling " << b2 << std::endl;
+    Combination baseCombination; // Includes first brick
+    baseCombination.addBrick(b2, 0);
+
+    CombinationBuilder builder(baseCombination, 0, 2, n);
+    builder.build(false);
+
+    std::stringstream ss; ss << "base_2_size_" << n << "/";
+    if(b2.isVertical)
+      ss << "parallel_dx_";
+    else
+      ss << "crossing_dx_";
+    ss << (int)dx << "_dy_" << (int)dy << ".txt";
+    std::ofstream ostream(ss.str().c_str());
+
+    for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+      int token = it->first;
+#ifdef TRACE
+      std::cout << "Handling tokens " << token << " on " << baseCombination << std::endl;
+      std::cout << " " << it->second << std::endl;
+#endif
+      if(token < 0) {
+	ostream << "DISCONNECTED ";
+	token = -token;
+	d += it->second;
+      }
+      else {
+	ostream << "CONNECTED ";
+	c += it->second;
+      }
+      ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
+    }
+
+    ostream.flush();
+    ostream.close();
+  }
+
+  void Lemma2::computeOnBase2() {
     for(int rotation = 0; rotation <= 1; rotation++) {
       Counts prevDisconnectedX;
       for(int8_t dx = 0; true; dx++) {
@@ -850,48 +891,11 @@ namespace rectilinear {
 
 	Counts prevDisconnectedY;
 	for(int8_t dy = 0; true; dy++) {
-	  Brick b2((bool)rotation, FirstBrick.x + dx, FirstBrick.y + dy);
-	  if(FirstBrick.intersects(b2))
-	    continue;
-	  std::cout << " Handling " << b2 << std::endl;
-	  baseCombination.addBrick(b2, 0);
-
 	  Counts connectedY, disconnectedY;
 
-	  CombinationBuilder builder(baseCombination, 0, 2, n);
-	  builder.build(false);
-
-	  std::stringstream ss; ss << "base_2_size_" << n << "/";
-	  if(b2.isVertical)
-	    ss << "parallel_dx_";
-	  else
-	    ss << "crossing_dx_";
-	  ss << (int)dx << "_dy_" << (int)dy << ".txt";
-	  std::ofstream ostream(ss.str().c_str());
-
-	  for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
-	    int token = it->first;
-#ifdef TRACE
-	    std::cout << "Handling tokens " << token << " on " << baseCombination << std::endl;
-	    std::cout << " " << it->second << std::endl;
-#endif
-	    if(token < 0) {
-	      ostream << "DISCONNECTED ";
-	      token = -token;
-	      disconnectedY += it->second;
-	      disconnectedX += it->second;
-	    }
-	    else {
-	      ostream << "CONNECTED ";
-	      connectedX += it->second;
-	      connectedY += it->second;
-	    }
-	    ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
-	  }
-
-	  baseCombination.removeLastBrick();
-	  ostream.flush();
-	  ostream.close();
+	  computeOnBase2((bool)rotation, dx, dy, connectedY, disconnectedY);
+	  connectedX += connectedY;
+	  disconnectedX += disconnectedY;
 
 	  if(connectedY.empty() && prevDisconnectedY == disconnectedY) {
 	    break; // Nothing connects, and disconnects do not change
