@@ -75,23 +75,6 @@ namespace rectilinear {
   typedef std::pair<uint16_t,uint16_t> BrickIdentifier; // layer, idx
   typedef std::map<int,Counts> CountsMap;
 
-  class BrickPicker {
-    const std::vector<LayerBrick> &v;
-    int vIdx;
-    const int numberOfBricksToPick, bricksIdx;
-    LayerBrick *bricks;
-    BrickPicker *inner;
-
-    bool checkVIdx() const;
-    void nextVIdx();
-    
-  public:
-    BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx);
-     ~BrickPicker();
-
-    bool next();
-  };
-
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
     void unsetAll();
@@ -142,31 +125,65 @@ namespace rectilinear {
     static void getLayerSizesFromToken(int token, uint16_t *layerSizes);
   };
 
-  class CombinationBuilder {
-    Combination baseCombination;
-    uint16_t waveStart, waveSize, maxSize, indent;
+  class BrickPicker {
+    const std::vector<LayerBrick> &v;
+    int vIdx;
+    const int numberOfBricksToPick, bricksIdx;
+    LayerBrick *bricks;
+    BrickPicker *inner;
+    std::mutex next_mutex;
+
+    bool checkVIdx() const;
+    void nextVIdx();
+    
   public:
+    BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx);
+     ~BrickPicker();
+
+    bool next();
+    bool next(Combination &c);
+  };
+
+  class CombinationBuilder {
+    uint16_t waveStart, waveSize, maxSize;
+  public:
+    Combination baseCombination;
     CountsMap counts; // token -> counts, negative token for disconnected counts
   private:
     BrickPlane *neighbours;
-    bool done;
   public:
     CombinationBuilder(Combination &c, const uint16_t waveStart, const uint16_t waveSize, const uint16_t maxSize);
 
-    CombinationBuilder(Combination &c, const uint16_t waveStart, const uint16_t waveSize, const uint16_t maxSize, const uint16_t indent, BrickPlane *neighbours);
+    CombinationBuilder(Combination &c, const uint16_t waveStart, const uint16_t waveSize, const uint16_t maxSize, BrickPlane *neighbours);
 
     CombinationBuilder(const CombinationBuilder& b);
 
     CombinationBuilder();
 
-    void build(bool hasSplitIntoThreads);
+    void build();
+    void build(BrickPicker *picker, int toPick);
+    void buildSplit();
     void report();
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint16_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
-    void joinOne(CombinationBuilder *builders, std::thread **threads, int n);
     void addCountsFrom(const CombinationBuilder &b);
+  };
+
+  class ThreadEnablingBuilder {
+    BrickPicker *picker;
+    int toPick;
+  public:
+    CombinationBuilder b;
+    ThreadEnablingBuilder();
+    ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
+    ThreadEnablingBuilder(Combination &c,
+			  const uint16_t waveStart,
+			  const uint16_t waveSize,
+			  const uint16_t maxSize,
+			  BrickPicker *picker);
+    void build();
   };
 
   class Lemma2 {
