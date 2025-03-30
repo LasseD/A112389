@@ -30,22 +30,6 @@ int main(int argc, char** argv) {
     rectilinear::Lemma2 lemma2(n);
     lemma2.computeOnBase2();
   }
-  else if(argc == 3) {
-    int n = getInt(argv[1]);
-    int left = getInt(argv[2]);
-    int right = n-2-left;
-
-    if(n < 2 || left < 1 || right < 1 || left > right) {
-      std::cerr << "Invalid parameter! n=" << n << ", left=" << left << ", right=" << right << std::endl;
-      return 1;
-    }
-
-    std::cout << "Building models for size " << n << " with " << left << " bricks on one side and " << right << " on the other " << std::endl;
-
-    rectilinear::Lemma2 lemma2(left, right, n);
-    lemma2.computeAllLeftAndRight();
-    lemma2.report();
-  }
   else if(argc == 5) {
     int n = getInt(argv[1]);
     bool vertical = argv[2][0] != '-';
@@ -58,9 +42,8 @@ int main(int argc, char** argv) {
     std::cout << "Computed " << c << " connected and " << d << " disconnected models on " << rectilinear::Brick(vertical,dx,dy) << std::endl;
   }
   else {
-    std::cerr << "Provide either 1, 2 or 4 parameters to run:" << std::endl;
+    std::cerr << "Provide either 1 or 4 parameters to run:" << std::endl;
     std::cerr << "1 Parameter: SIZE_TOTAL to build on a base of 2 bricks. Results are saved to files in folder /base_2_size_" << std::endl;
-    std::cerr << "2 parameters: SIZE_TOTAL SIZE_LEFT, where SIZE_LEFT is excluding the 2 bricks in the layer of interest" << std::endl;
     std::cerr << "4 parameters: SIZE_TOTAL ORIENTATION DX DY, where ORIENTATION is - or I, and dx and dy are 0 or greater" << std::endl;
     return 1;
   }

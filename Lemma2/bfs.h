@@ -5,13 +5,13 @@
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
 // Goal of 2025 is to construct models with at most 11 bricks
-#define MAX_BRICKS 11
+#define MAX_BRICKS 8
 // At most 8 bricks, since 2 are used for the 2-brick layer, and 1 is on one side.
-#define MAX_LAYER_SIZE 8
+#define MAX_LAYER_SIZE 6
 // Max height used to restrict constructions, not to reduce object size:
 
-#define PLANE_MID 32
-#define PLANE_WIDTH 64
+#define PLANE_MID 50
+#define PLANE_WIDTH 100
 #define BRICK first
 #define LAYER second
 
@@ -51,13 +51,11 @@ namespace rectilinear {
    * x,y is the position of the middle of the brick (like in LDRAW).
    */
   struct Brick {
-    bool isVertical:1; // :1 gives the compiler the hint that only 1 bit is needed.
-    // Could use :6 when 6 bricks is maximum size, but it would not provide practical benefits,
-    // as 7+7+1 still packs in 2 bytes:
-    int8_t x:7, y:7;
+    bool isVertical;
+    int16_t x, y;
 
     Brick();
-    Brick(bool iv, int8_t x, int8_t y);
+    Brick(bool iv, int16_t x, int16_t y);
     Brick(const Brick &b);
 
     bool operator <(const Brick& b) const;
@@ -66,15 +64,15 @@ namespace rectilinear {
     friend std::ostream& operator <<(std::ostream &os, const Brick &b);
     int cmp(const Brick& b) const;
     bool intersects(const Brick &b) const;
-    void mirror(Brick &b, const int8_t &cx, const int8_t &cy) const;
-    bool mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const;
+    void mirror(Brick &b, const int16_t &cx, const int16_t &cy) const;
+    bool mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const;
   };
 
-  typedef std::pair<Brick,uint8_t> LayerBrick;
+  typedef std::pair<Brick,uint16_t> LayerBrick;
   
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
-  typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // layer, idx
+  typedef std::pair<uint16_t,uint16_t> BrickIdentifier; // layer, idx
   typedef std::map<int,Counts> CountsMap;
 
   class BrickPicker {
@@ -108,7 +106,7 @@ namespace rectilinear {
     bool connected[MAX_BRICKS][MAX_LAYER_SIZE];
     int countConnected(int layer, int idx);
   public:
-    uint8_t layerSizes[MAX_BRICKS], height, size;
+    uint16_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
     BrickIdentifier history[MAX_BRICKS];
 
@@ -129,33 +127,33 @@ namespace rectilinear {
     void copy(const Combination &b);
     void rotate180();
 
-    void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
-    bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
+    void getLayerCenter(const uint16_t layer, int16_t &cx, int16_t &cy) const;
+    bool isLayerSymmetric(const uint16_t layer, const int16_t &cx, const int16_t &cy) const;
     bool is180Symmetric() const;
     void sortBricks();
     void translateMinToOrigo();
-    void addBrick(const Brick &b, const uint8_t layer);
+    void addBrick(const Brick &b, const uint16_t layer);
     bool isConnected();
     void removeLastBrick();
     int getTokenFromLayerSizes() const;
     static int reverseToken(int token);
-    static uint8_t heightOfToken(int token);
-    static uint8_t sizeOfToken(int token);
-    static void getLayerSizesFromToken(int token, uint8_t *layerSizes);
+    static uint16_t heightOfToken(int token);
+    static uint16_t sizeOfToken(int token);
+    static void getLayerSizesFromToken(int token, uint16_t *layerSizes);
   };
 
   class CombinationBuilder {
     Combination baseCombination;
-    uint8_t waveStart, waveSize, maxSize, indent;
+    uint16_t waveStart, waveSize, maxSize, indent;
   public:
     CountsMap counts; // token -> counts, negative token for disconnected counts
   private:
     BrickPlane *neighbours;
     bool done;
   public:
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize);
+    CombinationBuilder(Combination &c, const uint16_t waveStart, const uint16_t waveSize, const uint16_t maxSize);
 
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, const uint8_t indent, BrickPlane *neighbours);
+    CombinationBuilder(Combination &c, const uint16_t waveStart, const uint16_t waveSize, const uint16_t maxSize, const uint16_t indent, BrickPlane *neighbours);
 
     CombinationBuilder(const CombinationBuilder& b);
 
@@ -166,19 +164,17 @@ namespace rectilinear {
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
-    void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
+    void placeAllLeftToPlace(const uint16_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
     void joinOne(CombinationBuilder *builders, std::thread **threads, int n);
     void addCountsFrom(const CombinationBuilder &b);
   };
 
   class Lemma2 {
-    int left, right, n;
+    int n;
     CountsMap counts;
   public:
     Lemma2(int n);
-    Lemma2(int left, int right, int n);
-    void computeAllLeftAndRight();
-    void computeOnBase2(bool vertical, int8_t dx, int8_t dy, Counts &c, Counts &d);
+    bool computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d);
     void computeOnBase2();
     void report() const;
   };
