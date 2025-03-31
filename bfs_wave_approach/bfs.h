@@ -88,23 +88,6 @@ namespace rectilinear {
   typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // layer, idx
   typedef std::map<int,Counts> CountsMap;
 
-  class BrickPicker {
-    const std::vector<LayerBrick> &v;
-    int vIdx;
-    const int numberOfBricksToPick, bricksIdx;
-    LayerBrick *bricks;
-    BrickPicker *inner;
-
-    bool checkVIdx() const;
-    void nextVIdx();
-    
-  public:
-    BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx);
-     ~BrickPicker();
-
-    bool next();
-  };
-
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
     void unsetAll();
@@ -152,33 +135,78 @@ namespace rectilinear {
     static void getLayerSizesFromToken(int token, uint8_t *layerSizes);
   };
 
+  class BrickPicker {
+    const std::vector<LayerBrick> &v;
+    int vIdx;
+    const int numberOfBricksToPick, bricksIdx;
+    LayerBrick *bricks;
+    BrickPicker *inner;
+
+    bool checkVIdx() const;
+    void nextVIdx();
+
+  public:
+    BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx);
+    ~BrickPicker();
+
+    bool next();
+  };
+
+  class MultiLayerBrickPicker {
+    const std::vector<LayerBrick> &v;
+    const int maxPick;
+    int toPick;
+    LayerBrick bricks[MAX_BRICKS];
+    BrickPicker *inner;
+    std::mutex next_mutex;
+  public:
+    MultiLayerBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
+    bool next(Combination &c, int &picked);
+  };
+ 
   class CombinationBuilder {
     Combination baseCombination;
-    uint8_t waveStart, waveSize, maxSize, indent;
+    uint8_t waveStart, waveSize, maxSize;
     CountsMap counts; // token -> counts
     BrickPlane *neighbours;
     uint8_t *maxLayerSizes;
-    bool done;
   public:
-
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, uint8_t *maxLayerSizes);
 
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, const uint8_t indent, BrickPlane *neighbours, uint8_t *maxLayerSizes);
+    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, BrickPlane *neighbours, uint8_t *maxLayerSizes);
 
     CombinationBuilder(const CombinationBuilder& b);
 
     CombinationBuilder();
 
-    void build(bool hasSplitIntoThreads);
+    void build();
+    void buildSplit();
     void report();
+    bool addFromPicker(MultiLayerBrickPicker *p, int &picked);
+    void removeFromPicker(int toRemove);
   private:
+    void build(BrickPicker *picker, int toPick);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
-    void joinOne(CombinationBuilder *builders, std::thread **threads, int n);
     void addCountsFrom(const CombinationBuilder &b, bool doubleCount);
   };
 
+  class ThreadEnablingBuilder {
+    MultiLayerBrickPicker *picker;
+  public:
+    CombinationBuilder b;
+
+    ThreadEnablingBuilder();
+    ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
+    ThreadEnablingBuilder(Combination &c,
+ 			  const uint16_t waveStart,
+ 			  //const uint16_t waveSize,
+ 			  const uint16_t maxSize,
+			  uint8_t *maxLayerSizes,
+ 			  MultiLayerBrickPicker *picker);
+    void build();
+  };
 }
 
 #endif

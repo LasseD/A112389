@@ -1,4 +1,3 @@
-
 #include <set>
 #include <vector>
 #include <algorithm>
@@ -11,6 +10,9 @@
 
 #ifdef PROFILING
 void Profiler::countInvocation(const std::string &s) {
+#ifdef TRACE
+  std::cout << "Calling " << s << std::endl;
+#endif
   if(invocationCounts == NULL)
     invocationCounts = new InvocationMap();
   if(invocationCounts->find(s) == invocationCounts->end()) {
@@ -128,6 +130,9 @@ namespace rectilinear {
     return os;
   }
   int Brick::cmp(const Brick& b) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Brick::cmp()");
+#endif
     if(isVertical != b.isVertical)
       return - isVertical + b.isVertical;
     if(x != b.x)
@@ -169,7 +174,7 @@ namespace rectilinear {
     Profiler::countInvocation("BrickPicker::BrickPicker()");
 #endif
 #ifdef TRACE
-    std::cout << "   BrickPicker for " << numberOfBricksToPick << " bricks, starting at " << v[vIdx].BRICK << " at layer " << (int)v[vIdx].LAYER << " created with " << bricksIdx << " previous bricks added " <<std::endl;
+    std::cout << "   BrickPicker for " << numberOfBricksToPick << " bricks, starting at " << vIdx << " of " << v.size() << " at layer created with " << bricksIdx << " previous bricks added " <<std::endl;
 #endif
   }
 
@@ -215,15 +220,6 @@ namespace rectilinear {
 #endif
     if(numberOfBricksToPick == 1) {
       nextVIdx();
-#ifdef TRACE
-      if(vIdx < (int)v.size()) {
-	std::cout << "    Next pick of bricks: ";
-	for(int i = 0; i <= bricksIdx; i++) {
-	  std::cout << "[" << bricks[bricksIdx].BRICK << "@" << (int)bricks[bricksIdx].LAYER << "]";
-	}
-	std::cout << std::endl;
-      }
-#endif
       return vIdx < (int)v.size();
     }
 
@@ -248,6 +244,40 @@ namespace rectilinear {
       delete inner;
       inner = NULL;
     }
+  }
+
+  MultiLayerBrickPicker::MultiLayerBrickPicker(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
+#ifdef PROFILING
+    Profiler::countInvocation("MultiLayerBrickPicker::MultiLayerBrickPicker()");
+#endif
+    assert(maxPick >= 1);
+    inner = new BrickPicker(v, 0, 1, bricks, 0);
+  }
+
+  bool MultiLayerBrickPicker::next(Combination &c, int &picked) {
+    std::lock_guard<std::mutex> guard(next_mutex);
+#ifdef PROFILING
+    Profiler::countInvocation("MultiLayerBrickPicker::next()");
+#endif
+    if(inner == NULL) {
+      return false;
+    }
+    bool ret;
+    while(!(ret = inner->next())) {
+      delete inner;
+      if(toPick == maxPick) {
+	inner = NULL;
+	return false;
+      }
+      inner = new BrickPicker(v, 0, ++toPick, bricks, 0);
+    }
+
+    for(int i = 0; i < toPick; i++) {
+      c.addBrick(bricks[i].BRICK, bricks[i].LAYER);
+    }
+    picked = toPick;
+
+    return true;
   }
 
   void BrickPlane::unsetAll() {
@@ -302,6 +332,9 @@ namespace rectilinear {
   }
 
   bool Combination::operator <(const Combination& b) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::operator <");
+#endif
     assert(height == b.height);
     for(int i = 0; i < height; i++) {
       assert(layerSizes[i] == b.layerSizes[i]);
@@ -417,6 +450,9 @@ namespace rectilinear {
   }
 
   void Combination::rotate180() {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::rotate180()");
+#endif
     // Perform rotation:
     for(int i = 0; i < height; i++) {
       for(int j = 0; j < layerSizes[i]; j++) {
@@ -478,16 +514,16 @@ namespace rectilinear {
       const Brick &b2 = bricks[layer][2];
       const Brick &b3 = bricks[layer][3];
       if(b0.mirrorEq(b1, cx, cy) && b2.mirrorEq(b3, cx, cy))
-	return true;
+        return true;
       if(b0.mirrorEq(b2, cx, cy) && b1.mirrorEq(b3, cx, cy))
-	return true;
+        return true;
       if(b0.mirrorEq(b3, cx, cy) && b1.mirrorEq(b2, cx, cy))
-	return true;
+        return true;
       return false;
-    }*/
+      }*/
     else {
 #ifdef PROFILING
-    Profiler::countInvocation("Combination::isLayerSymmetric::FALLBACK");
+      Profiler::countInvocation("Combination::isLayerSymmetric::FALLBACK");
 #endif
       std::set<Brick> seen;
       Brick mirror;
@@ -507,31 +543,6 @@ namespace rectilinear {
     }
   }
 
-  /* 
-  g++ -std=c++11 -O3 *.cpp -DNDEBUG -o run.o && time ./run.o 6
-     Total for size 6: 915103765 (15682)
-  ./run.o 6  6370.01s user 0.23s system 67% cpu 9:06.73 total
-  ./run.o 6  248.01s user 0.19s system 98% cpu 4:11.30 total // custom is180Symmetric()
-  ./run.o 6  214.07s user 0.12s system 99% cpu 3:36.03 total // fast size 1 and 2 check
-  ./run.o 6  200.56s user 0.11s system 99% cpu 3:21.93 total // fast size 3 check // Best!
-  ./run.o 6  200.62s user 0.13s system 99% cpu 3:22.39 total // fast size 4 check!
-  ./run.o 6  205.36s user 0.16s system 98% cpu 3:27.81 total // removing pre-check for layer center
-  ./run.o 6  185.23s user 0.11s system 99% cpu 3:06.46 total // using removeLastBrick in CombinationBuilder
-  ./run.o 6  101.39s user 0.04s system 99% cpu 1:42.08 total // Sorting vectors instead of using map<LayerBrick>
-  ./run.o 6  100.08s user 0.06s system 99% cpu 1:40.58 total // Initialize all layerSize values to 0
-  ./run.o 6  96.16s user 0.11s system 98% cpu 1:37.26 total // Using BrickPlane
-  ./run.o 6  75.16s user 0.03s system 99% cpu 1:15.84 total // Shared BrickPlane
-  ./run.o 6  71.80s user 0.03s system 96% cpu 1:14.63 total // Use canBeSymmetric180
-  ./run.o 6  72.28s user 1.93s system 251% cpu 29.527 total // 8 threads
-  ./run.o 6  36.11s user 1.02s system 240% cpu 15.467 total // Optimization 1
-
-  Performance of code by Eilers: 2.33 seconds for size 6 single threaded.
-  This performance should be matched if we want to compute for 11 bricks.
-
-  vs old rectilinear algorithm (no countX2):
-  g++ -std=c++11 -O3 *.cpp -DNDEBUG -o runCompare.o && time ./runCompare.o ->
-             211.85s user 0.18s system 98% cpu 3:34.61 total
-  */
   bool Combination::is180Symmetric() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is180Symmetric()");
@@ -558,13 +569,13 @@ namespace rectilinear {
   }
 
   bool Combination::is90Symmetric() const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::is90Symmetric()");
+#endif
     for(uint8_t i = 0; i < height; i++) {
       if(layerSizes[i] % 4 != 0)
 	return false;
     }
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::is90Symmetric()");
-#endif
     Combination rotated(*this);
     rotated.rotate90();
     Combination dis(*this);
@@ -667,37 +678,36 @@ namespace rectilinear {
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
 					 uint8_t *maxLayerSizes) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), indent(0), maxLayerSizes(maxLayerSizes), done(false) {
+    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), maxLayerSizes(maxLayerSizes) {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::SLOW");
+#endif
     neighbours = new BrickPlane[MAX_BRICKS];
     for(uint8_t i = 0; i < MAX_BRICKS; i++) {
       neighbours[i].unsetAll();
     }
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::SLOW");
-#endif
   }
 
   CombinationBuilder::CombinationBuilder(Combination &c,
 					 const uint8_t waveStart,
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
-					 const uint8_t indent,
 					 BrickPlane *neighbours,
 					 uint8_t *maxLayerSizes) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), indent(indent), neighbours(neighbours), maxLayerSizes(maxLayerSizes), done(false) {
+    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxLayerSizes(maxLayerSizes) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::FAST");
 #endif
   }
 
   CombinationBuilder::CombinationBuilder(const CombinationBuilder& b) :
-    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), indent(b.indent), neighbours(b.neighbours), maxLayerSizes(b.maxLayerSizes), done(b.done) {
+    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), neighbours(b.neighbours), maxLayerSizes(b.maxLayerSizes) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(CombinationBuilder&)");
 #endif
   }
 
-  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), indent(0), neighbours(NULL), maxLayerSizes(NULL), done(false) {
+  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), neighbours(NULL), maxLayerSizes(NULL) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()");
 #endif
@@ -707,6 +717,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::findPotentialBricksForNextWave()");
 #endif
+    assert(waveSize > 0);
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
@@ -886,30 +897,61 @@ namespace rectilinear {
   }
 
   void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::placeAllLeftToPlace()");
+#endif
+#ifdef REFINEMENT
+    int cntNonFullLayers = 0;
+    for(int i = 0; i < MAX_BRICKS; i++) {
+      if(maxLayerSizes[i] > baseCombination.layerSizes[i])
+	cntNonFullLayers++;
+    }
+    bool checkedLayers[MAX_BRICKS];
+    for(int i = 0; i < MAX_BRICKS; i++)
+      checkedLayers[i] = false;
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      const LayerBrick &lb = *it;
+      uint8_t layer = lb.LAYER;
+      if(checkedLayers[layer])
+	continue;
+      if(maxLayerSizes[layer] > baseCombination.layerSizes[layer]) {
+	checkedLayers[layer] = true;
+	cntNonFullLayers--;
+      }
+    }
+    if(cntNonFullLayers > 0)
+      return; // Can't possibly fill!
+#endif
     LayerBrick bricks[MAX_BRICKS];
     BrickPicker picker(v, 0, leftToPlace, bricks, 0);
     while(picker.next()) {
       // toPick bricks ready in bricks: Use as next wave!
-      for(uint8_t i = 0; i < leftToPlace; i++) {
-	baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
-      }
-
 #ifdef REFINEMENT
-      // Check if layer sizes are restricted:
-      if(maxLayerSizes != NULL) {
-	bool ok = true;
-	for(uint8_t i = 0; i < baseCombination.height; i++) {
-	  if(baseCombination.layerSizes[i] > maxLayerSizes[i]) {
-	    ok = false;
-	    break;
-	  }
-	}
-	if(!ok) {
-	  for(uint8_t i = 0; i < leftToPlace; i++) {
+      bool ok = true;
+#endif
+      for(uint8_t i = 0; i < leftToPlace; i++) {
+#ifdef REFINEMENT
+	// Check if layer sizes are restricted:
+	if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
+	  ok = false;
+	  for(uint8_t j = 0; j < i; j++) {
 	    baseCombination.removeLastBrick();
 	  }
-	  continue; // Skip invalid combination
+	  break;
 	}
+#endif
+	baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
+      }
+#ifdef REFINEMENT
+      if(!ok)
+	continue;
+#endif
+#ifdef MAXHEIGHT
+      if(baseCombination.height == 2 && baseCombination.layerSizes[0] > baseCombination.size/2) {
+	for(uint8_t i = 0; i < leftToPlace; i++) {
+	  baseCombination.removeLastBrick();
+	}
+	continue;
       }
 #endif
 
@@ -932,34 +974,10 @@ namespace rectilinear {
     }
   }
 
-  void CombinationBuilder::joinOne(CombinationBuilder *builders, std::thread **threads, int n) {
-    int waited = 0;
-    const int WAIT_REPORT_TICKS = 200, WAIT_TIME_MS = 500;
-    while(true) {
-      for(int i = 0; i < n; i++) {
-	if(threads[i] == NULL)
-	  continue;
-	if(builders[i].done) {
-	  threads[i]->join();
-	  bool doubleCount = waveStart == 0 && !builders[i].baseCombination.is180Symmetric();
-	  addCountsFrom(builders[i], doubleCount);
-
-	  delete threads[i];
-	  threads[i] = NULL;
-	  std::cout << "Thread " << i << " done" << std::endl;
-	  return;
-	}
-      }
-      waited++;
-      if(waited % WAIT_REPORT_TICKS == 0)
-	std::cout << "Waited " << (waited*WAIT_TIME_MS/1000) << " seconds" << std::endl;
-      else if(waited % 10 == 0)
-	std::cout << "_" << std::flush;
-      std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
-    }
-  }
-
   void CombinationBuilder::addCountsFrom(const CombinationBuilder &b, bool doubleCount) {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::addCountsFrom()");
+#endif
     for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
       int token = it->first;
       Counts toAdd = it->second;
@@ -978,10 +996,10 @@ namespace rectilinear {
   /*
     BFS construction of models:
     Assume a non-empty wave:
-     Pick 1..|wave| bricks from wave:
-      Find next wave and recurse until model contains n bricks.
-   */
-  void CombinationBuilder::build(bool hasSplitIntoThreads) {
+    Pick 1..|wave| bricks from wave:
+    Find next wave and recurse until model contains n bricks.
+  */
+  void CombinationBuilder::build() {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::build()");
 #endif
@@ -989,39 +1007,48 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxSize - baseCombination.size;
-#ifdef DEBUG
-    std::cout << "Building " << (int)leftToPlace << " on " << baseCombination << " of size " << (int)baseCombination.size << " up to size " << (int)maxSize << std::endl;
-#endif
     assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
 
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
+#ifdef REFINEMENT
+    int cntDoneLayers = 0;
+    for(int i = 0; i < MAX_BRICKS; i++) {
+      if(maxLayerSizes[i] == baseCombination.layerSizes[i])
+	cntDoneLayers++;
+    }
+    if(cntDoneLayers <= 1)
+      return; // All done in placeAllLeftToPlace()
+#endif
+
     LayerBrick bricks[MAX_BRICKS];
 
-    int processorCount = hasSplitIntoThreads ? -1 : std::thread::hardware_concurrency() - 2; // allow 2 processors for OS and other...
-
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
-      if(!hasSplitIntoThreads && leftToPlace > 4)
-	std::cout << "Picking " << (int)toPick << " from " << (int)leftToPlace << std::endl;
-      bool split = false;
-      int activeThreads = 0;
-      CombinationBuilder *combinationBuilders;
-      std::thread **threads;
-      if(processorCount > 1 && v.size() > processorCount && leftToPlace-toPick > 3) {
-	split = true;
-	threads = new std::thread*[processorCount];
-	combinationBuilders = new CombinationBuilder[processorCount];
-	for(int i = 0; i < processorCount; i++)
-	  threads[i] = NULL;
-      }
-
+      if(leftToPlace > 5)
+	std::cout << "Picking " << (int)toPick << " from " << (int)leftToPlace << " on " << baseCombination << std::endl;
       // Pick toPick from neighbours:
       BrickPicker picker(v, 0, toPick, bricks, 0);
       
       while(picker.next()) {
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
+
+#ifdef REFINEMENT
+	// Check if layer sizes are restricted:
+	bool ok = true;
+	for(uint8_t i = 0; i < baseCombination.height; i++) {
+	  if(baseCombination.layerSizes[i] > maxLayerSizes[i]) {
+	    ok = false;
+	    break;
+	  }
+	}
+	if(!ok) {
+	  for(uint8_t i = 0; i < toPick; i++)
+	    baseCombination.removeLastBrick();
+	  continue; // Skip invalid combination
+	}
+#endif
 
 	// Optimization 1: Skip half of constructions in first builder (unless symmetric):
 	bool doubleCount = waveStart == 0 && !baseCombination.is180Symmetric();
@@ -1038,68 +1065,110 @@ namespace rectilinear {
 	  }
 	}
 
-#ifdef REFINEMENT
-	// Check if layer sizes are restricted:
-	if(maxLayerSizes != NULL) {
-	  bool ok = true;
-	  for(uint8_t i = 0; i < baseCombination.height; i++) {
-	    if(baseCombination.layerSizes[i] > maxLayerSizes[i]) {
-	      ok = false;
-	      break;
-	    }
-	  }
-	  if(!ok) {
-	    for(uint8_t i = 0; i < toPick; i++)
-	      baseCombination.removeLastBrick();
-	    continue; // Skip invalid combination
-	  }
-	}
-#endif
-
-	if(split) {
-	  for(int i = 0; i < processorCount; i++) {
-	    if(threads[i] != NULL)
-	      continue;
-	    for(int j = 0; j < indent; j++)
-	      std::cout << " ";
-	    std::cout << "Starting thread " << i << " for " << baseCombination << " after picking " << (int)toPick << std::endl;
-	    combinationBuilders[i] = CombinationBuilder(baseCombination, waveStart+waveSize, toPick, maxSize, maxLayerSizes);
-	    threads[i] = new std::thread(&CombinationBuilder::build, std::ref(combinationBuilders[i]), true);
-	    activeThreads++;
-	    break;
-	  }
-	  if(activeThreads == processorCount) {
-	    joinOne(combinationBuilders, threads, processorCount);
-	    activeThreads--;
-	  }
-	}
-	else {
-	  CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, indent+1, neighbours, maxLayerSizes);
-	  builder.build(hasSplitIntoThreads);
-	  addCountsFrom(builder, doubleCount);
-	}
+	assert(waveSize > 0);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxLayerSizes);
+ 	builder.build();
+ 	addCountsFrom(builder, doubleCount);
 
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.removeLastBrick();
-	// Clean up baseCombination	
-      } // while(picker.next())
-
-      // Spool down remaining threads:
-      if(split) {
-	for(int j = 0; j < indent; j++)
-	  std::cout << " ";
-	std::cout << "Closing all remaining threads for picking " << (int)toPick << std::endl;
-	while(activeThreads > 0) {
-	  std::cout << activeThreads << " remaining" << std::endl;
-	  joinOne(combinationBuilders, threads, processorCount);
-	  activeThreads--;
-	}
-	delete[] combinationBuilders;
-	delete[] threads;
       }
-    } // for(uint8_t toPick = 1; toPick < leftToPlace; toPick++)
+    }
+  }
 
-    done = true;
+  ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL) {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder()");
+#endif
+  }
+
+  ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), b(b.b) {
+  }
+
+  ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
+ 					       const uint16_t waveStart,
+ 					       //const uint16_t waveSize,
+ 					       const uint16_t maxSize,
+					       uint8_t *maxLayerSizes,
+ 					       MultiLayerBrickPicker *picker) : picker(picker) {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
+#endif
+    b = CombinationBuilder(c, waveStart, -1, maxSize, maxLayerSizes);
+  }
+
+  bool CombinationBuilder::addFromPicker(MultiLayerBrickPicker *p, int &picked) {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::addFromPicker()");
+#endif
+    bool ret = p->next(baseCombination, picked);
+    if(ret)
+      waveSize = picked; // Update wave size based on pick
+    return ret;
+  }
+
+  void CombinationBuilder::removeFromPicker(int toRemove) {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::removeFromPicker()");
+#endif
+    for(uint16_t i = 0; i < toRemove; i++)
+      baseCombination.removeLastBrick();
+  }
+
+  void ThreadEnablingBuilder::build() {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::build()");
+#endif
+    int picked;
+    while(b.addFromPicker(picker, picked)) {
+      assert(picked > 0);
+      b.build();
+      b.removeFromPicker(picked);
+    }
+  }
+
+  void CombinationBuilder::buildSplit() {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::buildSplit()");
+#endif
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
+
+    const uint16_t leftToPlace = maxSize - baseCombination.size;
+#ifdef DEBUG
+    std::cout << "Building " << (int)leftToPlace << " on " << baseCombination << " of size " << (int)baseCombination.size << " up to size " << (int)maxSize << std::endl;
+#endif
+    assert(leftToPlace < MAX_BRICKS);
+    const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
+    placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
+    if(leftToPlace <= 1)
+      return;
+
+    LayerBrick bricks[MAX_BRICKS];
+
+    int processorCount = std::thread::hardware_concurrency();
+#ifndef ALLTHREADS
+    processorCount -= 2;
+#endif
+    std::cout << "PICKING 1->" << (int)(leftToPlace-1) << " from " << v.size() << " on " << baseCombination << " from " << processorCount << " threads" << std::endl;
+
+    MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
+    ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
+    std::thread **threads = new std::thread*[processorCount];
+
+    for(int i = 0; i < processorCount; i++) {
+      assert(waveSize > 0);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, maxLayerSizes, &picker);
+      threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
+    }
+
+    for(int i = 0; i < processorCount; i++) {
+      threads[i]->join();
+      addCountsFrom(threadBuilders[i].b, false);
+      delete threads[i];
+    }
+    delete[] threads;
+    delete[] threadBuilders;
   }
 
   void CombinationBuilder::report() {
@@ -1144,6 +1213,7 @@ namespace rectilinear {
       total += countsForToken;
     }
 #ifndef REFINEMENT
+#ifndef MAXHEIGHT
     std::cout << "Total for size " << (int)maxSize << ": " << total << std::endl;
 
     // Reporting for Figure 7 in Eilers (2016):
@@ -1160,6 +1230,7 @@ namespace rectilinear {
     for(uint8_t i = 1; i < maxSize; i++)
       std::cout << "\t" << C[i].all << "\t" << C[i].symmetric180;
     std::cout << std::endl;
+#endif
 #endif
   }
 
