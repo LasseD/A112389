@@ -3,8 +3,11 @@ import re
 from pathlib import Path
 
 CACHE = {} # Symmetric refinements: refinement -> [connected,cross,dx,dy,total,symmetric]
+CACHE['2'] = []
 
 def fetch(n):
+    if n == 2:
+        return # Nothing to fetch
     dir = 'base_2_size_' + str(n)
     print(' Fetching data for size', n, 'from folder', dir)
     for file in Path(dir).iterdir():
@@ -52,6 +55,9 @@ countsAll = {}
 countsSymmetric = {}
 
 def last(token, cross, dx, dy):
+    if token == '2':
+        symmetric = 1 if not cross else 0
+        return [(True, 0, 0), (False, 1, symmetric)]
     dys = [x[3] for x in CACHE[token] if x[1] == cross and x[2] == 0]
     dy = max(dys)
     return [(x[0],x[4],x[5]) for x in CACHE[token] if x[1] == cross and x[2] == 0 and x[3] == dy]
@@ -65,7 +71,7 @@ def countUp(token1, token2, token, cross, dx, dy):
         cache1 = last(token1, cross, dx, dy)
     if len(cache2) == 0:
         cache2 = last(token2, cross, dx, dy)
-    #print(token1, token2, '->', token, cross, dx, dy)
+    #print('token1 =', token1, 'token2 =',token2, '-> token =', token, 'cross =', cross, dx, dy)
     for (connected1,all1,symmetric1) in cache1:
         for (connected2,all2,symmetric2) in cache2:
             if (not connected1) and (not connected2):
@@ -81,13 +87,12 @@ def countUp(token1, token2, token, cross, dx, dy):
                 all = 2 * all
                 symmetric = 2 * symmetric
             
-            #print(' Adding', all, symmetric,'for',cross,dx,dy,all1,all2,symmetric1,symmetric2,connected1,connected2)
+            #print(' Adding', all, symmetric, 'for cross:', cross, 'dx =', dx, 'dy =', dy,'all1 =', all1, 'all2 =', all2, 'symmetric1 =', symmetric1, 'symmetric2 =',symmetric2,'connected1 =',connected1,'connected2 =',connected2)
             countsAll[token] = countsAll[token] + all
             countsSymmetric[token] = countsSymmetric[token] + symmetric
 
 def handle(token1, token2):
-    if token1 == '23' or token2 == '23':
-        return # TODO: RM
+    #print('handle', token1, token2)
     token = token1[::-1] + token2[1::]
     if not token in countsAll:
         countsAll[token] = 0

@@ -15,9 +15,8 @@ int getInt(char *argv) {
   Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 2 be a refinement where layer k has 2 bricks.
   Consider all placement of bricks in layer k and compute A' based the models that can be built on the two sides of the layer.
 
-  ./run.o 6   903.65s user 89.97s system 98% cpu 16:49.61 total
-After improved thread handling:
   ./run.o 6  1075.85s user 13.63s system 561% cpu 3:14.05 total
+  ./run.o 7  175385.56s user 384.71s system 358% cpu 13:36:34.43 total
 */
 int main(int argc, char** argv) {
   if(argc == 2) {
