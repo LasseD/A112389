@@ -965,6 +965,9 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::placeAllLeftToPlace()");
 #endif
+#ifdef TRACE
+    std::cout << "Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
+#endif
 #ifdef REFINEMENT
     int cntNonFullLayers = 0;
     for(int i = 0; i < MAX_BRICKS; i++) {
@@ -984,19 +987,22 @@ namespace rectilinear {
 	cntNonFullLayers--;
       }
     }
-    if(cntNonFullLayers > 0)
+    if(cntNonFullLayers > 0) {
+#ifdef TRACE
+      std::cout << "  Early exit as layers cannot be filled: " << cntNonFullLayers << std::endl;
+#endif
       return; // Can't possibly fill!
+    }
 #endif
     LayerBrick bricks[MAX_BRICKS];
     BrickPicker picker(v, 0, leftToPlace, bricks, 0);
     while(picker.next()) {
-      // toPick bricks ready in bricks: Use as next wave!
 #ifdef REFINEMENT
       bool ok = true;
 #endif
       for(uint8_t i = 0; i < leftToPlace; i++) {
 #ifdef REFINEMENT
-	// Check if layer sizes are restricted:
+	// Check if layer is already full:
 	if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
 	  ok = false;
 	  for(uint8_t j = 0; j < i; j++)
@@ -1010,6 +1016,7 @@ namespace rectilinear {
       if(!ok)
 	continue;
 #endif
+
 #ifdef MAXHEIGHT
       if(baseCombination.height == 2 && baseCombination.layerSizes[0] > baseCombination.size/2) {
 	for(uint8_t i = 0; i < leftToPlace; i++)
@@ -1017,6 +1024,9 @@ namespace rectilinear {
 	continue;
       }
 #endif
+
+#ifndef REFINEMENT
+      // Do not count refinements where one non-end layer is single:
       bool hasLayerWithOneBrick = false;
       for(uint16_t i = 1; i < baseCombination.height-1; i++) {
 	if(baseCombination.layerSizes[i] == 1) {
@@ -1024,26 +1034,32 @@ namespace rectilinear {
 	  break;
 	}
       }
-
-      if(!hasLayerWithOneBrick) {
-	int token = baseCombination.getTokenFromLayerSizes();
-#ifdef LEMMA2
-	// Encode connectivity into token:
-	if(!baseCombination.isConnected())
-	  token = -token;
-#endif
-	Counts cx;
-	cx.all++;
-	if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
-	  cx.symmetric180++;
-	  if(baseCombination.is90Symmetric())
-	    cx.symmetric90++;
-	}
-	if(counts.find(token) == counts.end())
-	  counts[token] = cx;
-	else
-	  counts[token] += cx;
+      if(hasLayerWithOneBrick) {
+	for(uint8_t i = 0; i < leftToPlace; i++)
+	  baseCombination.removeLastBrick();
+	continue;
       }
+#endif
+
+      int token = baseCombination.getTokenFromLayerSizes();
+
+#ifdef LEMMA2
+      // Encode connectivity into token:
+      if(!baseCombination.isConnected())
+	token = -token;
+#endif
+
+      Counts cx;
+      cx.all++;
+      if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
+	cx.symmetric180++;
+	if(baseCombination.is90Symmetric())
+	  cx.symmetric90++;
+      }
+      if(counts.find(token) == counts.end())
+	counts[token] = cx;
+      else
+	counts[token] += cx;
 
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
@@ -1079,6 +1095,19 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::build()");
 #endif
+#ifdef TRACE
+    std::cout << "Building on " << baseCombination << std::endl;
+#endif
+#ifdef REFINEMENT
+    for(uint8_t i = 0; i < baseCombination.height; i++) {
+      if(maxLayerSizes[i] < baseCombination.layerSizes[i]) {
+#ifdef TRACE
+	std::cout << "Initial picker has picked too much!: " << (int)maxLayerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
+#endif
+	return; // In case initial picker picks too much
+      }
+    }
+#endif
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
@@ -1090,7 +1119,7 @@ namespace rectilinear {
 
 #ifdef REFINEMENT
     int cntDoneLayers = 0;
-    for(int i = 0; i < MAX_BRICKS; i++) {
+    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
       if(maxLayerSizes[i] == baseCombination.layerSizes[i])
 	cntDoneLayers++;
     }
@@ -1105,23 +1134,24 @@ namespace rectilinear {
       BrickPicker picker(v, 0, toPick, bricks, 0);
       
       while(picker.next()) {
-	for(uint8_t i = 0; i < toPick; i++)
-	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
-
 #ifdef REFINEMENT
-	// Check if layer sizes are restricted:
 	bool ok = true;
-	for(uint8_t i = 0; i < baseCombination.height; i++) {
-	  if(baseCombination.layerSizes[i] > maxLayerSizes[i]) {
+#endif
+	for(uint8_t i = 0; i < toPick; i++) {
+#ifdef REFINEMENT
+	  // Check if layer is already full:
+	  if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
 	    ok = false;
+	    for(uint8_t j = 0; j < i; j++)
+	      baseCombination.removeLastBrick();
 	    break;
 	  }
+#endif
+	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
 	}
-	if(!ok) {
-	  for(uint8_t i = 0; i < toPick; i++)
-	    baseCombination.removeLastBrick();
-	  continue; // Skip invalid combination
-	}
+#ifdef REFINEMENT
+	if(!ok)
+	  continue;
 #endif
 
 #ifdef LEMMA2
@@ -1170,7 +1200,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
-    b = CombinationBuilder(c, waveStart, -1, maxSize, maxLayerSizes);
+    b = CombinationBuilder(c, waveStart, 0, maxSize, maxLayerSizes);
   }
 
   bool CombinationBuilder::addFromPicker(MultiLayerBrickPicker *p, int &picked) {
@@ -1179,10 +1209,15 @@ namespace rectilinear {
 #endif
     bool ret = p->next(baseCombination, picked);
     if(ret) {
-      if(maxSize > 6)
-	std::cout << " Building on " << baseCombination;
+      if(maxSize > 6) {
+	std::cout << " Building on " << baseCombination << std::endl;
+      }
       waveSize = picked; // Update wave size based on pick
     }
+#ifdef TRACE
+    if(!ret)
+      std::cout << "Done picking" << std::endl;
+#endif
     return ret;
   }
 
@@ -1200,7 +1235,10 @@ namespace rectilinear {
 #endif
     int picked;
     while(b.addFromPicker(picker, picked)) {
-      std::cout << " Time elapsed: " << std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - time_start).count() << " minutes" << std::endl; // Behold the beautiful C++ 11 syntax for showing elapsed time...
+      // Behold the beautiful C++ 11 syntax for showing elapsed time...
+      std::chrono::duration<double, std::ratio<60> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - time_start);
+      if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial chaos:
+	std::cout << "  Time elapsed: " << duration.count() << " minutes" << std::endl;
       b.build();
       b.removeFromPicker(picked);
     }
@@ -1249,33 +1287,12 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::report()");
 #endif
-    // Setup for reporting for Figure 7 in Eilers (2016):
     uint8_t layerSizes[MAX_BRICKS];
-    Counts f, C[MAX_LAYER_SIZE], total;
-    for(uint8_t i = 0; i < MAX_LAYER_SIZE; i++) {
-      C[i].reset();
-    }
-
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
       int token = it->first;
-      //int reverseToken = Combination::reverseToken(token);
-      uint8_t height = Combination::heightOfToken(token);
       Combination::getLayerSizesFromToken(token, layerSizes);
       Counts countsForToken(it->second);
-      bool fat = true;
-      for(uint8_t i = 1; i < height-1; i++) {
-	if(layerSizes[i] < 2) {
-	  fat = false;
-	  break;
-	}
-      }
 
-      if(layerSizes[0] == 1 && layerSizes[height-1] == 1 && fat) {
-	f += countsForToken;
-      }
-      else if(layerSizes[height-1] > 1 && fat) {
-	C[layerSizes[0]] += countsForToken;		       
-      }
       countsForToken.symmetric180 += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric180;
@@ -1284,28 +1301,7 @@ namespace rectilinear {
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
       std::cout << " <" << token << "> " << countsForToken << std::endl;
-      total += countsForToken;
     }
-#ifndef REFINEMENT
-#ifndef MAXHEIGHT
-    std::cout << "Total for size " << (int)maxSize << ": " << total << std::endl;
-
-    // Reporting for Figure 7 in Eilers (2016):
-    std::cout << std::endl << "Figure 7 numbers for Eilers (2016)" << std::endl;
-    std::cout << "n\tf(n)\tf180(n)";
-    for(uint8_t i = 1; i < maxSize; i++)
-      std::cout << "\tC(n," << (int)i << ")\tC180(n," << (int)i << ")";
-    std::cout << std::endl;
-    std::cout << maxSize-1 << "\t" << f.all << "\t" << f.symmetric180;
-    for(uint8_t i = 1; i < maxSize; i++)
-      std::cout << "\t-\t-";
-    std::cout << std::endl;
-    std::cout << (int)maxSize << "\t-\t-";
-    for(uint8_t i = 1; i < maxSize; i++)
-      std::cout << "\t" << C[i].all << "\t" << C[i].symmetric180;
-    std::cout << std::endl;
-#endif
-#endif
   }
 
   Lemma2::Lemma2(int n): n(n) {
@@ -1364,12 +1360,10 @@ namespace rectilinear {
 
 	  bool skipped = computeOnBase2((bool)rotation, dx, dy, connectedY, disconnectedY);
 	  if(skipped) {
-	    std::cout << "SKIPPED!" << std::endl;
 	    continue;
 	  }
 	  connectedX += connectedY;
 	  disconnectedX += disconnectedY;
-	  std::cout << "Connected: " << connectedY << ", disconnected: " << disconnectedY << std::endl;
 	  if(connectedY.empty() && prevDisconnectedY == disconnectedY) {
 	    break; // Nothing connects, and disconnects do not change
 	  }
