@@ -4,17 +4,36 @@
 // DIFFLT = Difference less than is used to check for brick intersection
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
-// Goal of 2025 is to construct models with at most 11 bricks
+// Goal of this code base is to construct models with up to 11 bricks
+#ifdef LEMMA2
+#define MAX_BRICKS 8
+#else
 #define MAX_BRICKS 11
+#endif
+
+#ifdef LEMMA2
+// At most 8 bricks, since 2 are used for the 2-brick layer
+#define MAX_LAYER_SIZE 6
+#else
 // At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
 #define MAX_LAYER_SIZE 9
+
 // Max height used to restrict constructions, not to reduce object size:
 #ifdef MAXHEIGHT
 #define MAX_HEIGHT 2
 #endif
 
+#endif
+
+#ifdef LEMMA2
+// Larger PLANE size due to constructing from two starting points:
+#define PLANE_MID 50
+#define PLANE_WIDTH 100
+#else
 #define PLANE_MID 32
 #define PLANE_WIDTH 64
+#endif
+
 #define BRICK first
 #define LAYER second
 
@@ -25,6 +44,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <chrono>
 
 #ifdef PROFILING
 typedef std::pair<uint64_t,std::string> InvocationPair;
@@ -51,10 +71,13 @@ namespace rectilinear {
     Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90);
     Counts(const Counts& c);
     Counts& operator +=(const Counts &c);
-    Counts operator -(const Counts &c);
-    bool operator !=(const Counts &c);
+    Counts operator -(const Counts &c) const;
+    Counts operator /(const int &v) const;
+    bool operator ==(const Counts &c) const;
+    bool operator !=(const Counts &c) const;
     friend std::ostream& operator <<(std::ostream &os, const Counts &c);
     void reset(); // Sets counts to 0.
+    bool empty();
   };
 
   /**
@@ -62,13 +85,11 @@ namespace rectilinear {
    * x,y is the position of the middle of the brick (like in LDRAW).
    */
   struct Brick {
-    bool isVertical:1; // :1 gives the compiler the hint that only 1 bit is needed.
-    // Could use :6 when 6 bricks is maximum size, but it would not provide practical benefits,
-    // as 7+7+1 still packs in 2 bytes:
-    int8_t x:7, y:7;
+    bool isVertical;
+    int16_t x, y;
 
     Brick();
-    Brick(bool iv, int8_t x, int8_t y);
+    Brick(bool iv, int16_t x, int16_t y);
     Brick(const Brick &b);
 
     bool operator <(const Brick& b) const;
@@ -77,8 +98,8 @@ namespace rectilinear {
     friend std::ostream& operator <<(std::ostream &os, const Brick &b);
     int cmp(const Brick& b) const;
     bool intersects(const Brick &b) const;
-    void mirror(Brick &b, const int8_t &cx, const int8_t &cy) const;
-    bool mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const;
+    void mirror(Brick &b, const int16_t &cx, const int16_t &cy) const;
+    bool mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const;
   };
 
   typedef std::pair<Brick,uint8_t> LayerBrick;
@@ -97,6 +118,10 @@ namespace rectilinear {
   };
   
   class Combination {
+  private:
+    // State to check connectivity:
+    bool connected[MAX_BRICKS][MAX_LAYER_SIZE];
+    int countConnected(int layer, int idx);
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
@@ -127,6 +152,7 @@ namespace rectilinear {
     void sortBricks();
     void translateMinToOrigo();
     void addBrick(const Brick &b, const uint8_t layer);
+    bool isConnected();
     void removeLastBrick();
     int getTokenFromLayerSizes() const;
     static int reverseToken(int token);
@@ -167,10 +193,11 @@ namespace rectilinear {
   class CombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize, maxSize;
-    CountsMap counts; // token -> counts
     BrickPlane *neighbours;
     uint8_t *maxLayerSizes;
   public:
+    CountsMap counts; // token -> counts
+
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, uint8_t *maxLayerSizes);
 
     CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, BrickPlane *neighbours, uint8_t *maxLayerSizes);
@@ -194,6 +221,7 @@ namespace rectilinear {
 
   class ThreadEnablingBuilder {
     MultiLayerBrickPicker *picker;
+    std::chrono::time_point<std::chrono::steady_clock> time_start { std::chrono::steady_clock::now() };
   public:
     CombinationBuilder b;
 
@@ -201,11 +229,20 @@ namespace rectilinear {
     ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
     ThreadEnablingBuilder(Combination &c,
  			  const uint16_t waveStart,
- 			  //const uint16_t waveSize,
  			  const uint16_t maxSize,
 			  uint8_t *maxLayerSizes,
  			  MultiLayerBrickPicker *picker);
     void build();
+  };
+
+  class Lemma2 {
+    int n;
+    CountsMap counts;
+  public:
+    Lemma2(int n);
+    bool computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d);
+    void computeOnBase2();
+    void report() const;
   };
 }
 

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <sstream>
+#include <iostream>
 
 #include "bfs.h"
 
@@ -61,13 +62,22 @@ namespace rectilinear {
     symmetric90 += c.symmetric90;
     return *this;
   }
-  Counts Counts::operator -(const Counts& c) {
+  Counts Counts::operator -(const Counts& c) const {
 #ifdef PROFILING
     Profiler::countInvocation("Counts::operator -");
 #endif
     return Counts(all-c.all, symmetric180-c.symmetric180, symmetric90-c.symmetric90);
   }
-  bool Counts::operator !=(const Counts& c) {
+  Counts Counts::operator /(const int& v) const {
+    assert(all % v == 0);
+    assert(symmetric180 % v == 0);
+    assert(symmetric90 % v == 0);
+    return Counts(all/v, symmetric180/v, symmetric90/v);
+  }
+  bool Counts::operator ==(const Counts& c) const {
+    return all == c.all && symmetric180 == c.symmetric180 && symmetric90 == c.symmetric90;
+  }
+  bool Counts::operator !=(const Counts& c) const {
     return all != c.all || symmetric180 != c.symmetric180 || symmetric90 != c.symmetric90;
   }
   std::ostream& operator << (std::ostream &os,const Counts &c) {
@@ -86,15 +96,21 @@ namespace rectilinear {
     symmetric180 = 0;
     symmetric90 = 0;
   }
+  bool Counts::empty() {
+#ifdef PROFILING
+    Profiler::countInvocation("Counts::empty()");
+#endif
+    return all == 0 && symmetric180 == 0 && symmetric90 == 0;
+  }
 
   Brick::Brick() : isVertical(true), x(PLANE_MID), y(PLANE_MID) {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::Brick()");
 #endif
   }
-  Brick::Brick(bool iv, int8_t x, int8_t y) : isVertical(iv), x(x), y(y) {	
+  Brick::Brick(bool iv, int16_t x, int16_t y) : isVertical(iv), x(x), y(y) {	
 #ifdef PROFILING
-    Profiler::countInvocation("Brick::Brick(bool, int8_t, int8_t)");
+    Profiler::countInvocation("Brick::Brick(bool,...)");
 #endif
   }
   Brick::Brick(const Brick &b) : isVertical(b.isVertical), x(b.x), y(b.y) {
@@ -123,10 +139,10 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::operator !=");
 #endif
-    return !(*this == b);
+    return x != b.x || y != b.y || isVertical != b.isVertical;
   }
   std::ostream& operator << (std::ostream &os,const Brick &b) {
-    os << (b.isVertical?"|":"=") << (int)b.x << "," << (int)b.y << (b.isVertical?"|":"=");
+    os << (b.isVertical?"|":"=") << (int)(b.x-PLANE_MID) << "," << (int)(b.y-PLANE_MID) << (b.isVertical?"|":"=");
     return os;
   }
   int Brick::cmp(const Brick& b) const {
@@ -150,7 +166,7 @@ namespace rectilinear {
     else
       return DIFFLT(b.x, x, 4) && DIFFLT(b.y, y, 2);
   }
-  void Brick::mirror(Brick &b, const int8_t &cx, const int8_t &cy) const {
+  void Brick::mirror(Brick &b, const int16_t &cx, const int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::mirror()");
 #endif
@@ -158,7 +174,7 @@ namespace rectilinear {
     b.x = cx - x; // cx/2 + (cx/2 - x) = cx - x
     b.y = cy - y;
   }
-  bool Brick::mirrorEq(const Brick &b, const int8_t &cx, const int8_t &cy) const {
+  bool Brick::mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::mirrorEq()");
 #endif
@@ -414,7 +430,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::translateMinToOrigo()");
 #endif
-    int8_t minx = 127, miny = 127;
+    int16_t minx = 1000, miny = 1000;
 
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
       Brick &b = bricks[0][i];
@@ -610,6 +626,56 @@ namespace rectilinear {
       height--;
   }
 
+  int Combination::countConnected(int layer, int idx) {
+    connected[layer][idx] = true;
+    const Brick &b = bricks[layer][idx];
+    int ret = 1;
+    // Add for layer below:
+    if(layer > 0) {
+      int s = layerSizes[layer-1];
+      for(int i = 0; i < s; i++) {
+	if(connected[layer-1][i]) {
+	  continue;
+	}
+	const Brick &b2 = bricks[layer-1][i];
+	if(b.intersects(b2)) {
+	  ret += countConnected(layer-1, i);
+	}
+      }
+    }
+    // Add for layer above:
+    if(layer < height-1) {
+      int s = layerSizes[layer+1];
+      for(int i = 0; i < s; i++) {
+	if(connected[layer+1][i]) {
+	  continue;
+	}
+	const Brick &b2 = bricks[layer+1][i];
+	if(b.intersects(b2)) {
+	  ret += countConnected(layer+1, i);
+	}
+      }
+    }
+    return ret;
+  }
+
+  bool Combination::isConnected() {
+    int Z = 0;
+
+    // Reset state:
+    for(int i = 0; i < height; i++) {
+      Z += layerSizes[i];
+      int s = layerSizes[i];
+      for(int j = 0; j < s; j++) {
+	connected[i][j] = false;
+      }
+    }
+    // Run DFS:
+    int cnt = countConnected(0, 0);
+
+    return cnt == Z;
+  }
+  
   int Combination::getTokenFromLayerSizes() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::getTokenFromLayerSizes()");
@@ -717,7 +783,6 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::findPotentialBricksForNextWave()");
 #endif
-    assert(waveSize > 0);
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
@@ -934,9 +999,8 @@ namespace rectilinear {
 	// Check if layer sizes are restricted:
 	if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
 	  ok = false;
-	  for(uint8_t j = 0; j < i; j++) {
+	  for(uint8_t j = 0; j < i; j++)
 	    baseCombination.removeLastBrick();
-	  }
 	  break;
 	}
 #endif
@@ -948,29 +1012,41 @@ namespace rectilinear {
 #endif
 #ifdef MAXHEIGHT
       if(baseCombination.height == 2 && baseCombination.layerSizes[0] > baseCombination.size/2) {
-	for(uint8_t i = 0; i < leftToPlace; i++) {
+	for(uint8_t i = 0; i < leftToPlace; i++)
 	  baseCombination.removeLastBrick();
-	}
 	continue;
       }
 #endif
-
-      int token = baseCombination.getTokenFromLayerSizes();
-      Counts cx;
-      cx.all++;
-      if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
-	cx.symmetric180++;
-	if(baseCombination.is90Symmetric())
-	  cx.symmetric90++;
+      bool hasLayerWithOneBrick = false;
+      for(uint16_t i = 1; i < baseCombination.height-1; i++) {
+	if(baseCombination.layerSizes[i] == 1) {
+	  hasLayerWithOneBrick = true;
+	  break;
+	}
       }
-      if(counts.find(token) == counts.end())
-	counts[token] = cx;
-      else
-	counts[token] += cx;
 
-      for(uint8_t i = 0; i < leftToPlace; i++) {
+      if(!hasLayerWithOneBrick) {
+	int token = baseCombination.getTokenFromLayerSizes();
+#ifdef LEMMA2
+	// Encode connectivity into token:
+	if(!baseCombination.isConnected())
+	  token = -token;
+#endif
+	Counts cx;
+	cx.all++;
+	if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
+	  cx.symmetric180++;
+	  if(baseCombination.is90Symmetric())
+	    cx.symmetric90++;
+	}
+	if(counts.find(token) == counts.end())
+	  counts[token] = cx;
+	else
+	  counts[token] += cx;
+      }
+
+      for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
-      }
     }
   }
 
@@ -1025,8 +1101,6 @@ namespace rectilinear {
     LayerBrick bricks[MAX_BRICKS];
 
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
-      if(leftToPlace > 5)
-	std::cout << "Picking " << (int)toPick << " from " << (int)leftToPlace << " on " << baseCombination << std::endl;
       // Pick toPick from neighbours:
       BrickPicker picker(v, 0, toPick, bricks, 0);
       
@@ -1050,7 +1124,10 @@ namespace rectilinear {
 	}
 #endif
 
-	// Optimization 1: Skip half of constructions in first builder (unless symmetric):
+#ifdef LEMMA2
+	bool doubleCount = false;
+#else
+	// Optimization: Skip half of constructions in first builder (unless symmetric):
 	bool doubleCount = waveStart == 0 && !baseCombination.is180Symmetric();
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
@@ -1064,8 +1141,8 @@ namespace rectilinear {
 	    continue; // Skip!
 	  }
 	}
+#endif
 
-	assert(waveSize > 0);
 	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxLayerSizes);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
@@ -1087,7 +1164,6 @@ namespace rectilinear {
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
  					       const uint16_t waveStart,
- 					       //const uint16_t waveSize,
  					       const uint16_t maxSize,
 					       uint8_t *maxLayerSizes,
  					       MultiLayerBrickPicker *picker) : picker(picker) {
@@ -1102,8 +1178,11 @@ namespace rectilinear {
     Profiler::countInvocation("ThreadEnablingBuilder::addFromPicker()");
 #endif
     bool ret = p->next(baseCombination, picked);
-    if(ret)
+    if(ret) {
+      if(maxSize > 6)
+	std::cout << " Building on " << baseCombination;
       waveSize = picked; // Update wave size based on pick
+    }
     return ret;
   }
 
@@ -1121,7 +1200,7 @@ namespace rectilinear {
 #endif
     int picked;
     while(b.addFromPicker(picker, picked)) {
-      assert(picked > 0);
+      std::cout << " Time elapsed: " << std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - time_start).count() << " minutes" << std::endl; // Behold the beautiful C++ 11 syntax for showing elapsed time...
       b.build();
       b.removeFromPicker(picked);
     }
@@ -1135,10 +1214,6 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint16_t leftToPlace = maxSize - baseCombination.size;
-#ifdef DEBUG
-    std::cout << "Building " << (int)leftToPlace << " on " << baseCombination << " of size " << (int)baseCombination.size << " up to size " << (int)maxSize << std::endl;
-#endif
-    assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
     if(leftToPlace <= 1)
@@ -1148,16 +1223,15 @@ namespace rectilinear {
 
     int processorCount = std::thread::hardware_concurrency();
 #ifndef ALLTHREADS
-    processorCount -= 2;
+    processorCount -= 2; // Unless ALLTHREADS specified, leave 2 cores for OS to contiue being functional.
 #endif
-    std::cout << "PICKING 1->" << (int)(leftToPlace-1) << " from " << v.size() << " on " << baseCombination << " from " << processorCount << " threads" << std::endl;
+    std::cout << "Using " << processorCount << " hardware threads" << std::endl;
 
     MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
     ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      assert(waveSize > 0);
       threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, maxLayerSizes, &picker);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
@@ -1232,6 +1306,83 @@ namespace rectilinear {
     std::cout << std::endl;
 #endif
 #endif
+  }
+
+  Lemma2::Lemma2(int n): n(n) {
+  }
+
+  bool Lemma2::computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d) {
+    Brick b2(vertical, FirstBrick.x + dx, FirstBrick.y + dy);
+    if(FirstBrick.intersects(b2))
+      return true;
+
+    std::cout << " Handling " << b2 << std::endl;
+    Combination baseCombination; // Includes first brick
+    baseCombination.addBrick(b2, 0);
+
+    CombinationBuilder builder(baseCombination, 0, 2, n, NULL);
+    builder.buildSplit();
+
+    std::stringstream ss; ss << "base_2_size_" << n << "/";
+    if(b2.isVertical)
+      ss << "parallel_dx_";
+    else
+      ss << "crossing_dx_";
+    ss << (int)dx << "_dy_" << (int)dy << ".txt";
+    std::ofstream ostream(ss.str().c_str());
+
+    for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+      int token = it->first;
+      std::cout << "Handling token " << token << " on " << baseCombination << ": " << it->second << std::endl;
+      if(token < 0) {
+	ostream << "DISCONNECTED ";
+	token = -token;
+	d += it->second;
+      }
+      else {
+	ostream << "CONNECTED ";
+	c += it->second;
+      }
+      ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
+    }
+
+    ostream.flush();
+    ostream.close();
+    return false;
+  }
+
+  void Lemma2::computeOnBase2() {
+    for(int rotation = 0; rotation <= 1; rotation++) {
+      Counts prevDisconnectedX;
+      for(int16_t dx = 0; true; dx++) {
+	Counts connectedX, disconnectedX;
+
+	Counts prevDisconnectedY;
+	for(int16_t dy = 0; true; dy++) {
+	  assert(dy < PLANE_WIDTH);
+	  Counts connectedY, disconnectedY;
+
+	  bool skipped = computeOnBase2((bool)rotation, dx, dy, connectedY, disconnectedY);
+	  if(skipped) {
+	    std::cout << "SKIPPED!" << std::endl;
+	    continue;
+	  }
+	  connectedX += connectedY;
+	  disconnectedX += disconnectedY;
+	  std::cout << "Connected: " << connectedY << ", disconnected: " << disconnectedY << std::endl;
+	  if(connectedY.empty() && prevDisconnectedY == disconnectedY) {
+	    break; // Nothing connects, and disconnects do not change
+	  }
+	  prevDisconnectedY = disconnectedY;
+	} // for dy
+
+	if(connectedX.empty() && prevDisconnectedX == disconnectedX) {
+	  break; // Nothing connects, and disconnects do not change
+	}
+	prevDisconnectedX = disconnectedX;
+
+      } // for dx
+    } // for rotation
   }
 
 } // namespace rectilinear

@@ -8,7 +8,7 @@ CACHE['2'] = []
 def fetch(n):
     if n == 2:
         return # Nothing to fetch
-    dir = 'base_2_size_' + str(n)
+    dir = '../bfs_wave_approach/base_2_size_' + str(n)
     print(' Fetching data for size', n, 'from folder', dir)
     for file in Path(dir).iterdir():
         if not file.is_file():
