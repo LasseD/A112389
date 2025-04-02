@@ -5,13 +5,13 @@
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
 // Goal of this code base is to construct models with up to 11 bricks
-#ifdef LEMMA2
+#ifdef LEMMAS
 #define MAX_BRICKS 8
 #else
 #define MAX_BRICKS 11
 #endif
 
-#ifdef LEMMA2
+#ifdef LEMMAS
 // At most 8 bricks, since 2 are used for the 2-brick layer
 #define MAX_LAYER_SIZE 6
 #else
@@ -25,10 +25,10 @@
 
 #endif
 
-#ifdef LEMMA2
+#ifdef LEMMAS
 // Larger PLANE size due to constructing from two starting points:
-#define PLANE_MID 50
-#define PLANE_WIDTH 100
+#define PLANE_MID 64
+#define PLANE_WIDTH 128
 #else
 #define PLANE_MID 32
 #define PLANE_WIDTH 64
@@ -121,18 +121,14 @@ namespace rectilinear {
   private:
     // State to check connectivity:
     bool connected[MAX_BRICKS][MAX_LAYER_SIZE];
-    int countConnected(int layer, int idx);
+    void colorConnected(int layer, int idx, int color);
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
     BrickIdentifier history[MAX_BRICKS];
 
     /*
-      Rectilinear models with restrictions on representation:
-      - first brick must be vertical at first layer and placed at 0,0
-      - model is minimal of all rotations (vs rotated 90, 180, 270 degrees)
-      - bricks are lexicographically sorted (orientation,x,y) on each layer
-      Init with one brick on layer 0 at 0,0.
+      Rectilinear models with restriction: First brick of first layer must be FirstBrick.
     */
     Combination();
     Combination(const Combination &b);
@@ -152,7 +148,7 @@ namespace rectilinear {
     void sortBricks();
     void translateMinToOrigo();
     void addBrick(const Brick &b, const uint8_t layer);
-    bool isConnected();
+    int getConnectivityEncoding();
     void removeLastBrick();
     int getTokenFromLayerSizes() const;
     static int reverseToken(int token);
@@ -209,7 +205,7 @@ namespace rectilinear {
     void build();
     void buildSplit();
     void report();
-    bool addFromPicker(MultiLayerBrickPicker *p, int &picked);
+    bool addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
   private:
     void build(BrickPicker *picker, int toPick);
@@ -222,6 +218,7 @@ namespace rectilinear {
   class ThreadEnablingBuilder {
     MultiLayerBrickPicker *picker;
     std::chrono::time_point<std::chrono::steady_clock> time_start { std::chrono::steady_clock::now() };
+    std::string threadName;
   public:
     CombinationBuilder b;
 
@@ -231,7 +228,7 @@ namespace rectilinear {
  			  const uint16_t waveStart,
  			  const uint16_t maxSize,
 			  uint8_t *maxLayerSizes,
- 			  MultiLayerBrickPicker *picker);
+ 			  MultiLayerBrickPicker *picker, int threadIndex);
     void build();
   };
 
@@ -243,6 +240,16 @@ namespace rectilinear {
     bool computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d);
     void computeOnBase2();
     void report() const;
+  };
+
+  class Lemma3 {
+    int n;
+    CountsMap counts;
+  public:
+    Lemma3(int n);
+    uint64_t computeForB1B2(const Brick &b1, const Brick &b2, std::ofstream &ostream);
+    uint64_t computeForD1D2(bool v1, bool v2, int16_t d1, int16_t d2);
+    void computeOnBase3();
   };
 }
 

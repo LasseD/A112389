@@ -21,36 +21,63 @@ int getInt(char *argv) {
   For each wave:
     Pick 1..|wave| bricks from wave:
       Find next wave and recurse until model contains n bricks.
+
+  Lemma 2:
+   Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 2 be a refinement where layer k has 2 bricks.
+   Consider all placement of bricks in layer k and compute A' based the models that can be built on the two sides of the layer.
+
+   Performance:
+   ./run.o 6  1075.85s user 13.63s system 561% cpu 3:14.05 total
+   ./run.o 7  175385.56s user 384.71s system 358% cpu 13:36:34.43 total
+   ./run.o 8 runs for a very long time:
+   - =0,3= time: 14.5 hours
+   - =0,4= time:  7.7 hours
+   - Number of files:
+    - Size 3:  77
+    - Size 4: 163
+    - Size 5: 277
+    - Size 6: 419
+    - Size 7: 589
+    - Size 8: 787 (Expected if growth is polynomial 19 + 44x + 14x^2)
+   - Estimated time to compute 787 files: 787 * 7.7 = 253 days or 8.3 months.
+
+  Lemma 3:
+   Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
+   Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
+
+  Encode connectivity as additional digit in token:
+  1 = All connected
+  2 = Connect b0, b1
+  3 = Connect b0, b2
+  4 = Connect b1, b2
+  5 = None connected
 */
 int main(int argc, char** argv) {
-#ifdef LEMMA2
+#ifdef LEMMAS
 
-  if(argc == 2) {
-    int n = getInt(argv[1]);
-
+  if(argc == 3) {
+    int base = getInt(argv[1]);
+    if(!(base == 2 || base == 3)) {
+      std::cerr << "Invalid parameter! BASE=" << base << ", should be either 2 or 3" << std::endl;
+      return 1;
+    }
+    int n = getInt(argv[2]);
     if(n < 3 || n > 8) {
-      std::cerr << "Invalid single parameter! n=" << n << ", should be between 3 and 8" << std::endl;
+      std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between 3 and 8" << std::endl;
       return 1;
     }
 
-    rectilinear::Lemma2 lemma2(n);
-    lemma2.computeOnBase2();
-  }
-  else if(argc == 5) {
-    int n = getInt(argv[1]);
-    bool vertical = argv[2][0] != '-';
-    int dx = getInt(argv[3]);
-    int dy = getInt(argv[4]);
-
-    rectilinear::Lemma2 lemma2(n);
-    rectilinear::Counts c, d;
-    lemma2.computeOnBase2(vertical, dx, dy, c, d);
-    std::cout << "Computed " << c << " connected and " << d << " disconnected models on " << rectilinear::Brick(vertical,dx,dy) << std::endl;
+    if(base == 2) {
+      rectilinear::Lemma2 lemma2(n);
+      lemma2.computeOnBase2();
+    }
+    else {
+      rectilinear::Lemma3 lemma3(n);
+      lemma3.computeOnBase3();
+    }
   }
   else {
-    std::cerr << "Provide either 1 or 4 parameters to run:" << std::endl;
-    std::cerr << "1 Parameter: SIZE_TOTAL to build on a base of 2 bricks. Results are saved to files in folder /base_2_size_" << std::endl;
-    std::cerr << "4 parameters: SIZE_TOTAL ORIENTATION DX DY, where ORIENTATION is - or I, and dx and dy are 0 or greater" << std::endl;
+    std::cerr << "Usage: BASE SIZE_TOTAL to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>" << std::endl;
     return 1;
   }
 

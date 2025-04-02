@@ -626,20 +626,19 @@ namespace rectilinear {
       height--;
   }
 
-  int Combination::countConnected(int layer, int idx) {
-    connected[layer][idx] = true;
+  void Combination::colorConnected(int layer, int idx, int color) {
+    connected[layer][idx] = color;
     const Brick &b = bricks[layer][idx];
-    int ret = 1;
     // Add for layer below:
     if(layer > 0) {
       int s = layerSizes[layer-1];
       for(int i = 0; i < s; i++) {
-	if(connected[layer-1][i]) {
-	  continue;
+	if(connected[layer-1][i] != 0) {
+	  continue; // Already colored
 	}
 	const Brick &b2 = bricks[layer-1][i];
 	if(b.intersects(b2)) {
-	  ret += countConnected(layer-1, i);
+	  colorConnected(layer-1, i, color);
 	}
       }
     }
@@ -647,33 +646,47 @@ namespace rectilinear {
     if(layer < height-1) {
       int s = layerSizes[layer+1];
       for(int i = 0; i < s; i++) {
-	if(connected[layer+1][i]) {
+	if(connected[layer+1][i] != 0) {
 	  continue;
 	}
 	const Brick &b2 = bricks[layer+1][i];
 	if(b.intersects(b2)) {
-	  ret += countConnected(layer+1, i);
+	  colorConnected(layer+1, i, color);
 	}
       }
     }
-    return ret;
   }
 
-  bool Combination::isConnected() {
-    int Z = 0;
+  int Combination::getConnectivityEncoding() {
+    assert(height > 1);
+    assert(layerSizes[0] == 3 || layerSizes[0] == 2);
 
     // Reset state:
     for(int i = 0; i < height; i++) {
-      Z += layerSizes[i];
       int s = layerSizes[i];
       for(int j = 0; j < s; j++) {
-	connected[i][j] = false;
+	connected[i][j] = 0;
       }
     }
     // Run DFS:
-    int cnt = countConnected(0, 0);
+    colorConnected(0, 1, 1);
+    if(layerSizes[0] == 2)
+      return connected[0][0] == connected[0][1] ? 1 : 5;
+    if(connected[0][2] == 0)
+      colorConnected(0, 2, 2);
 
-    return cnt == Z;
+    if(connected[0][0] == connected[0][1]) {
+      if(connected[0][0] == connected[0][2])
+	return 1; // All connected
+      return 2; // b0 and b1 connected
+    }
+    else if(connected[0][0] == connected[0][2]) {
+      return 3; // b0 and b2 connected
+    }
+    else if(connected[0][1] == connected[0][2]) {
+      return 4; // b1 and b2 connected
+    }
+    return 5; // Nothing is connected
   }
   
   int Combination::getTokenFromLayerSizes() const {
@@ -1043,10 +1056,10 @@ namespace rectilinear {
 
       int token = baseCombination.getTokenFromLayerSizes();
 
-#ifdef LEMMA2
+#ifdef LEMMAS
       // Encode connectivity into token:
-      if(!baseCombination.isConnected())
-	token = -token;
+      int encoding = baseCombination.getConnectivityEncoding();
+      token = 10 * token + encoding;
 #endif
 
       Counts cx;
@@ -1154,7 +1167,7 @@ namespace rectilinear {
 	  continue;
 #endif
 
-#ifdef LEMMA2
+#ifdef LEMMAS
 	bool doubleCount = false;
 #else
 	// Optimization: Skip half of constructions in first builder (unless symmetric):
@@ -1183,34 +1196,44 @@ namespace rectilinear {
     }
   }
 
-  ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL) {
+  ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder()");
 #endif
   }
 
-  ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), b(b.b) {
+  ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), threadName(b.threadName), b(b.b) {
   }
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
  					       const uint16_t waveStart,
  					       const uint16_t maxSize,
 					       uint8_t *maxLayerSizes,
- 					       MultiLayerBrickPicker *picker) : picker(picker) {
+ 					       MultiLayerBrickPicker *picker,
+					       int threadIndex) : picker(picker) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
     b = CombinationBuilder(c, waveStart, 0, maxSize, maxLayerSizes);
+    std::string names[26] = {
+      "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
+      "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
+      "Ulla", "Vlad", "Wini", "Xiao", "Yrsa", "Zorg"};
+    threadName = names[threadIndex % 26];
+    if(threadIndex >= 26) {
+      std::stringstream ss; ss << threadName << (threadIndex/26);
+      threadName = ss.str();
+    }
   }
 
-  bool CombinationBuilder::addFromPicker(MultiLayerBrickPicker *p, int &picked) {
+  bool CombinationBuilder::addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::addFromPicker()");
 #endif
     bool ret = p->next(baseCombination, picked);
     if(ret) {
       if(maxSize > 6) {
-	std::cout << " Building on " << baseCombination << std::endl;
+	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
       }
       waveSize = picked; // Update wave size based on pick
     }
@@ -1234,7 +1257,7 @@ namespace rectilinear {
     Profiler::countInvocation("ThreadEnablingBuilder::build()");
 #endif
     int picked;
-    while(b.addFromPicker(picker, picked)) {
+    while(b.addFromPicker(picker, picked, threadName)) {
       // Behold the beautiful C++ 11 syntax for showing elapsed time...
       std::chrono::duration<double, std::ratio<60> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - time_start);
       if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial chaos:
@@ -1270,7 +1293,7 @@ namespace rectilinear {
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, maxLayerSizes, &picker);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, maxLayerSizes, &picker, i);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
@@ -1316,28 +1339,56 @@ namespace rectilinear {
     Combination baseCombination; // Includes first brick
     baseCombination.addBrick(b2, 0);
 
-    CombinationBuilder builder(baseCombination, 0, 2, n, NULL);
-    builder.buildSplit();
-
     std::stringstream ss; ss << "base_2_size_" << n << "/";
     if(b2.isVertical)
       ss << "parallel_dx_";
     else
       ss << "crossing_dx_";
     ss << (int)dx << "_dy_" << (int)dy << ".txt";
-    std::ofstream ostream(ss.str().c_str());
+    std::string fileName = ss.str();
+
+    // Check if file already exists:
+    std::ifstream istream(fileName.c_str());
+    if(istream.good()) {
+      std::string connectivity, ignore;
+      int token;
+      uint64_t total, symmetric180;
+      while(istream >> connectivity >> token >> ignore >> total >> ignore >> symmetric180) {
+	Counts counts(total, symmetric180, 0);
+	if(connectivity == "CONNECTED") {
+	  c += counts;
+	}
+	else {
+	  d += counts;
+	}
+      }
+
+      std::cout << "SKIPPING EXISTING FILE " << fileName << std::endl;
+
+      return false;
+    }
+
+    CombinationBuilder builder(baseCombination, 0, 2, n, NULL);
+    builder.buildSplit();
+
+    std::ofstream ostream(fileName.c_str());
 
     for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
       int token = it->first;
       std::cout << "Handling token " << token << " on " << baseCombination << ": " << it->second << std::endl;
-      if(token < 0) {
+      int encoding = token % 10;
+      token /= 10;
+      if(encoding == 5) {
 	ostream << "DISCONNECTED ";
-	token = -token;
 	d += it->second;
       }
-      else {
+      else if(encoding == 1) {
 	ostream << "CONNECTED ";
 	c += it->second;
+      }
+      else {
+	std::cerr << "Unexpected encoding: " << encoding << std::endl;
+	assert(false);
       }
       ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
     }
@@ -1377,6 +1428,159 @@ namespace rectilinear {
 
       } // for dx
     } // for rotation
+  }
+
+  Lemma3::Lemma3(int n): n(n) {
+  }
+
+  uint64_t Lemma3::computeForB1B2(const Brick &b1, const Brick &b2, std::ofstream &ostream) {
+    Combination baseCombination; // Includes first brick
+    baseCombination.addBrick(b1, 0);
+    baseCombination.addBrick(b2, 0);
+
+    CombinationBuilder builder(baseCombination, 0, 3, n, NULL);
+    builder.buildSplit();
+
+    uint64_t ret = 0;
+
+    for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+      int token = it->first;
+      int encoding = token % 10;
+      token /= 10;
+#ifdef TRACE
+      std::cout << "Reporting token " << token << " with encoding " << encoding << " on " << baseCombination << " -> " << it->second << std::endl;
+#endif
+      if(encoding == 1)
+	ostream << "B0-B1-B2 ";
+      else if(encoding == 2)
+	ostream << "B0-B1 ";
+      else if(encoding == 3)
+	ostream << "B0-B2 ";
+      else if(encoding == 4)
+	ostream << "B1-B2 ";
+      else if(encoding == 5)
+	ostream << "- ";
+      else {
+	assert(false);
+      }
+      ostream << token;
+      ostream <<
+	" X1 " << (int)(b1.x - FirstBrick.x) <<
+	" Y1 " << (int)(b1.y - FirstBrick.y) <<
+	" X2 " << (int)(b2.x - FirstBrick.x) <<
+	" Y2 " << (int)(b2.y - FirstBrick.y) <<
+	" TOTAL " << it->second.all <<
+	" SYMMETRIC " << it->second.symmetric180 << std::endl;
+      ret += it->second.all + it->second.symmetric180;
+    }
+
+    return ret;
+  }
+
+  uint64_t Lemma3::computeForD1D2(bool v1, bool v2, int16_t d1, int16_t d2) {
+    uint64_t ret = 0;
+
+    std::stringstream ss; ss << "base_3_size_" << n << "/";
+    if(v1)
+      ss << "vertical_b1_";
+    else
+      ss << "horizontal_b1_";
+    if(v2)
+      ss << "vertical_b2_";
+    else
+      ss << "horizontal_b2_";
+    ss << "d1_" << (int)d1 << "_d2_" << (int)d2 << ".txt";
+    std::ofstream ostream(ss.str().c_str());
+
+    for(int8_t dx1 = 0; dx1 <= d1; dx1++) {
+      int8_t x1 = FirstBrick.x + dx1;
+      int8_t y1 = FirstBrick.y + (d1 - dx1);
+      Brick b1(v1, x1, y1);
+      if(b1.intersects(FirstBrick))
+	continue; // Intersection!
+
+      for(int8_t dx2 = 0; dx2 <= d2; dx2++) {
+	int8_t dy2 = d2 - dx2;
+	// Handle each quadrant:
+	{ // neg X, neg Y
+	  int8_t x2 = FirstBrick.x - dx2;
+	  int8_t y2 = FirstBrick.y - dy2;
+	  Brick b2(v2, x2, y2);
+	  if(!(b2.intersects(b1) || b2.intersects(FirstBrick))) {
+	    uint64_t c = computeForB1B2(b1, b2, ostream);
+	    if(c > ret)
+	      ret = c;
+	  }
+	}
+	{ // neg X, pos Y
+	  if(dx2 != 0 && dy2 != 0) {
+	    int8_t x2 = FirstBrick.x - dx2;
+	    int8_t y2 = FirstBrick.y + dy2;
+	    Brick b2(v2, x2, y2);
+	    if(!(b2.intersects(b1) || b2.intersects(FirstBrick))) {
+	      uint64_t c = computeForB1B2(b1, b2, ostream);
+	      if(c > ret)
+		ret = c;
+	    }
+	  }
+	}
+	{ // pos X, neg Y
+	  if(dx2 != 0 && dy2 != 0) {
+	    int8_t x2 = FirstBrick.x + dx2;
+	    int8_t y2 = FirstBrick.y - dy2;
+	    Brick b2(v2, x2, y2);
+	    if(!(b2.intersects(b1) || b2.intersects(FirstBrick))) {
+	      uint64_t c = computeForB1B2(b1, b2, ostream);
+	      if(c > ret)
+		ret = c;
+	    }
+	  }
+	}
+	{ // pos X, pos Y: Ensure b2 not in diagonal below b1
+	  if(d1 != d2 || dx2 > dx1) {
+	    int8_t x2 = FirstBrick.x + dx2;
+	    int8_t y2 = FirstBrick.y + dy2;
+	    Brick b2(v2, x2, y2);
+	    if(!(b2.intersects(b1) || b2.intersects(FirstBrick))) {
+	      uint64_t c = computeForB1B2(b1, b2, ostream);
+	      if(c > ret)
+		ret = c;
+	    }
+	  }
+	}
+      } // for dx2
+    } // for dx1
+
+    ostream.flush();
+    ostream.close();
+
+    return ret;
+  }
+
+  void Lemma3::computeOnBase3() {
+    for(int rotation1 = 0; rotation1 <= 1; rotation1++) {
+      for(int rotation2 = 0; rotation2 <= 1; rotation2++) {
+
+	uint64_t prevD1 = 0;
+	for(int8_t d1 = 2; true; d1++) {
+	  uint64_t curD1 = 0;
+
+	  uint64_t prevD2 = 0;
+	  for(int8_t d2 = d1; true; d2++) {
+	    uint64_t curD2 = computeForD1D2(rotation1, rotation2, d1, d2);
+
+	    if(prevD2 == curD2)
+	      break;
+	    prevD2 = curD2;
+	  }
+
+	  if(prevD1 == curD1)
+	    break;
+	  prevD1 = curD1;
+	}
+
+      } // for rotation2
+    } // for rotation1
   }
 
 } // namespace rectilinear
