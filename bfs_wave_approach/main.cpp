@@ -55,7 +55,7 @@ int getInt(char *argv) {
 int main(int argc, char** argv) {
 #ifdef LEMMAS
 
-  if(argc == 3) {
+  if(argc == 3 || argc == 4) {
     int base = getInt(argv[1]);
     if(!(base == 2 || base == 3)) {
       std::cerr << "Invalid parameter! BASE=" << base << ", should be either 2 or 3" << std::endl;
@@ -68,16 +68,24 @@ int main(int argc, char** argv) {
     }
 
     if(base == 2) {
+      if(argc == 4) {
+	std::cerr << "Parameter MAX_DIST should be used for base 3!" << std::endl;
+	return 1;
+      }
       rectilinear::Lemma2 lemma2(n);
       lemma2.computeOnBase2();
     }
     else {
-      rectilinear::Lemma3 lemma3(n);
+      if(argc == 3) {
+	std::cerr << "Parameter MAX_DIST should be used for base 3!" << std::endl;
+	return 1;
+      }
+      rectilinear::Lemma3 lemma3(n, getInt(argv[3]));
       lemma3.computeOnBase3();
     }
   }
   else {
-    std::cerr << "Usage: BASE SIZE_TOTAL to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>" << std::endl;
+    std::cerr << "Usage: BASE SIZE_TOTAL [MAX_DIST] to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>" << std::endl;
     return 1;
   }
 

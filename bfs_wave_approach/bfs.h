@@ -120,8 +120,8 @@ namespace rectilinear {
   class Combination {
   private:
     // State to check connectivity:
-    bool connected[MAX_BRICKS][MAX_LAYER_SIZE];
-    void colorConnected(int layer, int idx, int color);
+    uint8_t colors[MAX_BRICKS][MAX_LAYER_SIZE];
+    void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
@@ -147,10 +147,13 @@ namespace rectilinear {
     bool is90Symmetric() const;
     void sortBricks();
     void translateMinToOrigo();
+    bool canRotate90() const;
     void addBrick(const Brick &b, const uint8_t layer);
     int getConnectivityEncoding();
     void removeLastBrick();
     int getTokenFromLayerSizes() const;
+    void normalize(int &rotated);
+    void normalize();
     static int reverseToken(int token);
     static uint8_t heightOfToken(int token);
     static uint8_t sizeOfToken(int token);
@@ -243,12 +246,14 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int n;
+    int n, maxDist;
     CountsMap counts;
+    std::map<Combination, uint64_t> seen;
   public:
-    Lemma3(int n);
-    uint64_t computeForB1B2(const Brick &b1, const Brick &b2, std::ofstream &ostream);
-    uint64_t computeForD1D2(bool v1, bool v2, int16_t d1, int16_t d2);
+    Lemma3(int n, int maxDist);
+    uint64_t computeForB1B2(Brick b1, Brick b2, std::ofstream &ostream);
+    uint64_t computeForB1B2(bool v1, bool v2, int16_t dx1, int16_t dy1, int16_t dx2, int16_t dy2, std::ofstream &ostream, uint64_t best);
+    uint64_t computeForD1D2(int16_t d1, int16_t d2);
     void computeOnBase3();
   };
 }
