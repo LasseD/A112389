@@ -197,9 +197,12 @@ namespace rectilinear {
   public:
     CountsMap counts; // token -> counts
 
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, uint8_t *maxLayerSizes);
-
-    CombinationBuilder(Combination &c, const uint8_t waveStart, const uint8_t waveSize, const uint8_t maxSize, BrickPlane *neighbours, uint8_t *maxLayerSizes);
+    CombinationBuilder(Combination &c,
+		       const uint8_t waveStart,
+		       const uint8_t waveSize,
+		       const uint8_t maxSize,
+		       BrickPlane *neighbours,
+		       uint8_t *maxLayerSizes);
 
     CombinationBuilder(const CombinationBuilder& b);
 
@@ -230,6 +233,7 @@ namespace rectilinear {
     ThreadEnablingBuilder(Combination &c,
  			  const uint16_t waveStart,
  			  const uint16_t maxSize,
+			  BrickPlane *neighbours,
 			  uint8_t *maxLayerSizes,
  			  MultiLayerBrickPicker *picker, int threadIndex);
     void build();

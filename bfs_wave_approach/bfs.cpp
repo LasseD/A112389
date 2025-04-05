@@ -801,21 +801,6 @@ namespace rectilinear {
 					 const uint8_t waveStart,
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
-					 uint8_t *maxLayerSizes) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), maxLayerSizes(maxLayerSizes) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::SLOW");
-#endif
-    neighbours = new BrickPlane[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
-      neighbours[i].unsetAll();
-    }
-  }
-
-  CombinationBuilder::CombinationBuilder(Combination &c,
-					 const uint8_t waveStart,
-					 const uint8_t waveSize,
-					 const uint8_t maxSize,
 					 BrickPlane *neighbours,
 					 uint8_t *maxLayerSizes) :
     baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxLayerSizes(maxLayerSizes) {
@@ -1256,13 +1241,15 @@ namespace rectilinear {
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
  					       const uint16_t waveStart,
  					       const uint16_t maxSize,
+					       BrickPlane *neighbours,
 					       uint8_t *maxLayerSizes,
  					       MultiLayerBrickPicker *picker,
 					       int threadIndex) : picker(picker) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
-    b = CombinationBuilder(c, waveStart, 0, maxSize, maxLayerSizes);
+
+    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxLayerSizes);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -1337,11 +1324,14 @@ namespace rectilinear {
     std::cout << "Using " << processorCount << " hardware threads" << std::endl;
 
     MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
+    for(int i = 0; i < processorCount * MAX_BRICKS; i++)
+      neighbourCache[i].unsetAll();
     ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, maxLayerSizes, &picker, i);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, &neighbourCache[i*MAX_BRICKS], maxLayerSizes, &picker, i);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
@@ -1352,6 +1342,7 @@ namespace rectilinear {
     }
     delete[] threads;
     delete[] threadBuilders;
+    delete[] neighbourCache;
   }
 
   void CombinationBuilder::report() {
@@ -1420,8 +1411,12 @@ namespace rectilinear {
       return false;
     }
 
-    CombinationBuilder builder(baseCombination, 0, 2, n, NULL);
+    BrickPlane *neighbours = new BrickPlane[MAX_BRICKS];
+    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].unsetAll();
+    CombinationBuilder builder(baseCombination, 0, 2, n, neighbours, NULL);
     builder.buildSplit();
+    delete[] neighbours;
 
     std::ofstream ostream(fileName.c_str());
 
@@ -1489,9 +1484,8 @@ namespace rectilinear {
   }
 
   uint64_t Lemma3::computeForB1B2(Brick b1, Brick b2, std::ofstream &ostream) {
-    //#ifdef TRACE
-    std::cout << " Handling " << b1 << ", " << b2 << std::endl;
-    //#endif
+    if(n > 6)
+      std::cout << " Handling " << b1 << ", " << b2 << std::endl;
 
     Combination baseCombination; // Includes first brick
     baseCombination.addBrick(b1, 0);
@@ -1501,11 +1495,15 @@ namespace rectilinear {
       return seen[baseCombination]; // Already handled
     }
 
-    CombinationBuilder builder(baseCombination, 0, 3, n, NULL);
-    if(n > 5)
+    BrickPlane *neighbours = new BrickPlane[MAX_BRICKS];
+    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].unsetAll();
+    CombinationBuilder builder(baseCombination, 0, 3, n, neighbours, NULL);
+    if(n > 6)
       builder.buildSplit();
     else
       builder.build();
+    delete[] neighbours;
 
     uint64_t ret = 0;
 
