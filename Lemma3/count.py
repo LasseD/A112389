@@ -158,9 +158,9 @@ def handle(token1, token2):
     if not token in countsAll:
         countsAll[token] = 0
         countsSymmetric[token] = 0
-    print('Get brick pairs for tokens', token1, token2)
+    print('  Get brick pairs for tokens', token1, token2)
     bricks = getBrickPairs(token1) | getBrickPairs(token2)
-    print('Count for pairs of tokens', token1, token2)
+    print('  Count for pairs of tokens', token1, token2)
     for brickPair in bricks:
         countUp(token1, token2, token, brickPair)
 
@@ -197,10 +197,9 @@ for token in CACHE:
 # OK <131> 433685 (24)
 # OK <32> 148794 (443)
 # OK <231> 41019966 (1179)
-# <232> 3021093957 (46219)
-
+# OK <232> 3021093957 (46219)
 # <33> 6246077 (432)
-# <43> 106461697 (10551)
 # <331> 1358812234 (1104)
 # <1321> 4581373745 (1471)
 
+# <43> 106461697 (10551)

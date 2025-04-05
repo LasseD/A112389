@@ -858,6 +858,10 @@ namespace rectilinear {
 	if(layer2 >= MAX_HEIGHT)
 	  continue;
 #endif
+#ifdef LEMMAS
+	if(layer2 == 0)
+	  continue;
+#endif
 
 	// Add crossing bricks (one vertical, one horizontal):
 	for(int x = -2; x < 3; x++) {
@@ -1276,7 +1280,7 @@ namespace rectilinear {
 #endif
     bool ret = p->next(baseCombination, picked);
     if(ret) {
-      if(maxSize > 6) {
+      if(maxSize - baseCombination.size > 3) {
 	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
       }
       waveSize = picked; // Update wave size based on pick
@@ -1330,7 +1334,7 @@ namespace rectilinear {
 #ifndef ALLTHREADS
     processorCount -= 2; // Unless ALLTHREADS specified, leave 2 cores for OS to contiue being functional.
 #endif
-    //std::cout << "Using " << processorCount << " hardware threads" << std::endl;
+    std::cout << "Using " << processorCount << " hardware threads" << std::endl;
 
     MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
     ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
@@ -1485,18 +1489,15 @@ namespace rectilinear {
   }
 
   uint64_t Lemma3::computeForB1B2(Brick b1, Brick b2, std::ofstream &ostream) {
-#ifdef TRACE
+    //#ifdef TRACE
     std::cout << " Handling " << b1 << ", " << b2 << std::endl;
-#endif
+    //#endif
 
     Combination baseCombination; // Includes first brick
     baseCombination.addBrick(b1, 0);
     baseCombination.addBrick(b2, 0);
     baseCombination.normalize();
     if(seen.find(baseCombination) != seen.end()) {
-#ifdef TRACE
-      std::cout << "  REPEAT " << b1 << ", " << b2 << ": " << seen[baseCombination] << std::endl;
-#endif
       return seen[baseCombination]; // Already handled
     }
 
