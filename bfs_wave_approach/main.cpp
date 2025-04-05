@@ -57,13 +57,9 @@ int main(int argc, char** argv) {
 
   if(argc == 3 || argc == 4) {
     int base = getInt(argv[1]);
-    if(!(base == 2 || base == 3)) {
-      std::cerr << "Invalid parameter! BASE=" << base << ", should be either 2 or 3" << std::endl;
-      return 1;
-    }
     int n = getInt(argv[2]);
-    if(n < 3 || n > 8) {
-      std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between 3 and 8" << std::endl;
+    if(n <= base || n > MAX_BRICKS || base > MAX_LAYER_SIZE) {
+      std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between BASE+1 and " << MAX_BRICKS << std::endl;
       return 1;
     }
 
@@ -80,8 +76,10 @@ int main(int argc, char** argv) {
 	std::cerr << "Parameter MAX_DIST should be used for base 3!" << std::endl;
 	return 1;
       }
-      rectilinear::Lemma3 lemma3(n, getInt(argv[3]));
-      lemma3.computeOnBase3();
+      int maxDist = getInt(argv[3]);
+      std::cout << "Precomputing for base " << base << " up to size " << n << " and up to distance of " << maxDist << std::endl;
+      rectilinear::Lemma3 lemma3(n, base, maxDist);
+      lemma3.precompute();
     }
   }
   else {

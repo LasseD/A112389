@@ -658,9 +658,9 @@ namespace rectilinear {
     }
   }
 
-  int Combination::getConnectivityEncoding() {
+  int64_t Combination::encodeConnectivity(int64_t token) {
     assert(height > 1);
-    assert(layerSizes[0] == 3 || layerSizes[0] == 2);
+    assert(layerSizes[0] >= 2);
 
     // Reset state:
     for(uint8_t i = 0; i < height; i++) {
@@ -669,32 +669,21 @@ namespace rectilinear {
 	colors[i][j] = 0;
     }
     // Run DFS:
-    colorConnected(0, 0, 11);
-    if(layerSizes[0] == 2)
-      return colors[0][0] == colors[0][1] ? 1 : 5;
-    assert(layerSizes[0] == 3);
-    colorConnected(0, 1, 22); // Color 22 on second base brick
-    //colorConnected(0, 2, 33); // Keep color 0 on the third
-
-    if(colors[0][0] == colors[0][1]) {
-      if(colors[0][0] == colors[0][2])
-	return 1; // All connected
-      return 2; // b0 and b1 connected
+    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+      colorConnected(0, i, i+1);
     }
-    else if(colors[0][0] == colors[0][2]) {
-      return 3; // b0 and b2 connected
+    // Encode:
+    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+      token = 10 * token + colors[0][i];
     }
-    else if(colors[0][1] == colors[0][2]) {
-      return 4; // b1 and b2 connected
-    }
-    return 5; // Nothing is connected
+    return token;
   }
   
-  int Combination::getTokenFromLayerSizes() const {
+  int64_t Combination::getTokenFromLayerSizes() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::getTokenFromLayerSizes()");
 #endif
-    int ret = 0;
+    int64_t ret = 0;
     for(uint8_t i = 0; i < height; i++) {
       ret = (ret * 10) + layerSizes[i];
     }
@@ -745,11 +734,11 @@ namespace rectilinear {
     normalize(ignore);
   }
 
-  int Combination::reverseToken(int token) {
+  int Combination::reverseToken(int64_t token) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::reverseToken()");
 #endif
-    int ret = 0;
+    int64_t ret = 0;
     while(token > 0) {
       ret = (ret * 10) + (token % 10);
       token /= 10;
@@ -757,7 +746,7 @@ namespace rectilinear {
     return ret;
   }
 
-  uint8_t Combination::heightOfToken(int token) {
+  uint8_t Combination::heightOfToken(int64_t token) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::heightOfToken()");
 #endif
@@ -769,7 +758,7 @@ namespace rectilinear {
     return ret;
   }
 
-  uint8_t Combination::sizeOfToken(int token) {
+  uint8_t Combination::sizeOfToken(int64_t token) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::sizeOfToken()");
 #endif
@@ -781,7 +770,7 @@ namespace rectilinear {
     return ret;
   }
 
-  void Combination::getLayerSizesFromToken(int token, uint8_t *layerSizes) {
+  void Combination::getLayerSizesFromToken(int64_t token, uint8_t *layerSizes) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::getLayerSizesFromToken()");
 #endif
@@ -797,7 +786,7 @@ namespace rectilinear {
     }
   }  
 
-  CombinationBuilder::CombinationBuilder(Combination &c,
+  CombinationBuilder::CombinationBuilder(const Combination &c,
 					 const uint8_t waveStart,
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
@@ -1087,12 +1076,9 @@ namespace rectilinear {
       }
 #endif
 
-      int token = baseCombination.getTokenFromLayerSizes();
-
+      int64_t token = baseCombination.getTokenFromLayerSizes();
 #ifdef LEMMAS
-      // Encode connectivity into token:
-      int encoding = baseCombination.getConnectivityEncoding();
-      token = 10 * token + encoding;
+      token = baseCombination.encodeConnectivity(token);
 #endif
 
       Counts cx;
@@ -1117,7 +1103,7 @@ namespace rectilinear {
     Profiler::countInvocation("CombinationBuilder::addCountsFrom()");
 #endif
     for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
-      int token = it->first;
+      int64_t token = it->first;
       Counts toAdd = it->second;
 
       if(doubleCount) {
@@ -1294,7 +1280,7 @@ namespace rectilinear {
     int picked;
     while(b.addFromPicker(picker, picked, threadName)) {
       // Behold the beautiful C++ 11 syntax for showing elapsed time...
-      std::chrono::duration<double, std::ratio<60> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - time_start);
+      std::chrono::duration<double, std::ratio<60> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - timeStart);
       if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial chaos:
 	std::cout << "  Time elapsed: " << duration.count() << " minutes" << std::endl;
       b.build();
@@ -1351,7 +1337,7 @@ namespace rectilinear {
 #endif
     uint8_t layerSizes[MAX_BRICKS];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
-      int token = it->first;
+      int64_t token = it->first;
       Combination::getLayerSizesFromToken(token, layerSizes);
       Counts countsForToken(it->second);
 
@@ -1367,9 +1353,15 @@ namespace rectilinear {
   }
 
   Lemma2::Lemma2(int n): n(n) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma2::Lemma2()");
+#endif
   }
 
   bool Lemma2::computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma2::computeOnBase2(...)");
+#endif
     Brick b2(vertical, FirstBrick.x + dx, FirstBrick.y + dy);
     if(FirstBrick.intersects(b2))
       return true;
@@ -1392,7 +1384,7 @@ namespace rectilinear {
     std::ifstream istream(fileName.c_str());
     if(istream.good()) {
       std::string connectivity, ignore;
-      int token;
+      int64_t token;
       uint64_t total, symmetric180;
       while(istream >> connectivity >> token >> ignore >> total >> ignore >> symmetric180) {
 	Counts counts(total, symmetric180, 0);
@@ -1403,11 +1395,6 @@ namespace rectilinear {
 	  d += counts;
 	}
       }
-
-#ifdef TRACE
-      std::cout << "SKIPPING EXISTING FILE " << fileName << std::endl;
-#endif
-
       return false;
     }
 
@@ -1421,23 +1408,21 @@ namespace rectilinear {
     std::ofstream ostream(fileName.c_str());
 
     for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
-      int token = it->first;
+      int64_t token = it->first;
 #ifdef TRACE
       std::cout << "Handling token " << token << " on " << baseCombination << ": " << it->second << std::endl;
 #endif
-      int encoding = token % 10;
+      int color1 = token % 10;
       token /= 10;
-      if(encoding == 5) {
+      int color2 = token % 10;
+      token /= 10;
+      if(color1 != color2) {
 	ostream << "DISCONNECTED ";
 	d += it->second;
       }
-      else if(encoding == 1) {
+      else {
 	ostream << "CONNECTED ";
 	c += it->second;
-      }
-      else {
-	std::cerr << "Unexpected encoding: " << encoding << std::endl;
-	assert(false);
       }
       ostream << token << " TOTAL " << it->second.all << " SYMMETRIC " << it->second.symmetric180 << std::endl;
     }
@@ -1448,6 +1433,9 @@ namespace rectilinear {
   }
 
   void Lemma2::computeOnBase2() {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma2::computeOnBase2()");
+#endif
     for(int rotation = 0; rotation <= 1; rotation++) {
       Counts prevDisconnectedX;
       for(int16_t dx = 0; true; dx++) {
@@ -1479,152 +1467,205 @@ namespace rectilinear {
     } // for rotation
   }
 
-  Lemma3::Lemma3(int n, int maxDist): n(n), maxDist(maxDist) {
-    assert(maxDist % 8 == 0);
+  Lemma3::Lemma3(int n, int base, int maxDist): n(n), base(base), maxDist(maxDist) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::Lemma3()");
+#endif
+    assert(base >= 3);
+    assert(base < n);
+    assert(n <= MAX_BRICKS);
   }
 
-  uint64_t Lemma3::computeForB1B2(Brick b1, Brick b2, std::ofstream &ostream) {
-    if(n > 6)
-      std::cout << " Handling " << b1 << ", " << b2 << std::endl;
+  void Lemma3::precompute() {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::precompute()");
+#endif
+    std::vector<int> distances;
+    precompute(distances);
+  }
 
-    Combination baseCombination; // Includes first brick
-    baseCombination.addBrick(b1, 0);
-    baseCombination.addBrick(b2, 0);
-    baseCombination.normalize();
-    if(seen.find(baseCombination) != seen.end()) {
-      return seen[baseCombination]; // Already handled
-    }
+  void Lemma3::precomputeOn(const Combination &baseCombination, std::ofstream &ostream) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::precomputeOn()");
+#endif
+    if(n - base > 2)
+      std::cout << " Precomputing on " << baseCombination << std::endl;
 
     BrickPlane *neighbours = new BrickPlane[MAX_BRICKS];
     for(uint8_t i = 0; i < MAX_BRICKS; i++)
       neighbours[i].unsetAll();
-    CombinationBuilder builder(baseCombination, 0, 3, n, neighbours, NULL);
-    if(n > 6)
+    CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
+    if(n - base > 3)
       builder.buildSplit();
     else
       builder.build();
     delete[] neighbours;
 
-    uint64_t ret = 0;
-
-    b1 = baseCombination.bricks[0][1];
-    b2 = baseCombination.bricks[0][2];
     Combination c2(baseCombination);
     c2.rotate180();
     bool baseSymmetric = c2 == baseCombination;
 
     for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
-      int token = it->first;
-      int encoding = token % 10;
-      uint64_t t = it->second.all, s = it->second.symmetric180;
-#ifdef TRACE
-      if(encoding == 1) {
-	std::cout << "B0-B1-B2 " << token << " on " << baseCombination << ": " << t << " (" << s << ")" << std::endl;
+      int64_t token = it->first;
+      int colors[MAX_LAYER_SIZE];
+      for(int i = 0; i < base; i++) {
+	colors[base-1-i] = token % 10;
+	token /= 10;
       }
-      else
-        std::cout << "Reporting token " << token << " with encoding " << encoding << " on " << baseCombination << " -> " << it->second << std::endl;
-#endif
-      token /= 10;
-      if(encoding == 1)
-	ostream << "B0-B1-B2 ";
-      else if(encoding == 2)
-	ostream << "B0-B1 ";
-      else if(encoding == 3)
-	ostream << "B0-B2 ";
-      else if(encoding == 4)
-	ostream << "B1-B2 ";
-      else if(encoding == 5)
-	ostream << "- ";
-      else
-	assert(false);
-      ostream << token;
+
+      if(base == 3) {
+	// Special reporting for base 3:
+	if(colors[0] == colors[1]) {
+	  if(colors[1] == colors[2])
+	    ostream << "B0-B1-B2 ";
+	  else
+	    ostream << "B0-B1 ";
+	}
+	else if(colors[0] == colors[2]) {
+	  ostream << "B0-B2 ";
+	}
+	else if(colors[1] == colors[2]) {
+	  ostream << "B1-B2 ";
+	}
+	else
+	  ostream << "- ";
+      }
+      else {
+	for(int i = 0; i < base; i++) {
+	  if(i > 0)
+	    ostream << "-";
+	  ostream << colors[i];
+	}
+      }
+
+      ostream << " " << token;
+
+      uint64_t t = it->second.all, s = it->second.symmetric180;
+
+      for(int i = 1; i < base; i++) {
+	const Brick &b = baseCombination.bricks[0][i];
+	ostream << " B" << i << " " << b.isVertical;
+	ostream << " " << (int)(b.x - FirstBrick.x);
+	ostream << " " << (int)(b.y - FirstBrick.y);
+      }
+
       ostream <<
-	" B1 " << b1.isVertical <<
-	" " << (int)(b1.x - FirstBrick.x) <<
-	" " << (int)(b1.y - FirstBrick.y) <<
-	" B2 " << b2.isVertical <<
-	" " << (int)(b2.x - FirstBrick.x) <<
-	" " << (int)(b2.y - FirstBrick.y) <<
 	" BASE_SYMMETRIC " << baseSymmetric <<
 	" TOTAL " << t <<
 	" SYMMETRIC " << s << std::endl;
-      ret += it->second.all + it->second.symmetric180;
+    }
+  }
+
+  void Lemma3::precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, std::ofstream &ostream) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::precomputeForPlacements()");
+#endif
+    int S = (int)bricks.size();
+
+    if(S == base-1) {
+      Combination baseCombination; // Includes first brick
+      for(int i = 0; i < S; i++)
+	baseCombination.addBrick(bricks[i], 0);
+      baseCombination.normalize();
+      if(seen.find(baseCombination) != seen.end()) {
+	return;
+      }
+      seen.insert(baseCombination);
+
+      precomputeOn(baseCombination, ostream);
+      return;
     }
 
-    seen[baseCombination] = ret;
-#ifdef TRACE
-    std::cout << "  BEST " << b1 << ", " << b2 << ": " << ret << std::endl;
+    int D = bricks.empty() ? 2 : distances[S];
+
+    for(int16_t dx = 0; dx <= D; dx++) {
+      int16_t dy = D - dx;
+
+      for(int16_t multX = -1; multX <= 1; multX += 2) {
+	// Special case: Don't go left for first brick:
+	if(bricks.empty() && multX == -1)
+	  continue;
+
+	for(int16_t multY = -1; multY <= 1; multY += 2) {
+	  for(int v = 0; v <= 1; v++) {
+	    Brick b((bool)v, FirstBrick.x + multX*dx, FirstBrick.y + dy);
+	    if(b.intersects(FirstBrick))
+	      continue;
+	    // Check for colission:
+	    bool ok = true;
+	    for(int i = 0; i < S; i++) {
+	      if(bricks[i].intersects(b)) {
+		ok = false;
+		break;
+	      }
+	    }
+	    if(!ok)
+	      continue;
+
+	    // Recursion:
+	    bricks.push_back(b);
+	    precomputeForPlacements(distances, bricks, ostream);
+	    bricks.pop_back();
+	  } // for v
+	} // for multY
+      } // for multX
+    } // for dx
+  }
+
+  void Lemma3::precomputeForDistances(std::vector<int> &distances) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::precomputeForDistances()");
 #endif
-    return ret;
-  }
-
-  uint64_t Lemma3::computeForB1B2(bool v1, bool v2, int16_t dx1, int16_t dy1, int16_t dx2, int16_t dy2, std::ofstream &ostream, uint64_t best) {
-    int16_t x1 = FirstBrick.x + dx1;
-    int16_t y1 = FirstBrick.y + dy1;
-    Brick b1(v1, x1, y1);
-    if(b1.intersects(FirstBrick))
-      return best;
-    int16_t x2 = FirstBrick.x + dx2;
-    int16_t y2 = FirstBrick.y + dy2;
-    Brick b2(v2, x2, y2);
-    if(b2.intersects(FirstBrick))
-      return best;
-    if(b2.intersects(b1))
-      return best;
-    uint64_t c = computeForB1B2(b1, b2, ostream);
-    if(c > best)
-      return c;
-    return best;
-  }
-
-  uint64_t Lemma3::computeForD1D2(int16_t d1, int16_t d2) {
-    std::cout << "Lemma 3 handling diffs " << d1 << " " << d2 << std::endl;
-    uint64_t ret = 0;
-
-    std::stringstream ss; ss << "base_3_size_" << n << "/";
-    ss << "d1_" << (int)d1 << "_d2_" << (int)d2 << ".txt";
+    std::stringstream ss; ss << "base_" << base << "_size_" << n << "/";
+    for(int i = 0; i < base-1; i++) {
+      if(i > 0)
+	ss << "_";
+      ss << "d" << (i+1) << "_" << distances[i];
+    }
+    ss << ".txt";
     std::string fileName = ss.str();
 
     std::ifstream istream(fileName.c_str());
     if(istream.good()) {
-      return 0; // File already exists
+      std::cout << "Precomputation already exists. Skipping!" << std::endl;
+      return; // File already exists
     }
 
     std::ofstream ostream(fileName.c_str());
 
-    for(int16_t dx1 = 0; dx1 <= d1; dx1++) {
-      int16_t dy1 = d1 - dx1;
-      for(int16_t dx2 = 0; dx2 <= d2; dx2++) {
-	int16_t dy2 = d2 - dx2;
-	// Handle each quadrant:
-	for(int v1 = 0; v1 <= 1; v1++) {
-	  for(int v2 = 0; v2 <= 1; v2++) {
-	    ret = computeForB1B2(v1, v2, dx1, dy1, -dx2, dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, dy1, -dx2, -dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, dy1, dx2, dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, dy1, dx2, -dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, -dy1, -dx2, dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, -dy1, -dx2, -dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, -dy1, dx2, dy2, ostream, ret);
-	    ret = computeForB1B2(v1, v2, dx1, -dy1, dx2, -dy2, ostream, ret);
-	  }
-	}
-      } // for dx2
-    } // for dx1
+    std::vector<Brick> bricks;
+    precomputeForPlacements(distances, bricks, ostream);
 
     ostream.flush();
     ostream.close();
-
-    return ret;
   }
 
-  void Lemma3::computeOnBase3() {
-    std::cout << "Computing partials for Lemma 3, base " << n << std::endl;
+  void Lemma3::precompute(std::vector<int> &distances) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3::precompute(...)");
+#endif
+    int S = (int)distances.size();
 
-    for(int16_t d1 = 2; d1 <= maxDist; d1++) {
-      for(int16_t d2 = d1; d2 <= maxDist; d2++) {
-	computeForD1D2(d1, d2);
-      }
+    if(S == base-1) {
+      std::cout << "Precomputing for base " << base << " distances:";
+      for(int i = 0; i < S; i++)
+	std::cout << " " << distances[i];
+      std::cout << std::endl;
+
+      std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
+
+      precomputeForDistances(distances);
+
+      std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+      std::cout << " Precomputation time: " << duration.count() << " seconds" << std::endl;
+      return;
+    }
+
+    int prevD = distances.empty() ? 2 : distances[S-1];
+    for(int d = prevD; d <= maxDist; d++) {
+      distances.push_back(d);
+      precompute(distances);
+      distances.pop_back();
     }
   }
 

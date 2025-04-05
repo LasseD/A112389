@@ -1,32 +1,16 @@
 #ifndef BFS_H
 #define BFS_H
 
-// DIFFLT = Difference less than is used to check for brick intersection
+// DIFFLT = "Difference less than" is used to check for brick intersection
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 
 // Goal of this code base is to construct models with up to 11 bricks
-#ifdef LEMMAS
-#define MAX_BRICKS 8
-#else
 #define MAX_BRICKS 11
-#endif
-
-#ifdef LEMMAS
-// At most 8 bricks, since 2 are used for the 2-brick layer
-#define MAX_LAYER_SIZE 6
-#else
-// At most 9 bricks can be in a single layer if we consider 11 to be maximal number of bricks
+// At most 9 bricks can then be in a single layer
 #define MAX_LAYER_SIZE 9
 
-// Max height used to restrict constructions, not to reduce object size:
-#ifdef MAXHEIGHT
-#define MAX_HEIGHT 2
-#endif
-
-#endif
-
 #ifdef LEMMAS
-// Larger PLANE size due to constructing from two starting points:
+// Larger PLANE size due to constructing from multiple starting points:
 #define PLANE_MID 64
 #define PLANE_WIDTH 128
 #else
@@ -42,6 +26,7 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <chrono>
@@ -107,7 +92,7 @@ namespace rectilinear {
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
   typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // layer, idx
-  typedef std::map<int,Counts> CountsMap;
+  typedef std::map<int64_t,Counts> CountsMap; // token -> counts
 
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
@@ -149,15 +134,15 @@ namespace rectilinear {
     void translateMinToOrigo();
     bool canRotate90() const;
     void addBrick(const Brick &b, const uint8_t layer);
-    int getConnectivityEncoding();
+    int64_t encodeConnectivity(int64_t token);
     void removeLastBrick();
-    int getTokenFromLayerSizes() const;
+    int64_t getTokenFromLayerSizes() const;
     void normalize(int &rotated);
     void normalize();
-    static int reverseToken(int token);
-    static uint8_t heightOfToken(int token);
-    static uint8_t sizeOfToken(int token);
-    static void getLayerSizesFromToken(int token, uint8_t *layerSizes);
+    static int reverseToken(int64_t token);
+    static uint8_t heightOfToken(int64_t token);
+    static uint8_t sizeOfToken(int64_t token);
+    static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
   };
 
   class BrickPicker {
@@ -195,9 +180,9 @@ namespace rectilinear {
     BrickPlane *neighbours;
     uint8_t *maxLayerSizes;
   public:
-    CountsMap counts; // token -> counts
+    CountsMap counts;
 
-    CombinationBuilder(Combination &c,
+    CombinationBuilder(const Combination &c,
 		       const uint8_t waveStart,
 		       const uint8_t waveSize,
 		       const uint8_t maxSize,
@@ -223,7 +208,7 @@ namespace rectilinear {
 
   class ThreadEnablingBuilder {
     MultiLayerBrickPicker *picker;
-    std::chrono::time_point<std::chrono::steady_clock> time_start { std::chrono::steady_clock::now() };
+    std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
     std::string threadName;
   public:
     CombinationBuilder b;
@@ -250,15 +235,19 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int n, maxDist;
+    int n, base, maxDist;
     CountsMap counts;
-    std::map<Combination, uint64_t> seen;
+    std::set<Combination> seen;
+
   public:
-    Lemma3(int n, int maxDist);
-    uint64_t computeForB1B2(Brick b1, Brick b2, std::ofstream &ostream);
-    uint64_t computeForB1B2(bool v1, bool v2, int16_t dx1, int16_t dy1, int16_t dx2, int16_t dy2, std::ofstream &ostream, uint64_t best);
-    uint64_t computeForD1D2(int16_t d1, int16_t d2);
-    void computeOnBase3();
+    Lemma3(int n, int base, int maxDist);
+    void precompute();
+
+  private:
+    void precomputeOn(const Combination &baseCombination, std::ofstream &ostream);
+    void precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, std::ofstream &ostream);
+    void precomputeForDistances(std::vector<int> &distances);
+    void precompute(std::vector<int> &distances);
   };
 }
 

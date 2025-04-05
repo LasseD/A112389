@@ -4,6 +4,9 @@ from pathlib import Path
 
 class Brick:
     def __init__(self, v, x, y):
+        assert(type(v) is bool)
+        assert(type(x) is int)
+        assert(type(y) is int)
         assert(not (v and x == 0 and y == 0))
         self.v = v
         self.x = x
@@ -11,110 +14,155 @@ class Brick:
     def __eq__(self, other):
         return self.v == other.v and self.x == other.x and self.y == other.y
     def __hash__(self):
-        return (self.v << 16) + (self.x << 8) + self.y
+        return (self.v << 7) + (self.x << 7) + self.y
     def __repr__(self):
         if self.v:
             return f"|{self.x},{self.y}|"
         else:
             return f"={self.x},{self.y}="
+    def __str__(self):
+        return self.__repr__()
 
-class BrickPair:
-    def __init__(self, b1, b2):
-        self.b1 = b1
-        self.b2 = b2
+class BrickList:
+    def __init__(self):
+        self.v = []
     def __eq__(self, other):
-        return self.b1 == other.b1 and self.b2 == other.b2
+        if(len(self.v) != len(other.v)):
+            return False
+        for i in range(len(self.v)):
+            if self.v[i] != other.v[i]:
+                return False
+        return True
     def __hash__(self):
-        return (self.b1.__hash__() << 17) + self.b2.__hash__()
+        ret = 0
+        for i in range(len(self.v)):
+            ret = (ret << 16) + self.v[i].__hash__()
+        return ret
     def __repr__(self):
-        return f" {self.b1}  {self.b2} "
+        return '  '.join([str(x) for x in self.v])
+    def __str__(self):
+        return self.__repr__()
+    def append(self, b):
+        self.v.append(b)
 
 class Report:
-    def __init__(self, connectivity, bp, baseSymmetric, total, symmetric):
+    def __init__(self, connectivity, bricks, baseSymmetric, total, symmetric):
+        assert(type(connectivity) is str)
+        assert(type(bricks) is BrickList)
+        assert(type(baseSymmetric) is bool)
+        assert(type(total) is int)
+        assert(type(symmetric) is int)
         self.connectivity = connectivity
-        self.bp = bp
+        self.bricks = bricks
         self.baseSymmetric = baseSymmetric
         self.total = total
         self.symmetric = symmetric
+        #print(connectivity, bricks, baseSymmetric, total, symmetric)
     def __repr__(self):
         if self.symmetric > 0:
-            return f"{self.connectivity} {self.bp} base symmetric: {self.baseSymmetric}: {self.total} ({self.symmetric})"
+            return f"{self.connectivity} {self.bricks} base symmetric: {self.baseSymmetric}: {self.total} ({self.symmetric})"
         else:
-            return f"{self.connectivity} {self.bp} base symmetric: {self.baseSymmetric}: {self.total}"
+            return f"{self.connectivity} {self.bricks} base symmetric: {self.baseSymmetric}: {self.total}"
     def __eq__(self, other):
-        return self.bp == other.bp and self.connectivity == other.connectivity
+        if len(self.bricks) != len(other.bricks):
+            return False
+        for i in range(len(self.bricks)):
+            if self.bricks[i] != other.bricks[i]:
+                return False
+        return self.connectivity == other.connectivity
 
 CACHE = {} # refinement -> [Report...]
 
+left = int(sys.argv[1])
+base = int(sys.argv[2])
+right = int(sys.argv[3])
+size = left + base + right
+print('Refinements of size', size, 'left-base-right:', left, base, right)
+print()
+
 def fetch(n):
-    dir = '../bfs_wave_approach/base_3_size_' + str(n)
-    print(' Fetching data for size', n, 'from folder', dir)
+    dir = '../bfs_wave_approach/base_' + str(base) + '_size_' + str(n)
+    print(' Fetching data for base ', base, 'size', n, 'from folder', dir)
+    cnt = 0
     for file in Path(dir).iterdir():
         if not file.is_file():
             continue
+        cnt = cnt + 1
+        if cnt % 10 == 0:
+            print('.', end='', flush=True)
         name = re.split(r"[_\.]", file.name)
-        #print('file', name)
-        assert len(name) == 5
-        assert name[0] == 'd1'
-        d1 = int(name[1])
-        assert name[2] == 'd2'
-        d2 = int(name[3])
-
-        if name[4] != 'txt':
+        assert len(name) == 2 * (base-1) + 1
+        if name[len(name)-1] != 'txt':
             continue # Tmp file or similar
         content = open(file)
 
         while True:
-            # B1-B2 31 V1 0 X1 2 Y1 0 V2 1 X2 5 Y2 0 TOTAL 10 SYMMETRIC 0
             line = content.readline()
             if not line:
                 break
-            (connectivity, refinement, _b1, v1, x1, y1, _b2, v2, x2, y2, _bs, bs, _total, total, _symmetric, symmetric) = line.split()
-            assert(_b1 == 'B1')
-            b1 = Brick(v1 == '1', int(x1), int(y1))
-            assert(_b2 == 'B2')
-            b2 = Brick(v2 == '1', int(x2), int(y2))
-            bp = BrickPair(b1, b2)
-            report = Report(connectivity, bp, bs == '1', int(total), int(symmetric))
-            assert(_bs == 'BASE_SYMMETRIC')
-            assert(_total == 'TOTAL')
-            assert(_symmetric == 'SYMMETRIC')
+            parts = line.split()
+            connectivity = parts[0]
+            refinement = parts[1]
+            bs = parts[len(parts)-5] == '1'
+            total = int(parts[len(parts)-3])
+            symmetric = int(parts[len(parts)-1])
+            bricks = BrickList()
+            for i in range(2, len(parts)-6, 4):
+                bricks.append(Brick(parts[i+1] == '1', int(parts[i+2]), int(parts[i+3])))
+            report = Report(connectivity, bricks, bs, total, symmetric)
             if not refinement in CACHE:
                 CACHE[refinement] = {}
-            if not bp in CACHE[refinement]:
-                CACHE[refinement][bp] = []
-            #assert not report in CACHE[refinement]
-            CACHE[refinement][bp].append(report)
+            if not bricks in CACHE[refinement]:
+                CACHE[refinement][bricks] = []
+            CACHE[refinement][bricks].append(report)
+    print()
 
-size = int(sys.argv[1])
-left = int(sys.argv[2])
-right = size - left - 3
-print('Refinements of size', size, 'with', left, 'on the left and', right, 'on the right')
-print()
-
-fetch(left+3)
+fetch(left+base)
 if left != right:
-    fetch(right+3)
+    fetch(right+base)
 
 countsAll = {}
 countsSymmetric = {}
 
-def connected(c1, c2):
-    if c1 == 'B0-B1-B2' or c2 == 'B0-B1-B2':
-        return True
-    if c1 == '-' or c2 == '-':
-        return False # Could only connect if other size fully connects
-    return c1 != c2
+def connected(s1, s2):
+    if base == 3:
+        if s1 == 'B0-B1-B2' or s2 == 'B0-B1-B2':
+            return True
+        if s1 == '-' or s2 == '-':
+            return False # Could only connect if other size fully connects
+        return s1 != s2
+    # Check that all colors can be connected:
+    c1 = s1.split('-')
+    c2 = s2.split('-')
+    color1 = set([0])
+    for i in range(1, len(c1)):
+        if c1[i] == c1[0]:
+            color1.add(i)
+        elif c2[i] == c2[0]:
+            color1.add(i)
+    improved = True
+    while improved:
+        improved = False
+        for i in range(1, len(c1)):
+            if i in color1:
+                continue
+            for j in range(0, len(c1)):
+                if j in color1 and (c1[j] == c1[i] or c2[j] == c2[i]):
+                    color1.add(i)
+                    improved = True
+                    break
+    return len(color1) == len(c1)
 
-def countUp(token1, token2, token, brickPair):
-    #print(brickPair)
-    cache1 = CACHE[token1][brickPair]
-    cache2 = CACHE[token2][brickPair]
+def countUp(token1, token2, token, bricks):
+    cache1 = CACHE[token1][bricks]
+    cache2 = CACHE[token2][bricks]
+    #print('Count up', token1, token2, token, bricks, len(cache1), len(cache2))
 
     retA = 0
     retS = 0
     bs = False
     for r1 in cache1:
+        #print('Counting up for', r1)
         if bs:
             assert r1.baseSymmetric
         if r1.baseSymmetric:
@@ -135,9 +183,10 @@ def countUp(token1, token2, token, brickPair):
             a2 = r2.total
             s2 = r2.symmetric
 
-            #print('   Adding for', r1.connectivity, r2.connectivity, a1, s1, a2, s2)
             all = a1 * a2
             symmetric = s1 * s2
+            if symmetric > 0:
+                print('   Adding symmtries for', r1, r2, all, symmetric)
             retA = retA + all
             retS = retS + symmetric
 
@@ -166,11 +215,12 @@ def handle(token1, token2):
 
 def handleAllTokens():
     for token1 in CACHE:
+        print(' Handling token', token1)
         size1 = sum(int(x) for x in token1)
-        if size1 == left + 3:
+        if size1 == left + base:
             for token2 in CACHE:
                 size2 = sum(int(x) for x in token2)
-                if size2 == right + 3:
+                if size2 == right + base:
                     handle(token1, token2)
 handleAllTokens()
 
@@ -190,7 +240,7 @@ for token in CACHE:
             if report.connectivity == 'B0-B1-B2': # Connected:
                 crossCheckA = crossCheckA + (report.total if not report.baseSymmetric else (report.total-report.symmetric)/2+report.symmetric)
                 crossCheckS = crossCheckS + report.symmetric
-    print('  Cross check', token, ':', int(crossCheckA), crossCheckS)
+    print('  Cross check', token, ':', int(crossCheckA), '(' + str(crossCheckS) + ')')
 
 # Testing
 # OK <31> 648 (8)
