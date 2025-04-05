@@ -99,7 +99,7 @@ namespace rectilinear {
     bool is180Symmetric() const;
     bool isSymmetricAboveFirstLayer() const;
     bool isConnectedAboveFirstLayer() const;
-    bool can_rotate90() const;
+    bool canRotate90() const;
     bool addBrick(const Brick &b, const uint8_t layer, Combination &out, int &rotated) const;
     void removeSingleLowerBrick(Combination &out) const;
     void removeSingleTopBrick(Combination &out) const;

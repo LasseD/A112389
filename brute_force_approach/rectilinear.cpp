@@ -49,13 +49,17 @@ namespace rectilinear {
   }
 
   bool Brick::operator <(const Brick& b) const {
-    return cmp(b) < 0;
+    if(isVertical != b.isVertical)
+      return isVertical > b.isVertical;
+    if(x != b.x)
+      return x < b.x;
+    return y < b.y;
   }
   bool Brick::operator ==(const Brick& b) const {
     return x == b.x && y == b.y && isVertical == b.isVertical;
   }
   bool Brick::operator !=(const Brick& b) const {
-    return !(*this == b);
+    return x != b.x || y != b.y || isVertical != b.isVertical;
   }
   std::ostream& operator << (std::ostream &os,const Brick &b) {
     os << (b.isVertical?"|":"=") << (int)b.x << "," << (int)b.y << (b.isVertical?"|":"=");
@@ -372,7 +376,7 @@ namespace rectilinear {
     return c.isConnected();
   }
 
-  bool Combination::can_rotate90() const {
+  bool Combination::canRotate90() const {
     for(int i = 0; i < layerSizes[0]; i++) {
       if(!bricks[0][i].isVertical) {
 	return true;
@@ -524,7 +528,7 @@ namespace rectilinear {
     }
 				
     Combination c(*this);
-    if(can_rotate90()) {
+    if(canRotate90()) {
       for(int i = 0; i < 3; i++) {
 	c.rotate90();
 	if(c < *this) {
@@ -1556,7 +1560,7 @@ namespace rectilinear {
       int smallerToken = Combination::getTokenFromLayerSizes(layerSizes, smallerHeight);
       ICombinationProducer *reader = ICombinationProducer::get(smallerToken);
 
-      unsigned int processor_count = std::thread::hardware_concurrency() - 2; // allow 2 processors for OS and other...
+      unsigned int processor_count = 1;//std::thread::hardware_concurrency() - 2; // allow 2 processors for OS and other...
       if(!writer.writesToFile() && processor_count > 1) {
 	std::cout << "   Splitting computation into " << processor_count << " threads" << std::endl;
 	// Fill from readers in threads:
