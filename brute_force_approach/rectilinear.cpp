@@ -1354,9 +1354,8 @@ namespace rectilinear {
   }
 
   void CombinationWriter::writeCombinations(const Combination &baseCombination, uint8_t brickLayer, std::vector<Brick> &v) {
-    if(ostream == NULL || v.empty()) {
+    if(ostream == NULL || v.empty())
       return;
-    }
 
     writeUInt4(brickLayer);
     for(int i = 0; i < baseCombination.height; i++) {

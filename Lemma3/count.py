@@ -64,10 +64,10 @@ class Report:
         else:
             return f"{self.connectivity} {self.bricks} base symmetric: {self.baseSymmetric}: {self.total}"
     def __eq__(self, other):
-        if len(self.bricks) != len(other.bricks):
+        if len(self.bricks.v) != len(other.bricks.v):
             return False
-        for i in range(len(self.bricks)):
-            if self.bricks[i] != other.bricks[i]:
+        for i in range(len(self.bricks.v)):
+            if self.bricks.v[i] != other.bricks.v[i]:
                 return False
         return self.connectivity == other.connectivity
 
@@ -91,14 +91,17 @@ def fetch(n):
         if cnt % 10 == 0:
             print('.', end='', flush=True)
         name = re.split(r"[_\.]", file.name)
-        assert len(name) == 2 * (base-1) + 1
         if name[len(name)-1] != 'txt':
+            print('Skipping file', file.name)
             continue # Tmp file or similar
         content = open(file)
 
         while True:
             line = content.readline()
             if not line:
+                print('Warning: Missing file end for file', file.name)
+                break
+            if line[0] == 'Q':
                 break
             parts = line.split()
             connectivity = parts[0]
@@ -114,7 +117,10 @@ def fetch(n):
                 CACHE[refinement] = {}
             if not bricks in CACHE[refinement]:
                 CACHE[refinement][bricks] = []
-            CACHE[refinement][bricks].append(report)
+            if report in CACHE[refinement][bricks]:
+                print(refinement, bricks, 'has already observed:', report, 'in file', file.name)
+            else:
+                CACHE[refinement][bricks].append(report)
     print()
 
 fetch(left+base)
@@ -124,13 +130,19 @@ if left != right:
 countsAll = {}
 countsSymmetric = {}
 
+backwardCompatibleConnections = {
+    'B0-B1-B2': '1-1-1',
+    'B0-B1': '1-1-2',
+    'B0-B2': '1-2-1',
+    'B1-B2': '1-2-2',
+    '-': '1-2-3',
+}
+
 def connected(s1, s2):
-    if base == 3:
-        if s1 == 'B0-B1-B2' or s2 == 'B0-B1-B2':
-            return True
-        if s1 == '-' or s2 == '-':
-            return False # Could only connect if other size fully connects
-        return s1 != s2
+    if s1[0] == 'B' or s1[0] == '-':
+        s1 = backwardCompatibleConnections[s1]
+    if s2[0] == 'B' or s2[0] == '-':
+        s2 = backwardCompatibleConnections[s2]
     # Check that all colors can be connected:
     c1 = s1.split('-')
     c2 = s2.split('-')
@@ -185,8 +197,8 @@ def countUp(token1, token2, token, bricks):
 
             all = a1 * a2
             symmetric = s1 * s2
-            if symmetric > 0:
-                print('   Adding symmtries for', r1, r2, all, symmetric)
+            #if symmetric > 0:
+            #    print('   Adding symmtries for', r1, r2, all, symmetric)
             retA = retA + all
             retS = retS + symmetric
 
@@ -231,23 +243,28 @@ for token in countsAll:
     print(' <'+token+'>', a, '(' + str(s) + ')')
 print()
 
+def isSelfConnected(connectivity):
+    return connected(connectivity, connectivity)
+
 # Single sided sum for cross check:
 for token in CACHE:
     crossCheckA = 0
     crossCheckS = 0
-    for bp in CACHE[token]:
-        for report in CACHE[token][bp]:
-            if report.connectivity == 'B0-B1-B2': # Connected:
+    for bricks in CACHE[token]:
+        for report in CACHE[token][bricks]:
+            if isSelfConnected(report.connectivity):
                 crossCheckA = crossCheckA + (report.total if not report.baseSymmetric else (report.total-report.symmetric)/2+report.symmetric)
                 crossCheckS = crossCheckS + report.symmetric
+                if report.symmetric > 0:
+                    print('Symmetric and self connected:', report)
     print('  Cross check', token, ':', int(crossCheckA), '(' + str(crossCheckS) + ')')
 
 # Testing
-# OK <31> 648 (8)
-# OK <131> 433685 (24)
-# OK <32> 148794 (443)
-# OK <231> 41019966 (1179)
-# OK <232> 3021093957 (46219)
+# <31> 648 (8)
+# <131> 433685 (24)
+# <32> 148794 (443)
+# <231> 41019966 (1179)
+# <232> 3021093957 (46219)
 # <33> 6246077 (432)
 # <331> 1358812234 (1104)
 # <1321> 4581373745 (1471)

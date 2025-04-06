@@ -246,8 +246,7 @@ namespace rectilinear {
   private:
     void precomputeOn(const Combination &baseCombination, std::ofstream &ostream);
     void precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, std::ofstream &ostream);
-    void precomputeForDistances(std::vector<int> &distances);
-    void precompute(std::vector<int> &distances);
+    void precompute(std::vector<int> &distances, std::ofstream *ostream);
   };
 }
 

@@ -1001,7 +1001,7 @@ namespace rectilinear {
     Profiler::countInvocation("CombinationBuilder::placeAllLeftToPlace()");
 #endif
 #ifdef TRACE
-    std::cout << "Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
+    std::cout << "    Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
 #ifdef REFINEMENT
     int cntNonFullLayers = 0;
@@ -1128,7 +1128,7 @@ namespace rectilinear {
     Profiler::countInvocation("CombinationBuilder::build()");
 #endif
 #ifdef TRACE
-    std::cout << "Building on " << baseCombination << std::endl;
+    std::cout << "  Building on " << baseCombination << std::endl;
 #endif
 #ifdef REFINEMENT
     for(uint8_t i = 0; i < baseCombination.height; i++) {
@@ -1481,7 +1481,7 @@ namespace rectilinear {
     Profiler::countInvocation("Lemma3::precompute()");
 #endif
     std::vector<int> distances;
-    precompute(distances);
+    precompute(distances, NULL);
   }
 
   void Lemma3::precomputeOn(const Combination &baseCombination, std::ofstream &ostream) {
@@ -1513,46 +1513,26 @@ namespace rectilinear {
 	token /= 10;
       }
 
-      if(base == 3) {
-	// Special reporting for base 3:
-	if(colors[0] == colors[1]) {
-	  if(colors[1] == colors[2])
-	    ostream << "B0-B1-B2 ";
-	  else
-	    ostream << "B0-B1 ";
-	}
-	else if(colors[0] == colors[2]) {
-	  ostream << "B0-B2 ";
-	}
-	else if(colors[1] == colors[2]) {
-	  ostream << "B1-B2 ";
-	}
-	else
-	  ostream << "- ";
+      for(int i = 0; i < base; i++) {
+	if(i > 0)
+	  ostream << "-";
+	ostream << colors[i];
       }
-      else {
-	for(int i = 0; i < base; i++) {
-	  if(i > 0)
-	    ostream << "-";
-	  ostream << colors[i];
-	}
-      }
-
       ostream << " " << token;
 
       uint64_t t = it->second.all, s = it->second.symmetric180;
 
       for(int i = 1; i < base; i++) {
 	const Brick &b = baseCombination.bricks[0][i];
-	ostream << " B" << i << " " << b.isVertical;
+	ostream << " B " << b.isVertical;
 	ostream << " " << (int)(b.x - FirstBrick.x);
 	ostream << " " << (int)(b.y - FirstBrick.y);
       }
 
       ostream <<
-	" BASE_SYMMETRIC " << baseSymmetric <<
-	" TOTAL " << t <<
-	" SYMMETRIC " << s << std::endl;
+	" BS " << baseSymmetric <<
+	" T " << t <<
+	" S " << s << std::endl;
     }
   }
 
@@ -1568,6 +1548,9 @@ namespace rectilinear {
 	baseCombination.addBrick(bricks[i], 0);
       baseCombination.normalize();
       if(seen.find(baseCombination) != seen.end()) {
+#ifdef TRACE
+	std::cout << "   Already seen! " << baseCombination << std::endl;
+#endif
 	return;
       }
       seen.insert(baseCombination);
@@ -1576,10 +1559,9 @@ namespace rectilinear {
       return;
     }
 
-    int D = bricks.empty() ? 2 : distances[S];
-
-    for(int16_t dx = 0; dx <= D; dx++) {
-      int16_t dy = D - dx;
+    int DS = distances[S];
+    for(int16_t dx = 0; dx <= DS; dx++) {
+      int16_t dy = DS - dx;
 
       for(int16_t multX = -1; multX <= 1; multX += 2) {
 	// Special case: Don't go left for first brick:
@@ -1588,9 +1570,13 @@ namespace rectilinear {
 
 	for(int16_t multY = -1; multY <= 1; multY += 2) {
 	  for(int v = 0; v <= 1; v++) {
-	    Brick b((bool)v, FirstBrick.x + multX*dx, FirstBrick.y + dy);
-	    if(b.intersects(FirstBrick))
+	    Brick b((bool)v, FirstBrick.x + multX*dx, FirstBrick.y + multY*dy);
+	    if(b.intersects(FirstBrick)) {
+#ifdef TRACE
+	      std::cout << "   Failed on first brick intersection! " << b << std::endl;
+#endif
 	      continue;
+	    }
 	    // Check for colission:
 	    bool ok = true;
 	    for(int i = 0; i < S; i++) {
@@ -1599,8 +1585,12 @@ namespace rectilinear {
 		break;
 	      }
 	    }
-	    if(!ok)
+	    if(!ok) {
+#ifdef TRACE
+	      std::cout << "   Failed on intersection! " << b << std::endl;
+#endif
 	      continue;
+	    }
 
 	    // Recursion:
 	    bricks.push_back(b);
@@ -1612,35 +1602,7 @@ namespace rectilinear {
     } // for dx
   }
 
-  void Lemma3::precomputeForDistances(std::vector<int> &distances) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precomputeForDistances()");
-#endif
-    std::stringstream ss; ss << "base_" << base << "_size_" << n << "/";
-    for(int i = 0; i < base-1; i++) {
-      if(i > 0)
-	ss << "_";
-      ss << "d" << (i+1) << "_" << distances[i];
-    }
-    ss << ".txt";
-    std::string fileName = ss.str();
-
-    std::ifstream istream(fileName.c_str());
-    if(istream.good()) {
-      std::cout << "Precomputation already exists. Skipping!" << std::endl;
-      return; // File already exists
-    }
-
-    std::ofstream ostream(fileName.c_str());
-
-    std::vector<Brick> bricks;
-    precomputeForPlacements(distances, bricks, ostream);
-
-    ostream.flush();
-    ostream.close();
-  }
-
-  void Lemma3::precompute(std::vector<int> &distances) {
+  void Lemma3::precompute(std::vector<int> &distances, std::ofstream *ostream) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precompute(...)");
 #endif
@@ -1650,22 +1612,46 @@ namespace rectilinear {
       std::cout << "Precomputing for base " << base << " distances:";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
-      std::cout << std::endl;
+      std::cout << " up to size " << n << std::endl;
 
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
-      precomputeForDistances(distances);
+      std::vector<Brick> bricks;
+      precomputeForPlacements(distances, bricks, *ostream);
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << " Precomputation time: " << duration.count() << " seconds" << std::endl;
       return;
     }
 
+    bool streamCreated = false;
+    if(ostream == NULL && !distances.empty()) {
+      int d0 = distances[0];
+      std::stringstream ss; ss << "base_" << base << "_size_" << n << "/d" << d0 << ".txt";
+      std::string fileName = ss.str();
+      
+      std::ifstream istream(fileName.c_str());
+      if(istream.good()) {
+	std::cout << "Precomputation already exists. Skipping!" << std::endl;
+	return; // File already exists
+      }
+
+      ostream = new std::ofstream(fileName.c_str());
+      streamCreated = true;
+    }
+
     int prevD = distances.empty() ? 2 : distances[S-1];
     for(int d = prevD; d <= maxDist; d++) {
       distances.push_back(d);
-      precompute(distances);
+      precompute(distances, ostream);
       distances.pop_back();
+    }
+
+    if(streamCreated) {
+      (*ostream) << "Q" << std::endl; // End token
+      ostream->flush();
+      ostream->close();
+      delete ostream;
     }
   }
 
