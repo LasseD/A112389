@@ -3,6 +3,7 @@
 
 // DIFFLT = "Difference less than" is used to check for brick intersection
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
+#define ABS(a) ((a) < 0 ? -(a) : (a))
 
 // Goal of this code base is to construct models with up to 11 bricks
 #define MAX_BRICKS 11
@@ -85,6 +86,7 @@ namespace rectilinear {
     bool intersects(const Brick &b) const;
     void mirror(Brick &b, const int16_t &cx, const int16_t &cy) const;
     bool mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const;
+    int dist(const Brick &b) const;
   };
 
   typedef std::pair<Brick,uint8_t> LayerBrick;
@@ -235,18 +237,20 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int n, base, maxDist;
+    int n, base;
     CountsMap counts;
-    std::set<Combination> seen;
 
   public:
-    Lemma3(int n, int base, int maxDist);
-    void precompute();
+    Lemma3(int n, int base);
+    void precompute(int maxDist);
 
   private:
     void precomputeOn(const Combination &baseCombination, std::ofstream &ostream);
-    void precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, std::ofstream &ostream);
-    void precompute(std::vector<int> &distances, std::ofstream *ostream);
+    void precomputeForPlacements(const std::vector<int> &distances,
+				 std::vector<Brick> &bricks,
+				 std::ofstream &ostream,
+				 std::set<Combination> &seen);
+    void precompute(std::vector<int> &distances, std::ofstream &ostream, int maxDist);
   };
 }
 

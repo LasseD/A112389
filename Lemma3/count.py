@@ -255,8 +255,8 @@ for token in CACHE:
             if isSelfConnected(report.connectivity):
                 crossCheckA = crossCheckA + (report.total if not report.baseSymmetric else (report.total-report.symmetric)/2+report.symmetric)
                 crossCheckS = crossCheckS + report.symmetric
-                if report.symmetric > 0:
-                    print('Symmetric and self connected:', report)
+                #if report.symmetric > 0:
+                #    print('Symmetric and self connected:', report)
     print('  Cross check', token, ':', int(crossCheckA), '(' + str(crossCheckS) + ')')
 
 # Testing

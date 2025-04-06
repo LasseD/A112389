@@ -78,8 +78,8 @@ int main(int argc, char** argv) {
       }
       int maxDist = getInt(argv[3]);
       std::cout << "Precomputing for base " << base << " up to size " << n << " and up to distance of " << maxDist << std::endl;
-      rectilinear::Lemma3 lemma3(n, base, maxDist);
-      lemma3.precompute();
+      rectilinear::Lemma3 lemma3(n, base);
+      lemma3.precompute(maxDist);
     }
   }
   else {
