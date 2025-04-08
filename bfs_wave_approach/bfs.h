@@ -278,6 +278,7 @@ namespace rectilinear {
     int n, base;
     CountsMap counts;
     BrickPlane neighbours[MAX_BRICKS];
+    CountsMap crossCheck;
 
   public:
     Lemma3(int n, int base);

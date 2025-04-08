@@ -40,7 +40,6 @@ class BitReader:
         ret = 0
         for i in range(3):
             ret = ret | (self.readBit() << i)
-        #print('Read color', ret)
         return ret
     def nextBatch(self, CACHE):
         if not self.stream:
@@ -63,7 +62,6 @@ class BitReader:
             if base == 4:
                 symmetric90 = self.readUInt(8)
             report = Report(connectivity, bs, total, symmetric180)
-            #print('Read', report, 'token', token)
             if token == "0":
                 # TODO: Read final counts!
                 return False # Done
@@ -77,42 +75,17 @@ right = int(sys.argv[3])
 size = left + base + right
 maxDist = int(sys.argv[4])
 print()
-print(' Tokens of size', size, 'left-base-right:', left, base, right)
-print()
+print(' Tokens of size', size, 'left-base-right:', left, base, right, 'for distance 2 to', maxDist)
 
-def fetchTxt(file):
-    CACHE = {} # token -> [Report...]
-    print('Reading txt file', file.name)
-    with open(file, 'r') as content:
-        while True:
-            line = content.readline()
-            if (not line) or line[0] == 'Q':
-                break # Correct end of file indicator
-            parts = line.split()
-            connectivity = parts[0]
-            token = parts[1]
-            bs = parts[len(parts)-5] == '1'
-            total = int(parts[len(parts)-3])
-            symmetric = int(parts[len(parts)-1])
-            report = Report(connectivity, bs, total, symmetric)
-            if not token in CACHE:
-                CACHE[token] = []
-            CACHE[token].append(report)
-            
 def openStream(n, size):
-    print(' Fetching data for base ', base, 'max size', n, 'dist', size)
+    print('  Fetching data for base', base, 'size', n, 'distance', size)
     name = '../bfs_wave_approach/base_' + str(base) + '_size_' + str(n) + '/d' + str(size) + '.'
     binFile = Path(name + 'bin')
-    txtFile = Path(name + 'txt')
     if binFile.is_file():
-        print('Reading binary file', binFile)
         stream = open(binFile, 'rb')
         reader = BitReader(stream, base)
         assert(1 == reader.readBit())
-        return (reader, True)
-    elif txtFile.is_file():
-        print('Reading txt file', txtFile)
-        return (open(txtFile, 'r'), False)
+        return reader
 
 def connected(s1, s2):
     # Check that all colors can be connected:
@@ -153,10 +126,8 @@ countsSymmetric = {}
 
 for D in range(2, maxDist+1):
     # Read files and handle batches one by one:
-    (reader1, isBinary1) = openStream(left+base, D)
-    assert(isBinary1)
-    (reader2, isBinary2) = openStream(right+base, D) if left != right else (False, True)
-    assert(isBinary2)
+    reader1 = openStream(left+base, D)
+    reader2 = openStream(right+base, D) if left != right else False
     CACHE = {} # token -> [Report...]
 
     while reader1.nextBatch(CACHE) and ((not reader2) or reader2.nextBatch(CACHE)):
@@ -180,7 +151,7 @@ for D in range(2, maxDist+1):
                     countsSymmetric[token] = 0
                 countsAll[token] = countsAll[token] + A
                 countsSymmetric[token] = countsSymmetric[token] + S
-            # Single sided counts:
+            # Single sided counts for cross checking:
             A = 0
             S = 0
             for report in CACHE[token1]:
@@ -202,16 +173,3 @@ for token in countsAll:
     a = countsAll[token]
     s = countsSymmetric[token]
     print(' <'+token+'>', a, '(' + str(s) + ')')
-print()
-
-# Testing
-# OK <31> 648 (8)
-# OK <131> 433685 (24)
-# OK <32> 148794 (443)
-# OK <231> 41019966 (1179)
-# OK <232> 3021093957 (46219)
-# OK <33> 6246077 (432)
-# <331> 1358812234 (1104)
-# <1321> 4581373745 (1471)
-
-# <43> 106461697 (10551)

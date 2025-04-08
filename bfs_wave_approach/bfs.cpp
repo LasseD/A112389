@@ -1609,6 +1609,11 @@ namespace rectilinear {
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
+    // Cross checks:
+    std::cout << "Cross checks:" << std::endl;
+    for(CountsMap::const_iterator it = crossCheck.begin(); it != crossCheck.end(); it++) {
+      std::cout << " " << it->first << ": " << it->second << std::endl;
+    }
   }
 
   void Lemma3::precomputeOn(const Combination &baseCombination, BitWriter &writer) {
@@ -1631,6 +1636,7 @@ namespace rectilinear {
     writer.writeBit(baseSymmetric);
 
     bool any = false;
+    CountsMap xCheck;
     for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
       if(any)
 	writer.writeBit(0);
@@ -1642,8 +1648,17 @@ namespace rectilinear {
 	token /= 10;
       }
 
-      for(int i = 1; i < base; i++)
+      bool allOnes = true;
+      for(int i = 1; i < base; i++) {
 	writer.writeColor(colors[i] - 1);
+	if(colors[i] != 1)
+	  allOnes = false;
+      }
+      if(allOnes) {
+	if(xCheck.find(token) == xCheck.end())
+	  xCheck[token] = Counts();
+	xCheck[token] += it->second;
+      }
 
       token = Combination::reverseToken(token);
       token /= 10; // Remove base layer
@@ -1652,6 +1667,17 @@ namespace rectilinear {
 
       writer.writeUInt8(token);
       writer.writeCounts(it->second);
+    }
+    for(CountsMap::const_iterator it = xCheck.begin(); it != xCheck.end(); it++) {
+      uint64_t token = it->first;
+      Counts c = it->second;
+      if(baseSymmetric) {
+	c.all = (c.all - c.symmetric180)/2 + c.symmetric180;
+      }
+      if(crossCheck.find(token) == crossCheck.end())
+	crossCheck[token] = c;
+      else
+	crossCheck[token] += c;
     }
   }
 
@@ -1744,7 +1770,7 @@ namespace rectilinear {
     int S = (int)distances.size();
 
     if(S == base-2) {
-      std::cout << " Precomputing base " << base << " distances ";
+      std::cout << " Precomputing base " << base << " distances";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
       std::cout << " " << maxDist << std::endl;
