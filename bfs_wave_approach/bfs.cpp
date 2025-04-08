@@ -127,6 +127,10 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Brick::operator <");
 #endif
+    int d1 = FirstBrick.dist(*this);
+    int d2 = FirstBrick.dist(b);
+    if(d1 != d2)
+      return d1 < d2;
     if(isVertical != b.isVertical)
       return isVertical > b.isVertical;
     if(x != b.x)
@@ -424,10 +428,9 @@ namespace rectilinear {
     Profiler::countInvocation("Combination::sortBricks()");
 #endif
     for(uint8_t layer = 0; layer < height; layer++) {
-      uint8_t layerSize = layerSizes[layer];
-      if(layerSize > 1) {
+      const uint8_t &layerSize = layerSizes[layer];
+      if(layerSize > 1)
 	std::sort(bricks[layer], &bricks[layer][layerSize]);
-      }
     }
   }
 
@@ -435,7 +438,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::translateMinToOrigo()");
 #endif
-    int16_t minx = 1000, miny = 1000;
+    int16_t minx = 10000, miny = 10000;
 
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
       Brick &b = bricks[0][i];
@@ -593,6 +596,8 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is90Symmetric()");
 #endif
+    if(!canRotate90())
+      return false;
     for(uint8_t i = 0; i < height; i++) {
       if(layerSizes[i] % 4 != 0)
 	return false;
@@ -606,6 +611,9 @@ namespace rectilinear {
   }
 
   bool Combination::canRotate90() const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::canRotate90()");
+#endif
     for(int i = 0; i < layerSizes[0]; i++) {
       if(!bricks[0][i].isVertical) {
 	return true;
@@ -641,6 +649,9 @@ namespace rectilinear {
   }
 
   void Combination::colorConnected(uint8_t layer, uint8_t idx, uint8_t color) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::colorConnected()");
+#endif
     if(colors[layer][idx] != 0)
       return; // Already colored
     colors[layer][idx] = color;
@@ -662,6 +673,9 @@ namespace rectilinear {
   }
 
   int64_t Combination::encodeConnectivity(int64_t token) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::encodeConnectivity()");
+#endif
     assert(height > 1);
     assert(layerSizes[0] >= 2);
 
@@ -694,6 +708,9 @@ namespace rectilinear {
   }
 
   void Combination::normalize(int &rotated) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::normalize(...)");
+#endif
     // Ensure FirstBrick is first and all is sorted:
     bool hasVerticalLayer0Brick = false;
     for(int i = 0; i < layerSizes[0]; i++) {
@@ -704,7 +721,7 @@ namespace rectilinear {
       }
     }
 
-    // Check if first brick is horizontal at 0,0:
+    // Ensure first brick is horizontal at 0,0:
     if(hasVerticalLayer0Brick) {
       translateMinToOrigo();
       sortBricks();
@@ -733,6 +750,9 @@ namespace rectilinear {
     }
   }
   void Combination::normalize() {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::normalize()");
+#endif
     int ignore;
     normalize(ignore);
   }
@@ -1629,9 +1649,7 @@ namespace rectilinear {
     else
       builder.build();
 
-    Combination c2(baseCombination);
-    c2.rotate180();
-    bool baseSymmetric = c2 == baseCombination;
+    bool baseSymmetric = baseCombination.is180Symmetric();
     writer.writeBit(1); // New batch
     writer.writeBit(baseSymmetric);
 
@@ -1672,7 +1690,17 @@ namespace rectilinear {
       uint64_t token = it->first;
       Counts c = it->second;
       if(baseSymmetric) {
-	c.all = (c.all - c.symmetric180)/2 + c.symmetric180;
+	if(base == 4 && baseCombination.is90Symmetric()) {
+	  c.all -= c.symmetric180 + c.symmetric90;
+	  assert(c.symmetric90 % 4 == 0);
+	  c.symmetric90 /= 4;
+	  assert(c.symmetric180 % 2 == 0);
+	  c.symmetric180 /= 2;
+	  assert(c.all % 4 == 0);
+	  c.all = c.all/4 + c.symmetric180 + c.symmetric90;
+	}
+	else
+	  c.all = (c.all - c.symmetric180)/2 + c.symmetric180;
       }
       if(crossCheck.find(token) == crossCheck.end())
 	crossCheck[token] = c;
@@ -1784,7 +1812,8 @@ namespace rectilinear {
       distances.pop_back();
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
-      std::cout << "  Precomputation time: " << duration.count() << " seconds" << std::endl;
+      if(duration.count() > 1)
+	std::cout << "  Precomputation time: " << duration.count() << " seconds" << std::endl;
       return;
     }
 
