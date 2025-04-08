@@ -1470,6 +1470,110 @@ namespace rectilinear {
     } // for rotation
   }
 
+  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  }
+
+  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines) {
+  }
+
+  BitWriter::BitWriter(const std::string &fileName, uint8_t base) : base(base), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0)  {
+    
+    ostream = new std::ofstream(fileName.c_str(), std::ios::binary);
+  }
+
+  BitWriter::~BitWriter() {
+    // End indicator:
+    writeBit(1);
+    writeBit(0); // baseSymmetric
+    for(int i = 0; i < base-1; i++)
+      writeColor(0);
+    writeUInt8(0); // Token
+    writeUInt32(0); // total
+    writeUInt16(0); // symmetric180
+    if(base == 4)
+      writeUInt8(0); // symmetric90
+    // Totals:
+    writeUInt64(base);
+    writeUInt64(sumTotal);
+    writeUInt64(sumSymmetric180);
+    writeUInt64(sumSymmetric90);
+    writeUInt64(lines);
+    // Close and delete stream:
+    flushBits();
+    ostream->flush();
+    ostream->close();
+    delete ostream;
+  }
+
+  void BitWriter::writeColor(uint8_t toWrite) {
+    assert(toWrite < 8);
+    for(int j = 0; j < 3; j++) {
+      writeBit(toWrite & 1);
+      toWrite >>= 1;
+    }
+  }
+
+  void BitWriter::writeBit(bool bit) {
+    bits = (bits << 1) + (bit ? 1 : 0);
+    cntBits++;
+    if(cntBits == 8) {
+      ostream->write((char*)&bits, 1);
+      cntBits = 0;
+    }
+  }
+
+  void BitWriter::writeCounts(const Counts &c) {
+    assert(c.all < 4294967295);
+    writeUInt32(c.all);
+    sumTotal += c.all;
+
+    assert(c.symmetric180 < 65535);
+    writeUInt16(c.symmetric180);
+    sumSymmetric180 += c.symmetric180;
+
+    if(base == 4) {
+      assert(c.symmetric90 < 255);
+      writeUInt8(c.symmetric90);
+      sumSymmetric90 += c.symmetric90;
+    }
+
+    lines++;
+  }
+
+  void BitWriter::flushBits() {
+    while(cntBits > 0) {
+      writeBit(0);
+    }
+  }
+
+  void BitWriter::writeUInt8(uint8_t toWrite) {
+    for(int j = 0; j < 8; j++) {
+      writeBit(toWrite & 1);
+      toWrite >>= 1;
+    }
+  }
+
+  void BitWriter::writeUInt16(uint16_t toWrite) {
+    for(int j = 0; j < 16; j++) {
+      writeBit(toWrite & 1);
+      toWrite >>= 1;
+    }
+  }
+
+  void BitWriter::writeUInt32(uint32_t toWrite) {
+    for(int j = 0; j < 32; j++) {
+      writeBit(toWrite & 1);
+      toWrite >>= 1;
+    }
+  }
+
+  void BitWriter::writeUInt64(uint64_t toWrite) {
+    for(int j = 0; j < 64; j++) {
+      writeBit(toWrite & 1);
+      toWrite >>= 1;
+    }
+  }
+
   Lemma3::Lemma3(int n, int base): n(n), base(base) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
@@ -1477,6 +1581,8 @@ namespace rectilinear {
     assert(base >= 3);
     assert(base < n);
     assert(n <= MAX_BRICKS);
+    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].unsetAll();
   }
 
   void Lemma3::precompute(int maxDist) {
@@ -1486,7 +1592,7 @@ namespace rectilinear {
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
       
-      std::stringstream ss; ss << "base_" << base << "_size_" << n << "/d" << d << ".txt";
+      std::stringstream ss; ss << "base_" << base << "_size_" << n << "/d" << d << ".bin";
       std::string fileName = ss.str();
       
       std::ifstream istream(fileName.c_str());
@@ -1495,42 +1601,40 @@ namespace rectilinear {
 	continue; // File already exists
       }
 
-      std::ofstream ostream(fileName.c_str());      
+      BitWriter writer(fileName, base);
       std::vector<int> distances;
 
-      precompute(distances, ostream, d);
-
-      ostream << "Q" << std::endl; // End token
-      ostream.flush();
-      ostream.close();
+      precompute(distances, writer, d);
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
   }
 
-  void Lemma3::precomputeOn(const Combination &baseCombination, std::ofstream &ostream) {
+  void Lemma3::precomputeOn(const Combination &baseCombination, BitWriter &writer) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precomputeOn()");
 #endif
-    if(n - base > 2)
+    if(n - base > 3)
       std::cout << " Precomputing on " << baseCombination << std::endl;
 
-    BrickPlane *neighbours = new BrickPlane[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
-      neighbours[i].unsetAll();
     CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
     if(n - base > 3)
       builder.buildSplit();
     else
       builder.build();
-    delete[] neighbours;
 
     Combination c2(baseCombination);
     c2.rotate180();
     bool baseSymmetric = c2 == baseCombination;
+    writer.writeBit(1); // New batch
+    writer.writeBit(baseSymmetric);
 
+    bool any = false;
     for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+      if(any)
+	writer.writeBit(0);
+      any = true;
       int64_t token = it->first;
       int colors[MAX_LAYER_SIZE];
       for(int i = 0; i < base; i++) {
@@ -1538,30 +1642,20 @@ namespace rectilinear {
 	token /= 10;
       }
 
-      for(int i = 0; i < base; i++) {
-	if(i > 0)
-	  ostream << "-";
-	ostream << colors[i];
-      }
-      ostream << " " << token;
+      for(int i = 1; i < base; i++)
+	writer.writeColor(colors[i] - 1);
 
-      uint64_t t = it->second.all, s = it->second.symmetric180;
+      token = Combination::reverseToken(token);
+      token /= 10; // Remove base layer
 
-      for(int i = 1; i < base; i++) {
-	const Brick &b = baseCombination.bricks[0][i];
-	ostream << " B " << b.isVertical;
-	ostream << " " << (int)(b.x - FirstBrick.x);
-	ostream << " " << (int)(b.y - FirstBrick.y);
-      }
+      assert(Combination::sizeOfToken(token) == n - base);
 
-      ostream <<
-	" BS " << baseSymmetric <<
-	" T " << t <<
-	" S " << s << std::endl;
+      writer.writeUInt8(token);
+      writer.writeCounts(it->second);
     }
   }
 
-  void Lemma3::precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, std::ofstream &ostream, std::set<Combination> &seen) {
+  void Lemma3::precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, BitWriter &writer, std::set<Combination> &seen) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precomputeForPlacements()");
 #endif
@@ -1600,7 +1694,7 @@ namespace rectilinear {
       }
 
       // All OK! Precompute:
-      precomputeOn(baseCombination, ostream);
+      precomputeOn(baseCombination, writer);
       return;
     }
 
@@ -1635,7 +1729,7 @@ namespace rectilinear {
 
 	    // Recursion:
 	    bricks.push_back(b);
-	    precomputeForPlacements(distances, bricks, ostream, seen);
+	    precomputeForPlacements(distances, bricks, writer, seen);
 	    bricks.pop_back();
 	  } // for v
 	} // for multY
@@ -1643,35 +1737,35 @@ namespace rectilinear {
     } // for dx
   }
 
-  void Lemma3::precompute(std::vector<int> &distances, std::ofstream &ostream, int maxDist) {
+  void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer, int maxDist) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precompute(...)");
 #endif
     int S = (int)distances.size();
 
     if(S == base-2) {
-      std::cout << " Precomputing for base " << base << " distances:";
+      std::cout << " Precomputing base " << base << " distances ";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
-      std::cout << " up to size " << n << std::endl;
+      std::cout << " " << maxDist << std::endl;
 
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
       std::vector<Brick> bricks;
       std::set<Combination> seen;
       distances.push_back(maxDist); // Last dist is alway max dist!
-      precomputeForPlacements(distances, bricks, ostream, seen);
+      precomputeForPlacements(distances, bricks, writer, seen);
       distances.pop_back();
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
-      std::cout << " Precomputation time: " << duration.count() << " seconds" << std::endl;
+      std::cout << "  Precomputation time: " << duration.count() << " seconds" << std::endl;
       return;
     }
 
     int prevD = distances.empty() ? 2 : distances[S-1];
     for(int d = prevD; d <= maxDist; d++) {
       distances.push_back(d);
-      precompute(distances, ostream, maxDist);
+      precompute(distances, writer, maxDist);
       distances.pop_back();
     }
   }

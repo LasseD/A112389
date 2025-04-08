@@ -236,21 +236,60 @@ namespace rectilinear {
     void report() const;
   };
 
+  /*
+    Write precalculations to stream:
+    bit=1 to indicate start of a batch of results
+    bit to indicate if base is symmetric
+    for each result in batch:
+     bit=0 to indicate a result
+     (base-1) x 3 bits to indicate colors
+     8 bits to indicate refinement without base layer
+     32 bits for all
+     16 bits for symmetric180
+     8 bits for symmetric90 if base == 4
+
+     End of stream:
+     1 to indicate a batch, then bs=0, indicator=0, colors all 0, 0 for all counts.
+     Finally totals in 64 bit integers for cross checking
+   */
+  class BitWriter {
+    std::ofstream *ostream;
+    uint8_t base;
+    uint8_t bits, cntBits;
+    uint64_t sumTotal, sumSymmetric180, sumSymmetric90, lines;
+
+  public:
+    BitWriter();
+    BitWriter(const BitWriter &w);
+    BitWriter(const std::string &fileName, uint8_t base);
+    ~BitWriter(); // Write end indicator with symmetric > total
+    void writeColor(uint8_t toWrite); // 3 bits, starting from 0
+    void writeBit(bool bit); // Also used for baseSymmetric bit
+    void writeUInt16(uint16_t toWrite); // Used for symmetric180 and token
+    void writeUInt8(uint8_t toWrite); // Used for symmetric90 - only when base = 4
+    void writeCounts(const Counts &c);
+  private:
+    void flushBits();
+    void writeUInt32(uint32_t toWrite); // Used for total
+    void writeUInt64(uint64_t toWrite); // Used for totals
+  };
+
   class Lemma3 {
     int n, base;
     CountsMap counts;
+    BrickPlane neighbours[MAX_BRICKS];
 
   public:
     Lemma3(int n, int base);
     void precompute(int maxDist);
 
   private:
-    void precomputeOn(const Combination &baseCombination, std::ofstream &ostream);
+    void precomputeOn(const Combination &baseCombination, BitWriter &writer);
     void precomputeForPlacements(const std::vector<int> &distances,
 				 std::vector<Brick> &bricks,
-				 std::ofstream &ostream,
+				 BitWriter &writer,
 				 std::set<Combination> &seen);
-    void precompute(std::vector<int> &distances, std::ofstream &ostream, int maxDist);
+    void precompute(std::vector<int> &distances, BitWriter &writer, int maxDist);
   };
 }
 

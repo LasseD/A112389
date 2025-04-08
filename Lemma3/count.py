@@ -2,147 +2,119 @@ import sys
 import re
 from pathlib import Path
 
-class Brick:
-    def __init__(self, v, x, y):
-        assert(type(v) is bool)
-        assert(type(x) is int)
-        assert(type(y) is int)
-        assert(not (v and x == 0 and y == 0))
-        self.v = v
-        self.x = x
-        self.y = y
-    def __eq__(self, other):
-        return self.v == other.v and self.x == other.x and self.y == other.y
-    def __hash__(self):
-        return (self.v << 7) + (self.x << 7) + self.y
-    def __repr__(self):
-        if self.v:
-            return f"|{self.x},{self.y}|"
-        else:
-            return f"={self.x},{self.y}="
-    def __str__(self):
-        return self.__repr__()
-
-class BrickList:
-    def __init__(self):
-        self.v = []
-    def __eq__(self, other):
-        if(len(self.v) != len(other.v)):
-            return False
-        for i in range(len(self.v)):
-            if self.v[i] != other.v[i]:
-                return False
-        return True
-    def __hash__(self):
-        ret = 0
-        for i in range(len(self.v)):
-            ret = (ret << 16) + self.v[i].__hash__()
-        return ret
-    def __repr__(self):
-        return '  '.join([str(x) for x in self.v])
-    def __str__(self):
-        return self.__repr__()
-    def append(self, b):
-        self.v.append(b)
-
 class Report:
-    def __init__(self, connectivity, bricks, baseSymmetric, total, symmetric):
+    def __init__(self, connectivity, baseSymmetric, total, symmetric):
         assert(type(connectivity) is str)
-        assert(type(bricks) is BrickList)
         assert(type(baseSymmetric) is bool)
         assert(type(total) is int)
         assert(type(symmetric) is int)
         self.connectivity = connectivity
-        self.bricks = bricks
         self.baseSymmetric = baseSymmetric
         self.total = total
         self.symmetric = symmetric
-        #print(connectivity, bricks, baseSymmetric, total, symmetric)
     def __repr__(self):
         if self.symmetric > 0:
-            return f"{self.connectivity} {self.bricks} base symmetric: {self.baseSymmetric}: {self.total} ({self.symmetric})"
+            return f"{self.connectivity} base symmetric: {self.baseSymmetric}. {self.total} ({self.symmetric})"
         else:
-            return f"{self.connectivity} {self.bricks} base symmetric: {self.baseSymmetric}: {self.total}"
-    def __eq__(self, other):
-        if len(self.bricks.v) != len(other.bricks.v):
-            return False
-        for i in range(len(self.bricks.v)):
-            if self.bricks.v[i] != other.bricks.v[i]:
-                return False
-        return self.connectivity == other.connectivity
+            return f"{self.connectivity} base symmetric: {self.baseSymmetric}. {self.total}"
 
-CACHE = {} # refinement -> [Report...]
+class BitReader:
+    def __init__(self, stream, base):
+        self.stream = stream
+        self.bits = 0
+        self.bitIdx = 8
+        self.base = base
+    def readBit(self):
+        if self.bitIdx == 8:
+            self.bits = self.stream.read(1)[0]
+            self.bitIdx = 0
+        bit = (self.bits >> (7-self.bitIdx)) & 1
+        self.bitIdx = self.bitIdx + 1
+        return bit
+    def readUInt(self, size):
+        ret = 0
+        for i in range(size):
+            ret = ret | (self.readBit() << i)
+        return ret
+    def readColor(self):
+        ret = 0
+        for i in range(3):
+            ret = ret | (self.readBit() << i)
+        #print('Read color', ret)
+        return ret
+    def nextBatch(self, CACHE):
+        if not self.stream:
+            return True
+        bs = bool(self.readBit())
+        first = True
+        while True:
+            if not first:
+                indicator = self.readBit()
+                if(indicator == 1):
+                    return True # Next batch
+            first = False
+            colors = [0]
+            for i in range(self.base-1):
+                colors.append(self.readColor())
+            connectivity = '-'.join([str(x) for x in colors])
+            token = str(self.readUInt(8))
+            total = self.readUInt(32)
+            symmetric180 = self.readUInt(16)
+            if base == 4:
+                symmetric90 = self.readUInt(8)
+            report = Report(connectivity, bs, total, symmetric180)
+            #print('Read', report, 'token', token)
+            if token == "0":
+                # TODO: Read final counts!
+                return False # Done
+            if not token in CACHE:
+                CACHE[token] = []
+            CACHE[token].append(report)
 
 left = int(sys.argv[1])
 base = int(sys.argv[2])
 right = int(sys.argv[3])
 size = left + base + right
-print('Refinements of size', size, 'left-base-right:', left, base, right)
+maxDist = int(sys.argv[4])
+print()
+print(' Tokens of size', size, 'left-base-right:', left, base, right)
 print()
 
-def fetch(n):
-    dir = '../bfs_wave_approach/base_' + str(base) + '_size_' + str(n)
-    print(' Fetching data for base ', base, 'size', n, 'from folder', dir)
-    cnt = 0
-    for file in Path(dir).iterdir():
-        if not file.is_file():
-            continue
-        cnt = cnt + 1
-        if cnt % 10 == 0:
-            print('.', end='', flush=True)
-        name = re.split(r"[_\.]", file.name)
-        if name[len(name)-1] != 'txt':
-            print('Skipping file', file.name)
-            continue # Tmp file or similar
-        content = open(file)
-
+def fetchTxt(file):
+    CACHE = {} # token -> [Report...]
+    print('Reading txt file', file.name)
+    with open(file, 'r') as content:
         while True:
             line = content.readline()
-            if not line:
-                print('Warning: Missing file end for file', file.name)
-                break
-            if line[0] == 'Q':
-                break
+            if (not line) or line[0] == 'Q':
+                break # Correct end of file indicator
             parts = line.split()
             connectivity = parts[0]
-            refinement = parts[1]
+            token = parts[1]
             bs = parts[len(parts)-5] == '1'
             total = int(parts[len(parts)-3])
             symmetric = int(parts[len(parts)-1])
-            bricks = BrickList()
-            for i in range(2, len(parts)-6, 4):
-                bricks.append(Brick(parts[i+1] == '1', int(parts[i+2]), int(parts[i+3])))
-            report = Report(connectivity, bricks, bs, total, symmetric)
-            if not refinement in CACHE:
-                CACHE[refinement] = {}
-            if not bricks in CACHE[refinement]:
-                CACHE[refinement][bricks] = []
-            if report in CACHE[refinement][bricks]:
-                print(refinement, bricks, 'has already observed:', report, 'in file', file.name)
-            else:
-                CACHE[refinement][bricks].append(report)
-    print()
-
-fetch(left+base)
-if left != right:
-    fetch(right+base)
-
-countsAll = {}
-countsSymmetric = {}
-
-backwardCompatibleConnections = {
-    'B0-B1-B2': '1-1-1',
-    'B0-B1': '1-1-2',
-    'B0-B2': '1-2-1',
-    'B1-B2': '1-2-2',
-    '-': '1-2-3',
-}
+            report = Report(connectivity, bs, total, symmetric)
+            if not token in CACHE:
+                CACHE[token] = []
+            CACHE[token].append(report)
+            
+def openStream(n, size):
+    print(' Fetching data for base ', base, 'max size', n, 'dist', size)
+    name = '../bfs_wave_approach/base_' + str(base) + '_size_' + str(n) + '/d' + str(size) + '.'
+    binFile = Path(name + 'bin')
+    txtFile = Path(name + 'txt')
+    if binFile.is_file():
+        print('Reading binary file', binFile)
+        stream = open(binFile, 'rb')
+        reader = BitReader(stream, base)
+        assert(1 == reader.readBit())
+        return (reader, True)
+    elif txtFile.is_file():
+        print('Reading txt file', txtFile)
+        return (open(txtFile, 'r'), False)
 
 def connected(s1, s2):
-    if s1[0] == 'B' or s1[0] == '-':
-        s1 = backwardCompatibleConnections[s1]
-    if s2[0] == 'B' or s2[0] == '-':
-        s2 = backwardCompatibleConnections[s2]
     # Check that all colors can be connected:
     c1 = s1.split('-')
     c2 = s2.split('-')
@@ -165,76 +137,65 @@ def connected(s1, s2):
                     break
     return len(color1) == len(c1)
 
-def countUp(token1, token2, token, bricks):
-    cache1 = CACHE[token1][bricks]
-    cache2 = CACHE[token2][bricks]
-    #print('Count up', token1, token2, token, bricks, len(cache1), len(cache2))
+def countUp(r1, r2):
+    if not connected(r1.connectivity, r2.connectivity):
+        return (0, 0)
+    a1 = r1.total
+    s1 = r1.symmetric
+    a2 = r2.total
+    s2 = r2.symmetric
+    all = a1 * a2
+    symmetric = s1 * s2
+    return (all, symmetric)
 
-    retA = 0
-    retS = 0
-    bs = False
-    for r1 in cache1:
-        #print('Counting up for', r1)
-        if bs:
-            assert r1.baseSymmetric
-        if r1.baseSymmetric:
-            bs = True
-        for r2 in cache2:
-            if not connected(r1.connectivity, r2.connectivity):
-                continue # Not connected:
-            assert(r1.baseSymmetric == r2.baseSymmetric)
+countsAll = {}
+countsSymmetric = {}
 
-            # Computing the products: (Currently overcounting by factor 8)
-            # a1 contains models:
-            # - 2 x if base rotationally symmetric and not self symmetric
-            # - 1 x if not
-            # So add up to 2 x a1 and 2 x a2 and divide by 4 at the very end
-            #
-            a1 = r1.total
-            s1 = r1.symmetric
-            a2 = r2.total
-            s2 = r2.symmetric
+for D in range(2, maxDist+1):
+    # Read files and handle batches one by one:
+    (reader1, isBinary1) = openStream(left+base, D)
+    assert(isBinary1)
+    (reader2, isBinary2) = openStream(right+base, D) if left != right else (False, True)
+    assert(isBinary2)
+    CACHE = {} # token -> [Report...]
 
-            all = a1 * a2
-            symmetric = s1 * s2
-            #if symmetric > 0:
-            #    print('   Adding symmtries for', r1, r2, all, symmetric)
-            retA = retA + all
-            retS = retS + symmetric
-
-    #print('  Counted', retA, retS)
-    if bs:
-        assert((retA - retS)%2 == 0)
-        retA = int((retA - retS)/2) + retS
-        #print('  Updated to', retA, retS)
-    #print(brickPair, retA, retS)
-    countsAll[token] = countsAll[token] + retA
-    countsSymmetric[token] = countsSymmetric[token] + retS
-                
-def getBrickPairs(token):
-    return set([x for x in CACHE[token]])
-
-def handle(token1, token2):
-    token = token1[::-1] + token2[1::]
-    if not token in countsAll:
-        countsAll[token] = 0
-        countsSymmetric[token] = 0
-    print('  Get brick pairs for tokens', token1, token2)
-    bricks = getBrickPairs(token1) | getBrickPairs(token2)
-    print('  Count for pairs of tokens', token1, token2)
-    for brickPair in bricks:
-        countUp(token1, token2, token, brickPair)
-
-def handleAllTokens():
-    for token1 in CACHE:
-        print(' Handling token', token1)
-        size1 = sum(int(x) for x in token1)
-        if size1 == left + base:
+    while reader1.nextBatch(CACHE) and ((not reader2) or reader2.nextBatch(CACHE)):
+        bs = False
+        for token1 in CACHE:
             for token2 in CACHE:
-                size2 = sum(int(x) for x in token2)
-                if size2 == right + base:
-                    handle(token1, token2)
-handleAllTokens()
+                A = 0
+                S = 0
+                for report1 in CACHE[token1]:
+                    bs = report1.baseSymmetric
+                    for report2 in CACHE[token2]:
+                        (a, s) = countUp(report1, report2)
+                        A = A + a
+                        S = S + s
+                if bs:
+                    assert((A - S)%2 == 0)
+                    A = int((A - S)/2) + S
+                token = token1[::-1] + str(base) + token2
+                if not token in countsAll:
+                    countsAll[token] = 0
+                    countsSymmetric[token] = 0
+                countsAll[token] = countsAll[token] + A
+                countsSymmetric[token] = countsSymmetric[token] + S
+            # Single sided counts:
+            A = 0
+            S = 0
+            for report in CACHE[token1]:
+                if connected(report.connectivity, report.connectivity):
+                    A = A + report.total
+                    S = S + report.symmetric
+            if bs:
+                A = int((A - S)/2) + S
+            token = str(base) + token1
+            if not token in countsAll:
+                countsAll[token] = 0
+                countsSymmetric[token] = 0
+            countsAll[token] = countsAll[token] + A
+            countsSymmetric[token] = countsSymmetric[token] + S
+        CACHE = {} # Reset cache
 
 print()
 for token in countsAll:
@@ -243,29 +204,13 @@ for token in countsAll:
     print(' <'+token+'>', a, '(' + str(s) + ')')
 print()
 
-def isSelfConnected(connectivity):
-    return connected(connectivity, connectivity)
-
-# Single sided sum for cross check:
-for token in CACHE:
-    crossCheckA = 0
-    crossCheckS = 0
-    for bricks in CACHE[token]:
-        for report in CACHE[token][bricks]:
-            if isSelfConnected(report.connectivity):
-                crossCheckA = crossCheckA + (report.total if not report.baseSymmetric else (report.total-report.symmetric)/2+report.symmetric)
-                crossCheckS = crossCheckS + report.symmetric
-                #if report.symmetric > 0:
-                #    print('Symmetric and self connected:', report)
-    print('  Cross check', token, ':', int(crossCheckA), '(' + str(crossCheckS) + ')')
-
 # Testing
-# <31> 648 (8)
-# <131> 433685 (24)
-# <32> 148794 (443)
-# <231> 41019966 (1179)
-# <232> 3021093957 (46219)
-# <33> 6246077 (432)
+# OK <31> 648 (8)
+# OK <131> 433685 (24)
+# OK <32> 148794 (443)
+# OK <231> 41019966 (1179)
+# OK <232> 3021093957 (46219)
+# OK <33> 6246077 (432)
 # <331> 1358812234 (1104)
 # <1321> 4581373745 (1471)
 
