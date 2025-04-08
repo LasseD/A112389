@@ -3,20 +3,26 @@ import re
 from pathlib import Path
 
 class Report:
-    def __init__(self, connectivity, baseSymmetric, total, symmetric):
+    def __init__(self, connectivity, baseSymmetric180, baseSymmetric90, total, symmetric180, symmetric90):
         assert(type(connectivity) is str)
-        assert(type(baseSymmetric) is bool)
+        assert(type(baseSymmetric180) is bool)
+        assert(type(baseSymmetric90) is bool)
         assert(type(total) is int)
-        assert(type(symmetric) is int)
+        assert(type(symmetric180) is int)
+        assert(type(symmetric90) is int)
         self.connectivity = connectivity
-        self.baseSymmetric = baseSymmetric
+        self.baseSymmetric180 = baseSymmetric180
+        self.baseSymmetric90 = baseSymmetric90
         self.total = total
-        self.symmetric = symmetric
+        self.symmetric180 = symmetric180
+        self.symmetric90 = symmetric90
     def __repr__(self):
-        if self.symmetric > 0:
-            return f"{self.connectivity} base symmetric: {self.baseSymmetric}. {self.total} ({self.symmetric})"
+        if self.symmetric90 > 0:
+            return f"{self.connectivity} {self.total} ({self.symmetric180}) (({self.symmetric90}))"
+        elif self.symmetric180 > 0:
+            return f"{self.connectivity} {self.total} ({self.symmetric180})"
         else:
-            return f"{self.connectivity} base symmetric: {self.baseSymmetric}. {self.total}"
+            return f"{self.connectivity} {self.total}"
 
 class BitReader:
     def __init__(self, stream, base):
@@ -44,7 +50,8 @@ class BitReader:
     def nextBatch(self, CACHE):
         if not self.stream:
             return True
-        bs = bool(self.readBit())
+        bs180 = bool(self.readBit())
+        bs90 = base % 4 == 0 and bool(self.readBit())
         first = True
         while True:
             if not first:
@@ -59,9 +66,9 @@ class BitReader:
             token = str(self.readUInt(8))
             total = self.readUInt(32)
             symmetric180 = self.readUInt(16)
-            if base == 4:
+            if base % 4 == 0:
                 symmetric90 = self.readUInt(8)
-            report = Report(connectivity, bs, total, symmetric180)
+            report = Report(connectivity, bs180, bs90, total, symmetric180, symmetric90)
             if token == "0":
                 # TODO: Read final counts!
                 return False # Done
@@ -112,17 +119,21 @@ def connected(s1, s2):
 
 def countUp(r1, r2):
     if not connected(r1.connectivity, r2.connectivity):
-        return (0, 0)
+        return (0, 0, 0)
     a1 = r1.total
-    s1 = r1.symmetric
+    s1801 = r1.symmetric180
+    s901 = r1.symmetric90
     a2 = r2.total
-    s2 = r2.symmetric
+    s1802 = r2.symmetric180
+    s902 = r2.symmetric90
     all = a1 * a2
-    symmetric = s1 * s2
-    return (all, symmetric)
+    symmetric180 = s1801 * s1802
+    symmetric90 = s902 * s902
+    return (all, symmetric180, symmetric90)
 
 countsAll = {}
-countsSymmetric = {}
+countsSymmetric180 = {}
+countsSymmetric90 = {}
 
 for D in range(2, maxDist+1):
     # Read files and handle batches one by one:
@@ -131,45 +142,66 @@ for D in range(2, maxDist+1):
     CACHE = {} # token -> [Report...]
 
     while reader1.nextBatch(CACHE) and ((not reader2) or reader2.nextBatch(CACHE)):
-        bs = False
+        bs180 = False
+        bs90 = False
         for token1 in CACHE:
             for token2 in CACHE:
                 A = 0
-                S = 0
+                S180 = 0
+                S90 = 0
                 for report1 in CACHE[token1]:
-                    bs = report1.baseSymmetric
+                    bs180 = report1.baseSymmetric180
+                    bs90 = report1.baseSymmetric90
                     for report2 in CACHE[token2]:
-                        (a, s) = countUp(report1, report2)
+                        (a, s180, s90) = countUp(report1, report2)
                         A = A + a
-                        S = S + s
-                if bs:
-                    assert((A - S)%2 == 0)
-                    A = int((A - S)/2) + S
+                        S180 = S180 + s180
+                        S90 = S90 + s90
+                if bs90:
+                    A = A - (S180 + S90)
+                    S90 = S90/4
+                    S180 = S180/2
+                    A = A/4 + S180 + S90
+                elif bs180:
+                    assert((A - S180)%2 == 0)
+                    A = int((A - S180)/2) + S180
                 token = token1[::-1] + str(base) + token2
                 if not token in countsAll:
                     countsAll[token] = 0
-                    countsSymmetric[token] = 0
+                    countsSymmetric180[token] = 0
+                    countsSymmetric90[token] = 0
                 countsAll[token] = countsAll[token] + A
-                countsSymmetric[token] = countsSymmetric[token] + S
+                countsSymmetric180[token] = countsSymmetric180[token] + S180
+                countsSymmetric90[token] = countsSymmetric90[token] + S90
             # Single sided counts for cross checking:
             A = 0
-            S = 0
+            S180 = 0
+            S90 = 0
             for report in CACHE[token1]:
                 if connected(report.connectivity, report.connectivity):
                     A = A + report.total
-                    S = S + report.symmetric
-            if bs:
-                A = int((A - S)/2) + S
+                    S180 = S180 + report.symmetric180
+                    S90 = S90 + report.symmetric90
+            if bs90:
+                A = A - (S180 + S90)
+                S90 = S90/4
+                S180 = S180/2
+                A = A/4 + S180 + S90
+            elif bs180:
+                A = int((A - S180)/2) + S180
             token = str(base) + token1
             if not token in countsAll:
                 countsAll[token] = 0
-                countsSymmetric[token] = 0
+                countsSymmetric180[token] = 0
+                countsSymmetric90[token] = 0
             countsAll[token] = countsAll[token] + A
-            countsSymmetric[token] = countsSymmetric[token] + S
+            countsSymmetric180[token] = countsSymmetric180[token] + S180
+            countsSymmetric90[token] = countsSymmetric90[token] + S90
         CACHE = {} # Reset cache
 
 print()
 for token in countsAll:
     a = countsAll[token]
-    s = countsSymmetric[token]
-    print(' <'+token+'>', a, '(' + str(s) + ')')
+    s180 = countsSymmetric180[token]
+    s90 = countsSymmetric90[token]
+    print(' <'+token+'>', a, '(' + str(s180) + ')', '{' + str(s90) + '}')

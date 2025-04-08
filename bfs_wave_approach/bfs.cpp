@@ -1504,13 +1504,15 @@ namespace rectilinear {
   BitWriter::~BitWriter() {
     // End indicator:
     writeBit(1);
-    writeBit(0); // baseSymmetric
+    writeBit(0); // baseSymmetric180
+    if(base % 4 == 0)
+      writeBit(0); // baseSymmetric90
     for(int i = 0; i < base-1; i++)
       writeColor(0);
     writeUInt8(0); // Token
     writeUInt32(0); // total
     writeUInt16(0); // symmetric180
-    if(base == 4)
+    if(base % 4 == 0)
       writeUInt8(0); // symmetric90
     // Totals:
     writeUInt64(base);
@@ -1551,7 +1553,7 @@ namespace rectilinear {
     writeUInt16(c.symmetric180);
     sumSymmetric180 += c.symmetric180;
 
-    if(base == 4) {
+    if(base % 4 == 0) {
       assert(c.symmetric90 < 255);
       writeUInt8(c.symmetric90);
       sumSymmetric90 += c.symmetric90;
@@ -1649,9 +1651,12 @@ namespace rectilinear {
     else
       builder.build();
 
-    bool baseSymmetric = baseCombination.is180Symmetric();
+    bool baseSymmetric180 = baseCombination.is180Symmetric();
+    bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && baseCombination.is90Symmetric();
     writer.writeBit(1); // New batch
-    writer.writeBit(baseSymmetric);
+    writer.writeBit(baseSymmetric180);
+    if(base % 4 == 0)
+      writer.writeBit(baseSymmetric90);
 
     bool any = false;
     CountsMap xCheck;
@@ -1689,8 +1694,8 @@ namespace rectilinear {
     for(CountsMap::const_iterator it = xCheck.begin(); it != xCheck.end(); it++) {
       uint64_t token = it->first;
       Counts c = it->second;
-      if(baseSymmetric) {
-	if(base == 4 && baseCombination.is90Symmetric()) {
+      if(baseSymmetric180) {
+	if(baseSymmetric90) {
 	  c.all -= c.symmetric180 + c.symmetric90;
 	  assert(c.symmetric90 % 4 == 0);
 	  c.symmetric90 /= 4;
