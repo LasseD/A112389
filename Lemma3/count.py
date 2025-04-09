@@ -63,9 +63,10 @@ class BitReader:
             for i in range(self.base-1):
                 colors.append(self.readColor())
             connectivity = '-'.join([str(x) for x in colors])
-            token = str(self.readUInt(8))
+            token = str(self.readUInt(8))[::-1]
             total = self.readUInt(32)
             symmetric180 = self.readUInt(16)
+            symmetric90 = 0
             if base % 4 == 0:
                 symmetric90 = self.readUInt(8)
             report = Report(connectivity, bs180, bs90, total, symmetric180, symmetric90)
