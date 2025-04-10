@@ -195,6 +195,33 @@ namespace rectilinear {
   int Brick::dist(const Brick &b) const {
     return ABS(x-b.x) + ABS(y-b.y);
   }
+  bool Brick::canIntercept(const Brick &a, const Brick &b, uint8_t toAdd) {
+    if(a.intersects(b))
+      return true;
+    if(toAdd == 0)
+      return false;
+
+    // Ensure a.isVertical:
+    if(!a.isVertical) {
+      if(!b.isVertical)
+	return canIntercept(Brick(true, a.y, a.x), Brick(true, b.y, b.x), toAdd);
+      return canIntercept(b, a, toAdd);
+    }
+
+    int16_t dx = ABS(a.x-b.x);
+    int16_t dy = ABS(a.y-b.y);
+    if(toAdd == 1) {
+      if(!b.isVertical)
+	return (dx < 6 && dy < 4) || (dx < 4 && dy < 6);
+      // Both vertical:
+      return (dx <= 2 && dy <= 6) || (dx <= 4 && dy <= 4);
+    }
+    // toAdd >= 2:
+    int16_t signX = a.x < b.x ? 1 : -1;
+    int16_t signY = a.y < b.y ? 1 : -1;
+    return canIntercept(Brick(true, a.x+MIN(1, dx)*signX, a.y+MIN(3,dy)*signY), b, toAdd-1) ||
+      canIntercept(Brick(false, a.x+MIN(2,dx)*signX, a.y+MIN(2,dy)*signY), b, toAdd-1);
+  }
 
   BrickPicker::BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx) : v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), bricksIdx(bricksIdx), bricks(bricks), inner(NULL) {
 #ifdef PROFILING
@@ -807,7 +834,24 @@ namespace rectilinear {
     for(uint8_t i = 0; i < layers/2; i++) {
       std::swap(layerSizes[i], layerSizes[layers-i-1]);
     }
-  }  
+  }
+
+  bool Combination::anyInterceptions(int toAdd, uint8_t from) const {
+    const uint8_t &S = layerSizes[0];
+    if(from == S-1)
+      return false;
+    for(uint8_t i = from+1; i < S; i++) {
+      if(Brick::canIntercept(bricks[0][i], bricks[0][from], toAdd))
+	return true;
+    }
+    return anyInterceptions(toAdd, from+1);
+  }
+
+  bool Combination::anyInterceptions(int toAdd) const {
+    assert(height == 1);
+    return true;
+    return anyInterceptions(toAdd, 0);
+  }
 
   CombinationBuilder::CombinationBuilder(const Combination &c,
 					 const uint8_t waveStart,
@@ -1421,12 +1465,11 @@ namespace rectilinear {
       return false;
     }
 
-    BrickPlane *neighbours = new BrickPlane[MAX_BRICKS];
+    BrickPlane neighbours[MAX_BRICKS];
     for(uint8_t i = 0; i < MAX_BRICKS; i++)
       neighbours[i].unsetAll();
     CombinationBuilder builder(baseCombination, 0, 2, n, neighbours, NULL);
     builder.buildSplit();
-    delete[] neighbours;
 
     std::ofstream ostream(fileName.c_str());
 
@@ -1492,15 +1535,12 @@ namespace rectilinear {
 
   BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
   }
-
   BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines) {
   }
-
   BitWriter::BitWriter(const std::string &fileName, uint8_t base) : base(base), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0)  {
     
     ostream = new std::ofstream(fileName.c_str(), std::ios::binary);
   }
-
   BitWriter::~BitWriter() {
     // End indicator:
     writeBit(1);
@@ -1526,7 +1566,6 @@ namespace rectilinear {
     ostream->close();
     delete ostream;
   }
-
   void BitWriter::writeColor(uint8_t toWrite) {
     assert(toWrite < 8);
     for(int j = 0; j < 3; j++) {
@@ -1534,7 +1573,6 @@ namespace rectilinear {
       toWrite >>= 1;
     }
   }
-
   void BitWriter::writeBit(bool bit) {
     bits = (bits << 1) + (bit ? 1 : 0);
     cntBits++;
@@ -1543,7 +1581,6 @@ namespace rectilinear {
       cntBits = 0;
     }
   }
-
   void BitWriter::writeCounts(const Counts &c) {
     assert(c.all < 4294967295);
     writeUInt32(c.all);
@@ -1561,38 +1598,144 @@ namespace rectilinear {
 
     lines++;
   }
-
   void BitWriter::flushBits() {
     while(cntBits > 0) {
       writeBit(0);
     }
   }
-
   void BitWriter::writeUInt8(uint8_t toWrite) {
     for(int j = 0; j < 8; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
-
   void BitWriter::writeUInt16(uint16_t toWrite) {
     for(int j = 0; j < 16; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
-
   void BitWriter::writeUInt32(uint32_t toWrite) {
     for(int j = 0; j < 32; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
-
   void BitWriter::writeUInt64(uint64_t toWrite) {
     for(int j = 0; j < 64; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
+    }
+  }
+
+  bool BitReader::readBit() {
+    if(bitIdx == 8) {
+      istream->read((char*)&bits, 1);
+      bitIdx = 0;
+    }
+    bool bit = (bits >> (7-bitIdx)) & 1;
+    bitIdx++;
+    return bit;
+  }
+  uint8_t BitReader::readColor() {
+    uint8_t ret = 0;
+    for(int i = 0; i < 3; i++) {
+      ret = ret | ((int)readBit() << i);
+    }
+    return ret;
+  }
+  uint8_t BitReader::readUInt8() {
+    uint8_t ret = 0;
+    for(int i = 0; i < 8; i++) {
+      ret = ret | ((int)readBit() << i);
+    }
+    return ret;
+  }
+  uint16_t BitReader::readUInt16() {
+    uint16_t ret = 0;
+    for(int i = 0; i < 16; i++) {
+      ret = ret | ((int)readBit() << i);
+    }
+    return ret;
+  }
+  uint32_t BitReader::readUInt32() {
+    uint32_t ret = 0;
+    for(int i = 0; i < 32; i++) {
+      ret = ret | ((int)readBit() << i);
+    }
+    return ret;
+  }
+  uint64_t BitReader::readUInt64() {
+    uint64_t ret = 0;
+    for(int i = 0; i < 64; i++) {
+      ret = ret | ((int)readBit() << i);
+    }
+    return ret;
+  }
+  void BitReader::readCounts(Counts &c) {
+    c.all = readUInt32();
+    c.symmetric180 = readUInt16();
+    if(base % 4 == 0)
+      c.symmetric90 = readUInt8();
+  }
+  BitReader::BitReader(uint8_t base, int n, int D, bool skipIfOtherIsN, int other) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+    if(skipIfOtherIsN && other == n) {
+      istream = NULL;
+      return;
+    }
+    std::stringstream ss;
+    ss << "base_" << (int)base << "_size_" << (int)n << "/d" << (int)D << ".bin";
+    std::string fileName = ss.str();
+    istream = new std::ifstream(fileName.c_str(), std::ios::binary);
+    bool firstBit = readBit();
+    assert(firstBit);
+    std::cout << "  Reader set up for " << fileName << std::endl;
+  }
+  BitReader::~BitReader() {
+    if(istream != NULL) {
+      istream->close();
+      delete istream;
+    }
+  }
+  bool BitReader::next(ReportMap &m) {
+    if(istream == NULL)
+      return true; // Skip
+    Report r;
+    r.baseSymmetric180 = readBit();
+    r.baseSymmetric90 = (base % 4 == 0) && readBit();
+    bool first = true;
+    while(true) {
+      if(!first) {
+	bool indicator = readBit();
+	if(indicator)
+	  return true; // Now at next batch
+      }
+      first = false;
+      for(int i = 0; i < base-1; i++)
+	r.colors[i] = readColor();
+      uint64_t token = readUInt8();
+      r.counts.all = readUInt32();
+      sumTotal += r.counts.all;
+      r.counts.symmetric180 = readUInt16();
+      sumSymmetric180 += r.counts.symmetric180;
+      r.counts.symmetric90 = 0;
+      if(base % 4 == 0)
+	r.counts.symmetric90 = readUInt8();
+      sumSymmetric90 += r.counts.symmetric90;
+      if(token == 0) {
+	// Cross checks:
+	assert(base == readUInt64());
+	assert(sumTotal == readUInt64());
+	assert(sumSymmetric180 == readUInt64());
+	assert(sumSymmetric90 == readUInt64());
+	assert(lines == readUInt64());
+	return false;
+      }
+      lines++;
+      assert(r.counts.all > 0);
+      if(m.find(token) == m.end())
+	m[token] = std::vector<Report>();
+      m[token].push_back(r);
     }
   }
 
@@ -1642,14 +1785,30 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precomputeOn()");
 #endif
-    if(n - base > 3)
-      std::cout << " Precomputing on " << baseCombination << std::endl;
+    // Optimization: If no interceptions between bricks, then skip!
+    CountsMap cm;
+    bool anyInterceptions = baseCombination.anyInterceptions(n-base);
 
-    CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
-    if(n - base > 3)
-      builder.buildSplit();
-    else
-      builder.build();
+    if(anyInterceptions || noInterceptionsMap.empty()) {
+      if(n - base > 3)
+	std::cout << " Precomputing on " << baseCombination << std::endl;
+      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
+      if(n - base > 3)
+	builder.buildSplit();
+      else
+	builder.build();
+      cm = builder.counts;
+      if(!anyInterceptions) {
+	std::cout << "First no-interceptions map set up!" << std::endl;
+	noInterceptionsMap = cm;
+      }
+    }
+    else {
+#ifdef TRACE
+      std::cout << "No interceptions with " << (n-base) << " for " << baseCombination << std::endl;
+#endif
+      cm = noInterceptionsMap;
+    }
 
     bool baseSymmetric180 = baseCombination.is180Symmetric();
     bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && baseCombination.is90Symmetric();
@@ -1660,7 +1819,7 @@ namespace rectilinear {
 
     bool any = false;
     CountsMap xCheck;
-    for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++) {
+    for(CountsMap::const_iterator it = cm.begin(); it != cm.end(); it++) {
       if(any)
 	writer.writeBit(0);
       any = true;
@@ -1678,6 +1837,7 @@ namespace rectilinear {
 	  allOnes = false;
       }
       if(allOnes) {
+	assert(anyInterceptions);
 	if(xCheck.find(token) == xCheck.end())
 	  xCheck[token] = Counts();
 	xCheck[token] += it->second;
@@ -1765,12 +1925,8 @@ namespace rectilinear {
 	for(int16_t multY = -1; multY <= 1; multY += 2) {
 	  for(int v = 0; v <= 1; v++) {
 	    Brick b((bool)v, FirstBrick.x + multX*dx, FirstBrick.y + multY*dy);
-	    if(b.intersects(FirstBrick)) {
-#ifdef TRACE
-	      std::cout << "   Failed on first brick intersection! " << b << std::endl;
-#endif
+	    if(b.intersects(FirstBrick))
 	      continue;
-	    }
 	    // Check for colission:
 	    bool ok = true;
 	    for(int i = 0; i < S; i++) {
@@ -1779,12 +1935,8 @@ namespace rectilinear {
 		break;
 	      }
 	    }
-	    if(!ok) {
-#ifdef TRACE
-	      std::cout << "   Failed on intersection! " << b << std::endl;
-#endif
+	    if(!ok)
 	      continue;
-	    }
 
 	    // Recursion:
 	    bricks.push_back(b);

@@ -4,6 +4,7 @@
 // DIFFLT = "Difference less than" is used to check for brick intersection
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 #define ABS(a) ((a) < 0 ? -(a) : (a))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // Goal of this code base is to construct models with up to 11 bricks
 #define MAX_BRICKS 11
@@ -87,6 +88,8 @@ namespace rectilinear {
     void mirror(Brick &b, const int16_t &cx, const int16_t &cy) const;
     bool mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const;
     int dist(const Brick &b) const;
+
+    static bool canIntercept(const Brick &a, const Brick &b, uint8_t toAdd);
   };
 
   typedef std::pair<Brick,uint8_t> LayerBrick;
@@ -109,6 +112,7 @@ namespace rectilinear {
     // State to check connectivity:
     uint8_t colors[MAX_BRICKS][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
+    bool anyInterceptions(int toAdd, uint8_t from) const;
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
@@ -141,6 +145,7 @@ namespace rectilinear {
     int64_t getTokenFromLayerSizes() const;
     void normalize(int &rotated);
     void normalize();
+    bool anyInterceptions(int toAdd) const;
     static int reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
@@ -274,11 +279,37 @@ namespace rectilinear {
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
 
+  struct Report {
+    uint8_t colors[6]; // Lemma 3 is only used up to base 7
+    bool baseSymmetric180, baseSymmetric90;
+    Counts counts;
+  };
+
+  typedef std::map<uint64_t,std::vector<Report> > ReportMap;
+
+  class BitReader {
+    std::ifstream *istream;
+    uint8_t bits, bitIdx, base;
+    uint64_t sumTotal, sumSymmetric180, sumSymmetric90, lines;
+
+    bool readBit();
+    uint8_t readColor();
+    uint8_t readUInt8();
+    uint16_t readUInt16();
+    uint32_t readUInt32();
+    uint64_t readUInt64();
+    void readCounts(Counts &c);
+  public:
+    BitReader(uint8_t base, int n, int D, bool skipIfOtherIsN, int other);
+    ~BitReader();
+    bool next(ReportMap &m);
+  };
+
   class Lemma3 {
     int n, base;
     CountsMap counts;
     BrickPlane neighbours[MAX_BRICKS];
-    CountsMap crossCheck;
+    CountsMap crossCheck, noInterceptionsMap;
 
   public:
     Lemma3(int n, int base);
