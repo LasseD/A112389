@@ -205,4 +205,9 @@ for token in countsAll:
     a = countsAll[token]
     s180 = countsSymmetric180[token]
     s90 = countsSymmetric90[token]
-    print(' <'+token+'>', a, '(' + str(s180) + ')', '{' + str(s90) + '}')
+    if s90 > 0:
+        print(' <'+token+'>', a, '(' + str(int(s180)) + ')', '{' + str(int(s90)) + '}')
+    elif s180 > 0:
+        print(' <'+token+'>', a, '(' + str(int(s180)) + ')')
+    else:
+        print(' <'+token+'>', a)
