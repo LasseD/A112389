@@ -188,6 +188,7 @@ namespace rectilinear {
     uint8_t waveStart, waveSize, maxSize;
     BrickPlane *neighbours;
     uint8_t *maxLayerSizes;
+    bool isFirstBuilder;
   public:
     CountsMap counts;
 
@@ -196,7 +197,8 @@ namespace rectilinear {
 		       const uint8_t waveSize,
 		       const uint8_t maxSize,
 		       BrickPlane *neighbours,
-		       uint8_t *maxLayerSizes);
+		       uint8_t *maxLayerSizes,
+		       bool isFirstBuilder);
 
     CombinationBuilder(const CombinationBuilder& b);
 

@@ -886,21 +886,22 @@ namespace rectilinear {
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
 					 BrickPlane *neighbours,
-					 uint8_t *maxLayerSizes) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxLayerSizes(maxLayerSizes) {
+					 uint8_t *maxLayerSizes,
+					 bool isFirstBuilder) :
+    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxLayerSizes(maxLayerSizes), isFirstBuilder(isFirstBuilder) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::FAST");
 #endif
   }
 
   CombinationBuilder::CombinationBuilder(const CombinationBuilder& b) :
-    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), neighbours(b.neighbours), maxLayerSizes(b.maxLayerSizes) {
+    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), neighbours(b.neighbours), maxLayerSizes(b.maxLayerSizes), isFirstBuilder(b.isFirstBuilder) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(CombinationBuilder&)");
 #endif
   }
 
-  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), neighbours(NULL), maxLayerSizes(NULL) {
+  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), neighbours(NULL), maxLayerSizes(NULL), isFirstBuilder(false) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()");
 #endif
@@ -1285,7 +1286,7 @@ namespace rectilinear {
 	bool doubleCount = false;
 #else
 	// Optimization: Skip half of constructions in first builder (unless symmetric):
-	bool doubleCount = waveStart == 0 && !baseCombination.is180Symmetric();
+	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
 	  Combination baseCopy(baseCombination);
@@ -1300,7 +1301,7 @@ namespace rectilinear {
 	}
 #endif
 
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxLayerSizes);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxLayerSizes, false);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
 
@@ -1330,7 +1331,7 @@ namespace rectilinear {
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
 
-    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxLayerSizes);
+    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxLayerSizes, true);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -1348,9 +1349,8 @@ namespace rectilinear {
 #endif
     bool ret = p->next(baseCombination, picked);
     if(ret) {
-      if(maxSize - baseCombination.size > 3) {
+      if(maxSize - baseCombination.size > 3)
 	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
-      }
       waveSize = picked; // Update wave size based on pick
     }
 #ifdef TRACE
@@ -1377,7 +1377,7 @@ namespace rectilinear {
       // Behold the beautiful C++ 11 syntax for showing elapsed time...
       std::chrono::duration<double, std::ratio<60> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60> > >(std::chrono::steady_clock::now() - timeStart);
       if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial chaos:
-	std::cout << "  Time elapsed: " << duration.count() << " minutes" << std::endl;
+	std::cout << "Time elapsed: " << duration.count() << " minutes" << std::endl;
       b.build();
       b.removeFromPicker(picked);
     }
@@ -1496,7 +1496,7 @@ namespace rectilinear {
     BrickPlane neighbours[MAX_BRICKS];
     for(uint8_t i = 0; i < MAX_BRICKS; i++)
       neighbours[i].unsetAll();
-    CombinationBuilder builder(baseCombination, 0, 2, n, neighbours, NULL);
+    CombinationBuilder builder(baseCombination, 0, 2, n, neighbours, NULL, true);
     builder.buildSplit();
 
     std::ofstream ostream(fileName.c_str());
@@ -1869,7 +1869,7 @@ namespace rectilinear {
     else if(anyInterceptions || noInterceptionsMap.empty()) {
       if(n - base > 3)
 	std::cout << " Precomputing on " << baseCombination << std::endl;
-      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
+      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL, true);
       if(n - base > 3)
 	builder.buildSplit();
       else

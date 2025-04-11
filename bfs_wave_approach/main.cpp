@@ -127,7 +127,7 @@ int runStandardConstruction(int argc, char** argv) {
 
   std::cout << "Building models for size " << n << std::endl;
   Combination combination;
-  CombinationBuilder b(combination, 0, 1, n, neighbours, maxLayerSizes);
+  CombinationBuilder b(combination, 0, 1, n, neighbours, maxLayerSizes, true);
   b.buildSplit();
   b.report();
 
