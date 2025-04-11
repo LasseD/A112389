@@ -216,6 +216,13 @@ namespace rectilinear {
       // Both vertical:
       return (dx <= 2 && dy <= 6) || (dx <= 4 && dy <= 4);
     }
+
+    // Quick range checks:
+    if(dx+dy <= 3*(toAdd+1) - 2)
+      return true; // Can always move 3 if both aligned toward each other. "- 2" to emulate alignment
+    if(dx+dy > 4*(toAdd+1))
+      return false; // Can not move more than 4
+
     // toAdd >= 2:
     int16_t signX = a.x < b.x ? 1 : -1;
     int16_t signY = a.y < b.y ? 1 : -1;
@@ -509,6 +516,28 @@ namespace rectilinear {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	Brick &b = bricks[i][j];
 	b.x = PLANE_MID - (b.x - PLANE_MID);
+	b.y = PLANE_MID - (b.y - PLANE_MID);
+      }
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::reverse fast enough?
+  }
+
+  void Combination::mirrorX() {
+    for(uint8_t i = 0; i < height; i++) {
+      for(uint8_t j = 0; j < layerSizes[i]; j++) {
+	Brick &b = bricks[i][j];
+	b.x = PLANE_MID - (b.x - PLANE_MID);
+      }
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::reverse fast enough?
+  }
+
+  void Combination::mirrorY() {
+    for(uint8_t i = 0; i < height; i++) {
+      for(uint8_t j = 0; j < layerSizes[i]; j++) {
+	Brick &b = bricks[i][j];
 	b.y = PLANE_MID - (b.y - PLANE_MID);
       }
     }
@@ -849,7 +878,6 @@ namespace rectilinear {
 
   bool Combination::anyInterceptions(int toAdd) const {
     assert(height == 1);
-    return true;
     return anyInterceptions(toAdd, 0);
   }
 
@@ -1668,7 +1696,7 @@ namespace rectilinear {
   uint64_t BitReader::readUInt64() {
     uint64_t ret = 0;
     for(int i = 0; i < 64; i++) {
-      ret = ret | ((int)readBit() << i);
+      ret = ret | ((uint64_t)readBit() << i);
     }
     return ret;
   }
@@ -1724,11 +1752,24 @@ namespace rectilinear {
       sumSymmetric90 += r.counts.symmetric90;
       if(token == 0) {
 	// Cross checks:
-	assert(base == readUInt64());
-	assert(sumTotal == readUInt64());
-	assert(sumSymmetric180 == readUInt64());
-	assert(sumSymmetric90 == readUInt64());
-	assert(lines == readUInt64());
+	uint64_t readBase = readUInt64();
+	uint64_t readTotal = readUInt64();
+	uint64_t readSumSymmetric180 = readUInt64();
+	uint64_t readSumSymmetric90 = readUInt64();
+	uint64_t readLines = readUInt64();
+	if(readBase != base ||
+	   readTotal != sumTotal ||
+	   readSumSymmetric180 != sumSymmetric180 ||
+	   readSumSymmetric90 != sumSymmetric90 ||
+	   readLines != lines) {
+	  std::cerr << "Cross check error: Cross check value from file vs counted:" << std::endl;
+	  std::cerr << " Base: " << readBase << " vs " << (int)base << std::endl;
+	  std::cerr << " Total: " << readTotal << " vs " << sumTotal << std::endl;
+	  std::cerr << " Total 180 degree symmetries: " << readSumSymmetric180 << " vs " << sumSymmetric180 << std::endl;
+	  std::cerr << " Total 90 degree symmetries: " << readSumSymmetric90 << " vs " << sumSymmetric90 << std::endl;
+	  std::cerr << " Lines: " << readLines << " vs " << lines << std::endl;
+	  assert(false);
+	}
 	return false;
       }
       lines++;
@@ -1739,7 +1780,7 @@ namespace rectilinear {
     }
   }
 
-  Lemma3::Lemma3(int n, int base): n(n), base(base) {
+  Lemma3::Lemma3(int n, int base): n(n), base(base), interceptionSkips(0), mirrorSkips(0) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
@@ -1774,6 +1815,9 @@ namespace rectilinear {
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
+
+    std::cout << " Skips due to no possible overlaps: " << interceptionSkips << ", mirror skips: " << mirrorSkips << std::endl;
+
     // Cross checks:
     std::cout << "Cross checks:" << std::endl;
     for(CountsMap::const_iterator it = crossCheck.begin(); it != crossCheck.end(); it++) {
@@ -1781,15 +1825,48 @@ namespace rectilinear {
     }
   }
 
-  void Lemma3::precomputeOn(const Combination &baseCombination, BitWriter &writer) {
+  void Lemma3::checkMirrorSymmetries(const Combination &baseCombination,
+				     const CombinationResultsMap &seen,
+				     CountsMap &cm) {
+    Combination mx(baseCombination);
+    mx.mirrorX();
+    CombinationResultsMap::const_iterator it;
+    if((it = seen.find(mx)) != seen.end()) {
+      cm = it->second;
+      mirrorSkips++;
+      return;
+    }
+
+    Combination my(baseCombination);
+    my.mirrorY();
+    if((it = seen.find(my)) != seen.end()) {
+      cm = it->second;
+      mirrorSkips++;
+      return;
+    }
+
+    // We do not mirror in both X and Y, as that is equal to 180 degree rotation.
+  }
+
+  void Lemma3::precomputeOn(const Combination &baseCombination,
+			    BitWriter &writer,
+			    CombinationResultsMap &seen) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precomputeOn()");
 #endif
-    // Optimization: If no interceptions between bricks, then skip!
     CountsMap cm;
-    bool anyInterceptions = baseCombination.anyInterceptions(n-base);
 
-    if(anyInterceptions || noInterceptionsMap.empty()) {
+    // Optimization: Mirror symmetries:
+    checkMirrorSymmetries(baseCombination, seen, cm);
+    bool anyMirrorSymmetries = !cm.empty();
+
+    // Optimization: If no interceptions between bricks, then skip!
+    bool anyInterceptions = !anyMirrorSymmetries && baseCombination.anyInterceptions(n-base);
+
+    if(anyMirrorSymmetries) {
+      // cm already set!
+    }
+    else if(anyInterceptions || noInterceptionsMap.empty()) {
       if(n - base > 3)
 	std::cout << " Precomputing on " << baseCombination << std::endl;
       CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL);
@@ -1807,9 +1884,17 @@ namespace rectilinear {
 #ifdef TRACE
       std::cout << "No interceptions with " << (n-base) << " for " << baseCombination << std::endl;
 #endif
+      interceptionSkips++;
+      if(interceptionSkips % 10000 == 0) {
+	std::cout << " Skips due to no possible overlaps: " << interceptionSkips << ", mirror skips: " << mirrorSkips << std::endl;
+      }
       cm = noInterceptionsMap;
     }
 
+    // Update cache:
+    seen[baseCombination] = cm;
+
+    // Write results:
     bool baseSymmetric180 = baseCombination.is180Symmetric();
     bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && baseCombination.is90Symmetric();
     writer.writeBit(1); // New batch
@@ -1837,7 +1922,6 @@ namespace rectilinear {
 	  allOnes = false;
       }
       if(allOnes) {
-	assert(anyInterceptions);
 	if(xCheck.find(token) == xCheck.end())
 	  xCheck[token] = Counts();
 	xCheck[token] += it->second;
@@ -1874,7 +1958,10 @@ namespace rectilinear {
     }
   }
 
-  void Lemma3::precomputeForPlacements(const std::vector<int> &distances, std::vector<Brick> &bricks, BitWriter &writer, std::set<Combination> &seen) {
+  void Lemma3::precomputeForPlacements(const std::vector<int> &distances,
+				       std::vector<Brick> &bricks,
+				       BitWriter &writer,
+				       CombinationResultsMap &seen) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precomputeForPlacements()");
 #endif
@@ -1891,7 +1978,6 @@ namespace rectilinear {
 #endif
 	return;
       }
-      seen.insert(baseCombination);
 
       // Check that baseCombination does not belong to another time:
       std::vector<int> baseCombinationDistances;
@@ -1913,7 +1999,7 @@ namespace rectilinear {
       }
 
       // All OK! Precompute:
-      precomputeOn(baseCombination, writer);
+      precomputeOn(baseCombination, writer, seen);
       return;
     }
 
@@ -1963,8 +2049,8 @@ namespace rectilinear {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
       std::vector<Brick> bricks;
-      std::set<Combination> seen;
-      distances.push_back(maxDist); // Last dist is alway max dist!
+      CombinationResultsMap seen;
+      distances.push_back(maxDist); // Last dist is max dist
       precomputeForPlacements(distances, bricks, writer, seen);
       distances.pop_back();
 

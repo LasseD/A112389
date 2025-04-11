@@ -18,10 +18,6 @@ int getInt(char *argv) {
 }
 
 /*
-  TODO: Attempt to improve Precomputation performance by:
-  - Use baseGenerator that flips isVertical on all bricks of base, skip if colission or seen.
-   - Use in CombinationBuilder.buildSplit()
-
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
   Let the base brick be the first "BFS Wave" or "wave"
@@ -114,7 +110,7 @@ int runStandardConstruction(int argc, char** argv) {
     }
   }
   else {
-    std::cerr << "Parameters: SIZE [MAx_TOKEN]" << std::endl;
+    std::cerr << "Parameters: SIZE [MAX_TOKEN]" << std::endl;
     return 1;
   }
 

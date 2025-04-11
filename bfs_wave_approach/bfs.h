@@ -13,8 +13,8 @@
 
 #ifdef LEMMAS
 // Larger PLANE size due to constructing from multiple starting points:
-#define PLANE_MID 64
-#define PLANE_WIDTH 128
+#define PLANE_MID 100
+#define PLANE_WIDTH 200
 #else
 #define PLANE_MID 32
 #define PLANE_WIDTH 64
@@ -131,6 +131,8 @@ namespace rectilinear {
     void copy(const Combination &b);
     void rotate90();
     void rotate180();
+    void mirrorX();
+    void mirrorY();
 
     void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
     bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
@@ -305,22 +307,30 @@ namespace rectilinear {
     bool next(ReportMap &m);
   };
 
+  typedef std::map<Combination,CountsMap> CombinationResultsMap;
+
   class Lemma3 {
     int n, base;
     CountsMap counts;
     BrickPlane neighbours[MAX_BRICKS];
     CountsMap crossCheck, noInterceptionsMap;
+    uint64_t interceptionSkips, mirrorSkips;
 
   public:
     Lemma3(int n, int base);
     void precompute(int maxDist);
 
   private:
-    void precomputeOn(const Combination &baseCombination, BitWriter &writer);
+    void checkMirrorSymmetries(const Combination &baseCombination,
+			       const CombinationResultsMap &seen,
+			       CountsMap &cm);
+    void precomputeOn(const Combination &baseCombination,
+		      BitWriter &writer,
+		      CombinationResultsMap &seen);
     void precomputeForPlacements(const std::vector<int> &distances,
 				 std::vector<Brick> &bricks,
 				 BitWriter &writer,
-				 std::set<Combination> &seen);
+				 CombinationResultsMap &seen);
     void precompute(std::vector<int> &distances, BitWriter &writer, int maxDist);
   };
 }
