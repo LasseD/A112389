@@ -561,6 +561,19 @@ namespace rectilinear {
     cy /= layerSizes[layer];
   }
 
+  bool Combination::createMaxCombination(int n, char *argv, Combination &maxCombination) {
+    char c;
+    maxCombination.size = 0;
+    maxCombination.height = 0;
+    for(int i = 0; (c = argv[i]); i++) {
+      maxCombination.layerSizes[i] = c-'0';
+      maxCombination.height++;
+      maxCombination.size += maxCombination.layerSizes[i];
+    }
+
+    return maxCombination.size == n; // Mismatch bewteen n and size!
+  }
+
   bool Combination::isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::isLayerSymmetric()");
@@ -886,22 +899,22 @@ namespace rectilinear {
 					 const uint8_t waveSize,
 					 const uint8_t maxSize,
 					 BrickPlane *neighbours,
-					 uint8_t *maxLayerSizes,
+					 Combination const * maxCombination,
 					 bool isFirstBuilder) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxLayerSizes(maxLayerSizes), isFirstBuilder(isFirstBuilder) {
+    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxCombination(maxCombination), isFirstBuilder(isFirstBuilder) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::FAST");
 #endif
   }
 
   CombinationBuilder::CombinationBuilder(const CombinationBuilder& b) :
-    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), neighbours(b.neighbours), maxLayerSizes(b.maxLayerSizes), isFirstBuilder(b.isFirstBuilder) {
+    baseCombination(b.baseCombination), waveStart(b.waveStart), waveSize(b.waveSize), maxSize(b.maxSize), neighbours(b.neighbours), maxCombination(b.maxCombination), isFirstBuilder(b.isFirstBuilder) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(CombinationBuilder&)");
 #endif
   }
 
-  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), neighbours(NULL), maxLayerSizes(NULL), isFirstBuilder(false) {
+  CombinationBuilder::CombinationBuilder() : waveStart(0), waveSize(0), maxSize(0), neighbours(NULL), maxCombination(NULL), isFirstBuilder(false) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()");
 #endif
@@ -921,16 +934,12 @@ namespace rectilinear {
 	if(layer2 < 0)
 	  continue; // Do not allow building below base layer
 #ifdef REFINEMENT
-	if(baseCombination.layerSizes[layer2] == maxLayerSizes[layer2])
-	  continue; // Already at maximum allowed for layer!
-#endif
-#ifdef MAXHEIGHT
-	if(layer2 >= MAX_HEIGHT)
-	  continue;
+	if(layer2 >= maxCombination->height || baseCombination.layerSizes[layer2] == maxCombination->layerSizes[layer2])
+	  continue; // Already at maximum allowed for layer
 #endif
 #ifdef LEMMAS
 	if(layer2 == 0)
-	  continue;
+	  continue; // Do not build on base layer for lemmas
 #endif
 
 	// Add crossing bricks (one vertical, one horizontal):
@@ -1006,8 +1015,8 @@ namespace rectilinear {
       Speed up if model cannot be made symmetric
       when placing all leftToPlace bricks.
     */
-    for(uint8_t i = 0; maxLayerSizes[i] > 0; i++) {
-      uint8_t diff = maxLayerSizes[i] - baseCombination.layerSizes[i];
+    for(uint8_t i = 0; maxCombination->layerSizes[i] > 0; i++) {
+      uint8_t diff = maxCombination->layerSizes[i] - baseCombination.layerSizes[i];
       if(diff == 0) {
 	// Full layer: Check if can be symmetric:
 	if(fullLayers == 0) {
@@ -1102,7 +1111,7 @@ namespace rectilinear {
 #ifdef REFINEMENT
     int cntNonFullLayers = 0;
     for(int i = 0; i < MAX_BRICKS; i++) {
-      if(maxLayerSizes[i] > baseCombination.layerSizes[i])
+      if(maxCombination->layerSizes[i] > baseCombination.layerSizes[i])
 	cntNonFullLayers++;
     }
     bool checkedLayers[MAX_BRICKS];
@@ -1113,7 +1122,7 @@ namespace rectilinear {
       uint8_t layer = lb.LAYER;
       if(checkedLayers[layer])
 	continue;
-      if(maxLayerSizes[layer] > baseCombination.layerSizes[layer]) {
+      if(maxCombination->layerSizes[layer] > baseCombination.layerSizes[layer]) {
 	checkedLayers[layer] = true;
 	cntNonFullLayers--;
       }
@@ -1134,7 +1143,7 @@ namespace rectilinear {
       for(uint8_t i = 0; i < leftToPlace; i++) {
 #ifdef REFINEMENT
 	// Check if layer is already full:
-	if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
+	if(baseCombination.layerSizes[bricks[i].LAYER] == maxCombination->layerSizes[bricks[i].LAYER]) {
 	  ok = false;
 	  for(uint8_t j = 0; j < i; j++)
 	    baseCombination.removeLastBrick();
@@ -1228,9 +1237,9 @@ namespace rectilinear {
 #endif
 #ifdef REFINEMENT
     for(uint8_t i = 0; i < baseCombination.height; i++) {
-      if(maxLayerSizes[i] < baseCombination.layerSizes[i]) {
+      if(maxCombination->layerSizes[i] < baseCombination.layerSizes[i]) {
 #ifdef TRACE
-	std::cout << "Initial picker has picked too much!: " << (int)maxLayerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
+	std::cout << "Initial picker has picked too much!: " << (int)maxCombination->layerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
 #endif
 	return; // In case initial picker picks too much
       }
@@ -1248,7 +1257,7 @@ namespace rectilinear {
 #ifdef REFINEMENT
     int cntDoneLayers = 0;
     for(uint8_t i = 0; i < MAX_BRICKS; i++) {
-      if(maxLayerSizes[i] == baseCombination.layerSizes[i])
+      if(maxCombination->layerSizes[i] == baseCombination.layerSizes[i])
 	cntDoneLayers++;
     }
     if(cntDoneLayers <= 1)
@@ -1260,7 +1269,7 @@ namespace rectilinear {
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
       // Pick toPick from neighbours:
       BrickPicker picker(v, 0, toPick, bricks, 0);
-      
+
       while(picker.next()) {
 #ifdef REFINEMENT
 	bool ok = true;
@@ -1268,7 +1277,7 @@ namespace rectilinear {
 	for(uint8_t i = 0; i < toPick; i++) {
 #ifdef REFINEMENT
 	  // Check if layer is already full:
-	  if(baseCombination.layerSizes[bricks[i].LAYER] == maxLayerSizes[bricks[i].LAYER]) {
+	  if(baseCombination.layerSizes[bricks[i].LAYER] == maxCombination->layerSizes[bricks[i].LAYER]) {
 	    ok = false;
 	    for(uint8_t j = 0; j < i; j++)
 	      baseCombination.removeLastBrick();
@@ -1301,7 +1310,7 @@ namespace rectilinear {
 	}
 #endif
 
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxLayerSizes, false);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxCombination, false);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
 
@@ -1324,14 +1333,14 @@ namespace rectilinear {
  					       const uint16_t waveStart,
  					       const uint16_t maxSize,
 					       BrickPlane *neighbours,
-					       uint8_t *maxLayerSizes,
+					       Combination const * maxCombination,
  					       MultiLayerBrickPicker *picker,
 					       int threadIndex) : picker(picker) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
 
-    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxLayerSizes, true);
+    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxCombination, true);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -1412,7 +1421,7 @@ namespace rectilinear {
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, &neighbourCache[i*MAX_BRICKS], maxLayerSizes, &picker, i);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, &neighbourCache[i*MAX_BRICKS], maxCombination, &picker, i);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
@@ -1706,13 +1715,11 @@ namespace rectilinear {
     if(base % 4 == 0)
       c.symmetric90 = readUInt8();
   }
-  BitReader::BitReader(uint8_t base, int n, int D, bool skipIfOtherIsN, int other) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
-    if(skipIfOtherIsN && other == n) {
-      istream = NULL;
-      return;
-    }
+  BitReader::BitReader(uint8_t base, int n, int token, int D) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
     std::stringstream ss;
-    ss << "base_" << (int)base << "_size_" << (int)n << "/d" << (int)D << ".bin";
+    ss << "base_" << (int)base << "_size_" << (int)n;
+    ss << "_refinement_" << Combination::reverseToken(token);
+    ss << "/d" << (int)D << ".bin";
     std::string fileName = ss.str();
     istream = new std::ifstream(fileName.c_str(), std::ios::binary);
     bool firstBit = readBit();
@@ -1725,9 +1732,7 @@ namespace rectilinear {
       delete istream;
     }
   }
-  bool BitReader::next(ReportMap &m) {
-    if(istream == NULL)
-      return true; // Skip
+  bool BitReader::next(std::vector<Report> &v) {
     Report r;
     r.baseSymmetric180 = readBit();
     r.baseSymmetric90 = (base % 4 == 0) && readBit();
@@ -1774,13 +1779,11 @@ namespace rectilinear {
       }
       lines++;
       assert(r.counts.all > 0);
-      if(m.find(token) == m.end())
-	m[token] = std::vector<Report>();
-      m[token].push_back(r);
+      v.push_back(r);
     }
   }
 
-  Lemma3::Lemma3(int n, int base): n(n), base(base), interceptionSkips(0), mirrorSkips(0) {
+  Lemma3::Lemma3(int n, int base, Combination const * maxCombination): n(n), base(base), interceptionSkips(0), mirrorSkips(0), maxCombination(maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
@@ -1789,6 +1792,11 @@ namespace rectilinear {
     assert(n <= MAX_BRICKS);
     for(uint8_t i = 0; i < MAX_BRICKS; i++)
       neighbours[i].unsetAll();
+    shouldSplit = n - base > 3;
+    if(maxCombination != NULL) {
+      if(maxCombination->height == 2)
+	shouldSplit = false;
+    }
   }
 
   void Lemma3::precompute(int maxDist) {
@@ -1798,7 +1806,13 @@ namespace rectilinear {
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
       
-      std::stringstream ss; ss << "base_" << base << "_size_" << n << "/d" << d << ".bin";
+      std::stringstream ss; ss << "base_" << base << "_size_" << n;
+      if(maxCombination != NULL) {
+	ss << "_refinement_";
+	for(uint8_t i = 0; i < maxCombination->height; i++)
+	  ss << (int)maxCombination->layerSizes[i];
+      }
+      ss << "/d" << d << ".bin";
       std::string fileName = ss.str();
       
       std::ifstream istream(fileName.c_str());
@@ -1867,10 +1881,10 @@ namespace rectilinear {
       // cm already set!
     }
     else if(anyInterceptions || noInterceptionsMap.empty()) {
-      if(n - base > 3)
+      if(shouldSplit)
 	std::cout << " Precomputing on " << baseCombination << std::endl;
-      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, NULL, true);
-      if(n - base > 3)
+      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, maxCombination, true);
+      if(shouldSplit)
 	builder.buildSplit();
       else
 	builder.build();

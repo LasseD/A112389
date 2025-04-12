@@ -18,6 +18,18 @@ int getInt(char *argv) {
 }
 
 /*
+  Optimization:
+  - Move precomputeForPlacements and up into thread handler:
+  - Have ThreadEnablingBuilder handle last part of iteration:
+   - MultiLayerBrickPicker -> BasePicker
+    - Have own CombinationResultsMap resultsMap
+    - next() => nextBase()
+     - Clear counts on builder
+     - Check with L3 if base ok
+     - Mark as "extra from base" if using base that is not ready yet
+     - Use "extra from base" when summing up
+      - "report_mutex" in picker
+  
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
   Let the base brick be the first "BFS Wave" or "wave"
@@ -49,85 +61,83 @@ int getInt(char *argv) {
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
 */
 int runLemma2or3(int argc, char** argv) {
-  if(argc == 3 || argc == 4) {
-    int base = getInt(argv[1]);
-    int n = getInt(argv[2]);
-    if(n <= base || n > MAX_BRICKS || base > MAX_LAYER_SIZE) {
-      std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between BASE+1 and " << MAX_BRICKS << std::endl;
-      return 1;
-    }
-
-    if(base == 2) {
-      if(argc == 4) {
-	std::cerr << "Parameter MAX_DIST should be used for base 3!" << std::endl;
-	return 1;
-      }
-      Lemma2 lemma2(n);
-      lemma2.computeOnBase2();
-    }
-    else {
-      if(argc == 3) {
-	std::cerr << "Parameter MAX_DIST should be used for base 3!" << std::endl;
-	return 1;
-      }
-      int maxDist = getInt(argv[3]);
-      std::cout << "Precomputing for base " << base << " up to size " << n << " and up to distance of " << maxDist << std::endl;
-      Lemma3 lemma3(n, base);
-      lemma3.precompute(maxDist);
-    }
-    return 0;
-  }
-  else {
-    std::cerr << "Usage: BASE SIZE_TOTAL [MAX_DIST] to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>" << std::endl;
+  if(argc < 3) {
+    std::cerr << "Usage: BASE SIZE_TOTAL [REFINEMENT] [MAX_DIST] to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
     return 1;
   }
+
+  int base = getInt(argv[1]);
+  int n = getInt(argv[2]);
+  if(n <= base || n > MAX_BRICKS || base > MAX_LAYER_SIZE) {
+    std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between BASE+1 and " << MAX_BRICKS << std::endl;
+    return 3;
+  }
+
+  if(base == 2) {
+    if(argc != 3) {
+      std::cerr << "For base 2, please only provide SIZE_TOTAL as additional parameter." << std::endl;
+      return 4;
+    }
+    Lemma2 lemma2(n);
+    lemma2.computeOnBase2();
+  }
+  else {
+    Combination maxCombination;
+    bool useMaxCombination = false;
+    int requiredArgs = 4;
+#ifdef REFINEMENT
+    useMaxCombination = true;
+    requiredArgs = 5;
+#endif
+    if(argc != requiredArgs) {
+      std::cerr << "Invalid number of parameters for base 3!" << std::endl;
+      return 4;
+    }
+    if(!Combination::createMaxCombination(n, argv[3], maxCombination)) {
+      std::cerr << "Unable to interpret parameter REFINEMENT" << std::endl;
+      return 5;
+    }
+
+    int maxDist = getInt(argv[requiredArgs-1]);
+    std::cout << "Precomputing for base " << base << " up to size " << n << " and up to distance of " << maxDist << std::endl;
+    Lemma3 lemma3(n, base, useMaxCombination ? &maxCombination : NULL);
+    lemma3.precompute(maxDist);
+  }
+  return 0;
 }
 
 int runStandardConstruction(int argc, char** argv) {
   char c;
   int sum = 0;
 
-  uint8_t *maxLayerSizes = NULL;
-  if(argc == 2) {
+  Combination maxCombination;
+  bool useMaxCombination = false;
+  if(argc <= 2) {
 #ifdef REFINEMENT
     std::cerr << "-DREFINEMENT compilation flag used. Program must be run with MAX_TOKEN!" << std::endl;
     return 4;
 #endif
   }
-  else if(argc == 3) {
-#ifndef REFINEMENT
-    std::cerr << "-DREFINEMENT compilation flag missing when using MAX_TOKEN!" << std::endl;
-    return 3;
-#endif
-    sum = 0;
-    maxLayerSizes = new uint8_t(MAX_BRICKS);
-    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
-      maxLayerSizes[i] = 0;
-    }
-    for(uint8_t i = 0; (c = argv[2][i]); i++) {
-      maxLayerSizes[i] = c - '0';
-      sum += maxLayerSizes[i];
-    }
-  }
-  else {
-    std::cerr << "Parameters: SIZE [MAX_TOKEN]" << std::endl;
-    return 1;
-  }
-
   int n = getInt(argv[1]);
 
-  if(argc == 3 && sum != n) {
-    std::cerr << "MAX_TOKEN does not match SIZE!" << std::endl;
-    return 2;
+#ifndef REFINEMENT
+  if(argc != 3) {
+    std::cerr << "-DREFINEMENT compilation flag missing when using MAX_TOKEN!" << std::endl;
+    return 3;
   }
+
+  if(!Combination::createMaxCombination(n, argv[2], maxCombination)) {
+    std::cerr << "Unable to interpret parameter MAX_TOKEN" << std::endl;
+    return 5;
+  }
+#endif
 
   BrickPlane neighbours[MAX_BRICKS];
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
     neighbours[i].unsetAll();
 
-  std::cout << "Building models for size " << n << std::endl;
   Combination combination;
-  CombinationBuilder b(combination, 0, 1, n, neighbours, maxLayerSizes, true);
+  CombinationBuilder b(combination, 0, 1, n, neighbours, &maxCombination, true);
   b.buildSplit();
   b.report();
 
@@ -179,118 +189,71 @@ int runSumPrecomputations(int argc, char** argv) {
     std::cerr << "This is for handling the precomputations. Usage: LEFT BASE RIGHT MAX_DIST" << std::endl;
     return 3;
   }
-  int left = getInt(argv[1]);
+  int leftToken = getInt(argv[1]);
   int base = getInt(argv[2]);
-  int right = getInt(argv[3]);
+  int rightToken = getInt(argv[3]);
   int maxDist = getInt(argv[4]);
-  int size = left + base + right;
-  std::cout << std::endl << " Tokens of size " << size << " left-base-right: " <<  left << " " <<  base << " " << right << " for distance 2 to " << maxDist << std::endl;
-
-  CountsMap m;
+  
+  int leftSize = Combination::sizeOfToken(leftToken);
+  int rightSize = Combination::sizeOfToken(rightToken);
+  leftToken = leftToken * 10 + base;
+  int token = leftToken;
+  {
+    int tk = rightToken;
+    while(tk > 0) {
+      token = 10 * token + tk % 10;
+      tk /= 10;
+    }
+  }
+  
+  rightToken = Combination::reverseToken(rightToken) * 10 + base;
+  
+  Counts counts;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
-    BitReader reader1(base, left+base, D, false, 0);
-    BitReader reader2(base, right+base, D, true, left+base);
-    ReportMap rm;
+    BitReader reader1(base, leftSize + base, leftToken, D);
+    BitReader reader2(base, rightSize + base, rightToken, D);
 
-    while(reader1.next(rm) && reader2.next(rm)) {
+    std::vector<Report> l, r;
+
+    while(reader1.next(l) && reader2.next(r)) {
       bool bs180, bs90;
 
-      // Mix of all tokens:
-      for(ReportMap::const_iterator itA = rm.begin(); itA != rm.end(); itA++) {
-	const uint64_t token1 = itA->first;
-	for(ReportMap::const_iterator itB = rm.begin(); itB != rm.end(); itB++) {
-	  const uint64_t token2 = itB->first;
-
-	  Counts c;
-	  // Match all connectivities:
-	  for(std::vector<Report>::const_iterator it1 = itA->second.begin(); it1 != itA->second.end(); it1++) {
-	    const Report &report1 = *it1;
-	    bs180 = report1.baseSymmetric180;
-	    bs90 = report1.baseSymmetric90;
-	    for(std::vector<Report>::const_iterator it2 = itB->second.begin(); it2 != itB->second.end(); it2++) {
-	      const Report &report2 = *it2;
-	      assert(bs180 == report2.baseSymmetric180);
-	      assert(bs90 == report2.baseSymmetric90);
-	      c += countUp(report1, report2, base);
-	    }
-	  }
-	  if(bs90) {
-	    c.all -= c.symmetric180 + c.symmetric90;
-	    assert(c.symmetric90 % 4 == 0);
-	    c.symmetric90 /= 4;
-	    assert(c.symmetric180 % 2 == 0);
-	    c.symmetric180 /= 2;
-	    assert(c.all % 4 == 0);
-	    c.all = c.all/4 + c.symmetric180 + c.symmetric90;
-	  }
-	  else if(bs180) {	    
-	    c.all -= c.symmetric180;
-	    assert(c.all % 2 == 0);
-	    c.all /= 2;
-	    c.all += c.symmetric180;
-	  }
-	  // Merge tokens:
-	  uint64_t token = 10*token2 + base;
-	  uint64_t stak = token1;
-	  while(stak > 0) {
-	    token = 10 * token + (stak % 10);
-	    stak /= 10;
-	  }
-	  // Count:
-	  if(m.find(token) == m.end())
-	    m[token] = c;
-	  else
-	    m[token] += c;
-	} // for rm -> token2
-
-	// Single sided counting for cross checking:
-	Counts c;
-	for(std::vector<Report>::const_iterator it1 = itA->second.begin(); it1 != itA->second.end(); it1++) {
-	  const Report &report = *it1;
-	  bool connected = true;
-	  for(int i = 0; i < base-1; i++) {
-	    if(report.colors[i] != 0) {
-	      connected = false;
-	      break;
-	    }
-	  }
-	  if(!connected)
-	    continue;
-	  c += report.counts;
+      Counts c;
+      // Match all connectivities:
+      for(std::vector<Report>::const_iterator it1 = l.begin(); it1 != l.end(); it1++) {
+	const Report &report1 = *it1;
+	bs180 = report1.baseSymmetric180;
+	bs90 = report1.baseSymmetric90;
+	for(std::vector<Report>::const_iterator it2 = r.begin(); it2 != r.end(); it2++) {
+	  const Report &report2 = *it2;
+	  assert(bs180 == report2.baseSymmetric180);
+	  assert(bs90 == report2.baseSymmetric90);
+	  c += countUp(report1, report2, base);
 	}
-	if(bs90) {
-	  c.all -= c.symmetric180 + c.symmetric90;
-	  assert(c.symmetric90 % 4 == 0);
-	  c.symmetric90 /= 4;
-	  assert(c.symmetric180 % 2 == 0);
-	  c.symmetric180 /= 2;
-	  assert(c.all % 4 == 0);
-	  c.all = c.all/4 + c.symmetric180 + c.symmetric90;
-	}
-	else if(bs180) {
-	  c.all -= c.symmetric180;
-	  assert(c.all % 2 == 0);
-	  c.all /= 2;
-	  c.all += c.symmetric180;
-	}
-	// Count:
-	uint64_t token = 10*token1 + base;
-	if(m.find(token) == m.end())
-	  m[token] = c;
-	else
-	  m[token] += c;
-      } // for rm -> token1
-      rm.clear();
+      }
+      if(bs90) {
+	c.all -= c.symmetric180 + c.symmetric90;
+	assert(c.symmetric90 % 4 == 0);
+	c.symmetric90 /= 4;
+	assert(c.symmetric180 % 2 == 0);
+	c.symmetric180 /= 2;
+	assert(c.all % 4 == 0);
+	c.all = c.all/4 + c.symmetric180 + c.symmetric90;
+      }
+      else if(bs180) {	    
+	c.all -= c.symmetric180;
+	assert(c.all % 2 == 0);
+	c.all /= 2;
+	c.all += c.symmetric180;
+      }
+      counts += c;
+      l.clear();
+      r.clear();
     } // while(reader1.next(rm) && reader2.next(rm))
   } // for d = 2 .. maxDist
 
-  std::cout << "Counts:" << std::endl;
-  for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
-    uint64_t token = it->first;
-    Counts c = it->second;
-    std::cout << " <" << token << ">: " << c << std::endl;
-  }
+  std::cout << "<" << token << "> " << counts << std::endl;
   
   return 0;
 }

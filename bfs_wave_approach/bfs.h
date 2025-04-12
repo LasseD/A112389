@@ -152,6 +152,7 @@ namespace rectilinear {
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
     static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
+    static bool createMaxCombination(int n, char *argv, Combination &maxCombination);
   };
 
   class BrickPicker {
@@ -187,7 +188,7 @@ namespace rectilinear {
     Combination baseCombination;
     uint8_t waveStart, waveSize, maxSize;
     BrickPlane *neighbours;
-    uint8_t *maxLayerSizes;
+    Combination const * maxCombination;
     bool isFirstBuilder;
   public:
     CountsMap counts;
@@ -197,7 +198,7 @@ namespace rectilinear {
 		       const uint8_t waveSize,
 		       const uint8_t maxSize,
 		       BrickPlane *neighbours,
-		       uint8_t *maxLayerSizes,
+		       Combination const * maxCombination,
 		       bool isFirstBuilder);
 
     CombinationBuilder(const CombinationBuilder& b);
@@ -225,13 +226,16 @@ namespace rectilinear {
     CombinationBuilder b;
 
     ThreadEnablingBuilder();
+
     ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
+
     ThreadEnablingBuilder(Combination &c,
  			  const uint16_t waveStart,
  			  const uint16_t maxSize,
 			  BrickPlane *neighbours,
-			  uint8_t *maxLayerSizes,
- 			  MultiLayerBrickPicker *picker, int threadIndex);
+			  Combination const * maxCombination,
+ 			  MultiLayerBrickPicker *picker,
+			  int threadIndex);
     void build();
   };
 
@@ -304,9 +308,9 @@ namespace rectilinear {
     uint64_t readUInt64();
     void readCounts(Counts &c);
   public:
-    BitReader(uint8_t base, int n, int D, bool skipIfOtherIsN, int other);
+    BitReader(uint8_t base, int n, int token, int D);
     ~BitReader();
-    bool next(ReportMap &m);
+    bool next(std::vector<Report> &v);
   };
 
   typedef std::map<Combination,CountsMap> CombinationResultsMap;
@@ -315,11 +319,13 @@ namespace rectilinear {
     int n, base;
     CountsMap counts;
     BrickPlane neighbours[MAX_BRICKS];
+    Combination const * maxCombination;
+    bool shouldSplit;
     CountsMap crossCheck, noInterceptionsMap;
     uint64_t interceptionSkips, mirrorSkips;
 
   public:
-    Lemma3(int n, int base);
+    Lemma3(int n, int base, Combination const * maxCombination);
     void precompute(int maxDist);
 
   private:
