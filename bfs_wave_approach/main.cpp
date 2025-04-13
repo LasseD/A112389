@@ -9,23 +9,38 @@ using namespace rectilinear;
   InvocationMap *invocationCounts;
 #endif
 
-int getInt(char *argv) {
+uint64_t get(char *argv) {
   char c;
-  int ret = 0;
-  for(int i = 0; (c = argv[i]); i++)
+  uint64_t ret = 0;
+  for(int i = 0; (c = argv[i]); i++) {
+    if(i > 63) {
+      std::cerr << "Unable to read parameter!" << std::endl;
+      assert(false);
+      return 0;
+    }
     ret = 10 * ret + (c-'0');
+  }
   return ret;
 }
 
 /*
-  Optimization:
+  Optimizations:
+  1) Update canReach to take maxRefinement into account
+  2) Get rid of LEMMAS compilation flag to simplify code
+  3)
+  - Create BaseBuilder(distance) with methods:
+   - nextBase (sync)
+    - Use cache to check for rotational symmetries and mirror symmetries
+    - Reserve a base (see below)
+   - writeResults (sync)
+  - Have Lemma3 use BaseBuilder
+  
   - Move precomputeForPlacements and up into thread handler:
   - Have ThreadEnablingBuilder handle last part of iteration:
    - MultiLayerBrickPicker -> BasePicker
     - Have own CombinationResultsMap resultsMap
     - next() => nextBase()
      - Clear counts on builder
-     - Check with L3 if base ok
      - Mark as "extra from base" if using base that is not ready yet
      - Use "extra from base" when summing up
       - "report_mutex" in picker
@@ -60,93 +75,6 @@ int getInt(char *argv) {
    Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
 */
-int runLemma2or3(int argc, char** argv) {
-  if(argc < 3) {
-    std::cerr << "Usage: BASE SIZE_TOTAL [REFINEMENT] [MAX_DIST] to build on BASE bricks. Results are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
-    return 1;
-  }
-
-  int base = getInt(argv[1]);
-  int n = getInt(argv[2]);
-  if(n <= base || n > MAX_BRICKS || base > MAX_LAYER_SIZE) {
-    std::cerr << "Invalid parameter! SIZE_TOTAL=" << n << ", should be between BASE+1 and " << MAX_BRICKS << std::endl;
-    return 3;
-  }
-
-  if(base == 2) {
-    if(argc != 3) {
-      std::cerr << "For base 2, please only provide SIZE_TOTAL as additional parameter." << std::endl;
-      return 4;
-    }
-    Lemma2 lemma2(n);
-    lemma2.computeOnBase2();
-  }
-  else {
-    Combination maxCombination;
-    bool useMaxCombination = false;
-    int requiredArgs = 4;
-#ifdef REFINEMENT
-    useMaxCombination = true;
-    requiredArgs = 5;
-#endif
-    if(argc != requiredArgs) {
-      std::cerr << "Invalid number of parameters for base 3!" << std::endl;
-      return 4;
-    }
-    if(!Combination::createMaxCombination(n, argv[3], maxCombination)) {
-      std::cerr << "Unable to interpret parameter REFINEMENT" << std::endl;
-      return 5;
-    }
-
-    int maxDist = getInt(argv[requiredArgs-1]);
-    std::cout << "Precomputing for base " << base << " up to size " << n << " and up to distance of " << maxDist << std::endl;
-    Lemma3 lemma3(n, base, useMaxCombination ? &maxCombination : NULL);
-    lemma3.precompute(maxDist);
-  }
-  return 0;
-}
-
-int runStandardConstruction(int argc, char** argv) {
-  char c;
-  int sum = 0;
-
-  Combination maxCombination;
-  bool useMaxCombination = false;
-  if(argc <= 2) {
-#ifdef REFINEMENT
-    std::cerr << "-DREFINEMENT compilation flag used. Program must be run with MAX_TOKEN!" << std::endl;
-    return 4;
-#endif
-  }
-  int n = getInt(argv[1]);
-
-#ifndef REFINEMENT
-  if(argc != 3) {
-    std::cerr << "-DREFINEMENT compilation flag missing when using MAX_TOKEN!" << std::endl;
-    return 3;
-  }
-
-  if(!Combination::createMaxCombination(n, argv[2], maxCombination)) {
-    std::cerr << "Unable to interpret parameter MAX_TOKEN" << std::endl;
-    return 5;
-  }
-#endif
-
-  BrickPlane neighbours[MAX_BRICKS];
-  for(uint8_t i = 0; i < MAX_BRICKS; i++)
-    neighbours[i].unsetAll();
-
-  Combination combination;
-  CombinationBuilder b(combination, 0, 1, n, neighbours, &maxCombination, true);
-  b.buildSplit();
-  b.report();
-
-#ifdef PROFILING
-  Profiler::reportInvocations();
-#endif
-  return 0;
-}
-
 bool connected(const Report &a, const Report &b, int base) {
   int ret = 1;
   bool c[MAX_LAYER_SIZE];
@@ -189,10 +117,10 @@ int runSumPrecomputations(int argc, char** argv) {
     std::cerr << "This is for handling the precomputations. Usage: LEFT BASE RIGHT MAX_DIST" << std::endl;
     return 3;
   }
-  int leftToken = getInt(argv[1]);
-  int base = getInt(argv[2]);
-  int rightToken = getInt(argv[3]);
-  int maxDist = getInt(argv[4]);
+  int leftToken = get(argv[1]);
+  int base = get(argv[2]);
+  int rightToken = get(argv[3]);
+  int maxDist = get(argv[4]);
   
   int leftSize = Combination::sizeOfToken(leftToken);
   int rightSize = Combination::sizeOfToken(rightToken);
@@ -259,13 +187,50 @@ int runSumPrecomputations(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
-#ifdef LEMMAS
-  return runLemma2or3(argc, argv);
-#else
-#ifdef SUMS
-  return runSumPrecomputations(argc, argv);
-#else
-  return runStandardConstruction(argc, argv);
+#ifndef SUMS
+  if(!(argc == 2 || argc == 3)) {
+    std::cerr << "Usage: REFINEMENT [MAX_DIST]. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
+    return 1;
+  }
+
+  uint64_t token = get(argv[1]);
+  Combination maxCombination;
+  Combination::getLayerSizesFromToken(token, maxCombination.layerSizes);
+  maxCombination.size = Combination::sizeOfToken(token);
+  maxCombination.height = Combination::heightOfToken(token);
+
+  uint8_t base = maxCombination.layerSizes[0];
+  if(maxCombination.size > MAX_BRICKS || base > MAX_LAYER_SIZE) {
+    std::cerr << "Unsupported refinement!" << std::endl;
+    return 3;
+  }
+
+  if(argc == 3) { // Lemma 3:
+    if(base < 2) {
+      std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
+      return 3;
+    }
+    int maxDist = get(argv[2]);
+    std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
+    Lemma3 lemma3(maxCombination.size, base, maxCombination);
+    lemma3.precompute(maxDist);
+  }
+  else { // Normal run for a refinement:
+    BrickPlane neighbours[MAX_BRICKS];
+    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].unsetAll();
+
+    Combination combination;
+    CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, true, false);
+    b.buildSplit();
+    b.report();
+  }
+#ifdef PROFILING
+  Profiler::reportInvocations();
 #endif
+
+  return 0;
+#else
+  return runSumPrecomputations(argc, argv);
 #endif
 }

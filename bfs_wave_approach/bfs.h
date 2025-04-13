@@ -11,14 +11,8 @@
 // At most 9 bricks can then be in a single layer
 #define MAX_LAYER_SIZE 9
 
-#ifdef LEMMAS
-// Larger PLANE size due to constructing from multiple starting points:
 #define PLANE_MID 100
 #define PLANE_WIDTH 200
-#else
-#define PLANE_MID 32
-#define PLANE_WIDTH 64
-#endif
 
 #define BRICK first
 #define LAYER second
@@ -147,12 +141,11 @@ namespace rectilinear {
     int64_t getTokenFromLayerSizes() const;
     void normalize(int &rotated);
     void normalize();
-    bool anyInterceptions(int toAdd) const;
+    bool anyInterceptions(int toAdd, const Combination &maxCombination) const;
     static int reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
     static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
-    static bool createMaxCombination(int n, char *argv, Combination &maxCombination);
   };
 
   class BrickPicker {
@@ -188,8 +181,8 @@ namespace rectilinear {
     Combination baseCombination;
     uint8_t waveStart, waveSize, maxSize;
     BrickPlane *neighbours;
-    Combination const * maxCombination;
-    bool isFirstBuilder;
+    Combination maxCombination;
+    bool isFirstBuilder, encodeConnectivity;
   public:
     CountsMap counts;
 
@@ -198,8 +191,9 @@ namespace rectilinear {
 		       const uint8_t waveSize,
 		       const uint8_t maxSize,
 		       BrickPlane *neighbours,
-		       Combination const * maxCombination,
-		       bool isFirstBuilder);
+		       Combination &maxCombination,
+		       bool isFirstBuilder,
+		       bool encodeConnectivity);
 
     CombinationBuilder(const CombinationBuilder& b);
 
@@ -233,20 +227,11 @@ namespace rectilinear {
  			  const uint16_t waveStart,
  			  const uint16_t maxSize,
 			  BrickPlane *neighbours,
-			  Combination const * maxCombination,
+			  Combination &maxCombination,
  			  MultiLayerBrickPicker *picker,
-			  int threadIndex);
+			  int threadIndex,
+			  bool encodeConnectivity);
     void build();
-  };
-
-  class Lemma2 {
-    int n;
-    CountsMap counts;
-  public:
-    Lemma2(int n);
-    bool computeOnBase2(bool vertical, int16_t dx, int16_t dy, Counts &c, Counts &d);
-    void computeOnBase2();
-    void report() const;
   };
 
   /*
@@ -319,13 +304,13 @@ namespace rectilinear {
     int n, base;
     CountsMap counts;
     BrickPlane neighbours[MAX_BRICKS];
-    Combination const * maxCombination;
+    Combination maxCombination;
     bool shouldSplit;
     CountsMap crossCheck, noInterceptionsMap;
     uint64_t interceptionSkips, mirrorSkips;
 
   public:
-    Lemma3(int n, int base, Combination const * maxCombination);
+    Lemma3(int n, int base, Combination &maxCombination);
     void precompute(int maxDist);
 
   private:
