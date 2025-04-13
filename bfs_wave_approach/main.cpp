@@ -25,9 +25,6 @@ uint64_t get(char *argv) {
 
 /*
   Optimizations:
-  1) Update canReach to take maxRefinement into account
-  2) Get rid of LEMMAS compilation flag to simplify code
-  3)
   - Create BaseBuilder(distance) with methods:
    - nextBase (sync)
     - Use cache to check for rotational symmetries and mirror symmetries
