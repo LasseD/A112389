@@ -171,12 +171,12 @@ namespace rectilinear {
     int toPick;
     LayerBrick bricks[MAX_BRICKS];
     BrickPicker *inner;
-    std::mutex next_mutex;
+    std::mutex nextMutex;
   public:
     MultiLayerBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
     bool next(Combination &c, int &picked);
   };
- 
+
   class CombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize, maxSize;
@@ -231,6 +231,7 @@ namespace rectilinear {
  			  MultiLayerBrickPicker *picker,
 			  int threadIndex,
 			  bool encodeConnectivity);
+
     void build();
   };
 
@@ -299,31 +300,84 @@ namespace rectilinear {
   };
 
   typedef std::map<Combination,CountsMap> CombinationResultsMap;
+  typedef std::map<Combination,Combination> CombinationMap;
+
+  class ICombinationProducer {
+  public:
+    virtual bool nextCombination(Combination &c) = 0;
+    virtual void resetCombination(Combination &c) = 0;
+    virtual ~ICombinationProducer() = default;
+  };
+
+  class Size1InnerBaseBuilder final : public ICombinationProducer {
+    int16_t encoded, d;
+    const int16_t D;
+    Brick b;
+  public:
+    Size1InnerBaseBuilder(int16_t D);
+    bool nextCombination(Combination &c);
+    void resetCombination(Combination &c);
+  };
+
+  class InnerBaseBuilder final : public ICombinationProducer {
+    const int16_t idx;
+    int16_t encoded, d;
+    const int16_t D;
+    ICombinationProducer * inner;
+    Brick b;
+  public:
+    InnerBaseBuilder(int16_t size, const std::vector<int> &distances);
+    ~InnerBaseBuilder();
+    bool nextCombination(Combination &c);
+    void resetCombination(Combination &c);
+  };
+
+  class BaseBuilder {
+    const std::vector<int> distances;
+    ICombinationProducer *innerBuilder;
+    BitWriter &writer;
+    CombinationMap duplicates; // Combination -> Combination
+    CombinationResultsMap resultsMap; // Combination -> Result
+    Combination noInterceptions;
+    std::vector<Combination> bases;
+    std::mutex mutex;
+    bool checkMirrorSymmetries(const Combination &c); // Return true if handled here
+    uint64_t interceptionSkips, mirrorSkips, noSkips;
+  public:
+    BaseBuilder(const std::vector<int> distances, BitWriter &writer);
+    ~BaseBuilder();
+    bool nextBaseToBuildOn(Combination &c, const Combination &maxCombination);
+    void registerCounts(Combination &base, CountsMap counts);
+    void report();
+  };
+
+  class Lemma3Runner {
+    BaseBuilder *baseBuilder;
+    int n;
+    Combination *maxCombination;
+    BrickPlane *neighbours;
+    std::string threadName;
+  public:
+    Lemma3Runner();
+    Lemma3Runner(const Lemma3Runner &b);
+    Lemma3Runner(BaseBuilder *b,
+		 int n,
+		 Combination *maxCombination,
+		 int threadIndex,
+		 BrickPlane *neighbours);
+
+    void run();
+  };
 
   class Lemma3 {
     int n, base;
     CountsMap counts;
-    BrickPlane neighbours[MAX_BRICKS];
     Combination maxCombination;
-    bool shouldSplit;
-    CountsMap crossCheck, noInterceptionsMap;
-    uint64_t interceptionSkips, mirrorSkips;
-
   public:
     Lemma3(int n, int base, Combination &maxCombination);
     void precompute(int maxDist);
-
   private:
-    void checkMirrorSymmetries(const Combination &baseCombination,
-			       const CombinationResultsMap &seen,
-			       CountsMap &cm);
-    void precomputeOn(const Combination &baseCombination,
-		      BitWriter &writer,
-		      CombinationResultsMap &seen);
-    void precomputeForPlacements(const std::vector<int> &distances,
-				 std::vector<Brick> &bricks,
-				 BitWriter &writer,
-				 CombinationResultsMap &seen);
+    void precompute(std::vector<int> &distances, BitWriter &writer);
     void precompute(std::vector<int> &distances, BitWriter &writer, int maxDist);
   };
 }

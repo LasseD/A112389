@@ -69,15 +69,24 @@ namespace rectilinear {
     return Counts(all-c.all, symmetric180-c.symmetric180, symmetric90-c.symmetric90);
   }
   Counts Counts::operator /(const int& v) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Counts::operator /");
+#endif
     assert(all % v == 0);
     assert(symmetric180 % v == 0);
     assert(symmetric90 % v == 0);
     return Counts(all/v, symmetric180/v, symmetric90/v);
   }
   bool Counts::operator ==(const Counts& c) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Counts::operator ==");
+#endif
     return all == c.all && symmetric180 == c.symmetric180 && symmetric90 == c.symmetric90;
   }
   bool Counts::operator !=(const Counts& c) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Counts::operator !=");
+#endif
     return all != c.all || symmetric180 != c.symmetric180 || symmetric90 != c.symmetric90;
   }
   std::ostream& operator << (std::ostream &os,const Counts &c) {
@@ -193,13 +202,19 @@ namespace rectilinear {
     return b.y == cy - y;
   }
   int Brick::dist(const Brick &b) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Brick::operator /");
+#endif
     return ABS(x-b.x) + ABS(y-b.y);
   }
   bool Brick::canIntercept(const Brick &a, const Brick &b, uint8_t toAdd) {
-    if(a.intersects(b))
-      return true;
+#ifdef PROFILING
+    Profiler::countInvocation("Brick::canIntercept()");
+#endif
     if(toAdd == 0)
       return false;
+    if(a.intersects(b))
+      return true;
 
     // Ensure a.isVertical:
     if(!a.isVertical) {
@@ -316,7 +331,7 @@ namespace rectilinear {
   }
 
   bool MultiLayerBrickPicker::next(Combination &c, int &picked) {
-    std::lock_guard<std::mutex> guard(next_mutex);
+    std::lock_guard<std::mutex> guard(nextMutex);
 #ifdef PROFILING
     Profiler::countInvocation("MultiLayerBrickPicker::next()");
 #endif
@@ -524,6 +539,9 @@ namespace rectilinear {
   }
 
   void Combination::mirrorX() {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::mirrorX()");
+#endif
     for(uint8_t i = 0; i < height; i++) {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	Brick &b = bricks[i][j];
@@ -535,6 +553,9 @@ namespace rectilinear {
   }
 
   void Combination::mirrorY() {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::mirrorY()");
+#endif
     for(uint8_t i = 0; i < height; i++) {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	Brick &b = bricks[i][j];
@@ -866,6 +887,9 @@ namespace rectilinear {
   }
 
   bool Combination::anyInterceptions(int toAdd, uint8_t from) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::anyInterceptions(int, uint8_t)");
+#endif
     const uint8_t &S = layerSizes[0];
     if(from == S-1)
       return false;
@@ -877,8 +901,13 @@ namespace rectilinear {
   }
 
   bool Combination::anyInterceptions(int toAdd, const Combination &maxCombination) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::anyInterceptions(int, Combination)");
+#endif
     assert(height == 1);
+    assert(layerSizes[0] > 1);
     assert(layerSizes[0] == maxCombination.layerSizes[0]);
+
     // Find read "toAdd":
     if(maxCombination.height == 2) {
       toAdd = 1; // Only one brick from second layer can intercept.
@@ -1005,9 +1034,9 @@ namespace rectilinear {
 	      neighbours[layer2].set(b);
 	      v.push_back(LayerBrick(b, layer2));
 	    }
-	  }
-	}
-      }
+	  } // for x
+	} // for y
+      } // for layer2
     }
 
     // Cleanup, so that neighbours can be shared by all:
@@ -1105,8 +1134,7 @@ namespace rectilinear {
       if(encodeConnectivity)
 	token = baseCombination.encodeConnectivity(token);
 
-      Counts cx;
-      cx.all++;
+      Counts cx(1,0,0);
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
 	cx.symmetric180++;
 	if(baseCombination.is90Symmetric())
@@ -1204,6 +1232,7 @@ namespace rectilinear {
 	  continue;
 
 	// Optimization: Skip half of constructions in first builder (unless symmetric):
+	// TODO: re-enable
 	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
@@ -1235,6 +1264,9 @@ namespace rectilinear {
   }
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), threadName(b.threadName), b(b.b) {
+#ifdef PROFILING
+    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(copy)");
+#endif
   }
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
@@ -1366,14 +1398,25 @@ namespace rectilinear {
   }
 
   BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::BitWriter()");
+#endif
   }
   BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::BitWriter(copy)");
+#endif
   }
   BitWriter::BitWriter(const std::string &fileName, uint8_t base) : base(base), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0)  {
-    
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::BitWriter(...)");
+#endif
     ostream = new std::ofstream(fileName.c_str(), std::ios::binary);
   }
   BitWriter::~BitWriter() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::~BitWriter()");
+#endif
     // End indicator:
     writeBit(1);
     writeBit(0); // baseSymmetric180
@@ -1381,7 +1424,6 @@ namespace rectilinear {
       writeBit(0); // baseSymmetric90
     for(int i = 0; i < base-1; i++)
       writeColor(0);
-    writeUInt8(0); // Token
     writeUInt32(0); // total
     writeUInt16(0); // symmetric180
     if(base % 4 == 0)
@@ -1399,6 +1441,9 @@ namespace rectilinear {
     delete ostream;
   }
   void BitWriter::writeColor(uint8_t toWrite) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeColor()");
+#endif
     assert(toWrite < 8);
     for(int j = 0; j < 3; j++) {
       writeBit(toWrite & 1);
@@ -1406,6 +1451,9 @@ namespace rectilinear {
     }
   }
   void BitWriter::writeBit(bool bit) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeBit()");
+#endif
     bits = (bits << 1) + (bit ? 1 : 0);
     cntBits++;
     if(cntBits == 8) {
@@ -1414,6 +1462,9 @@ namespace rectilinear {
     }
   }
   void BitWriter::writeCounts(const Counts &c) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeCounts()");
+#endif
     assert(c.all < 4294967295);
     writeUInt32(c.all);
     sumTotal += c.all;
@@ -1431,29 +1482,44 @@ namespace rectilinear {
     lines++;
   }
   void BitWriter::flushBits() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::flushBits()");
+#endif
     while(cntBits > 0) {
       writeBit(0);
     }
   }
   void BitWriter::writeUInt8(uint8_t toWrite) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeUInt8()");
+#endif
     for(int j = 0; j < 8; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt16(uint16_t toWrite) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeUInt16()");
+#endif
     for(int j = 0; j < 16; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt32(uint32_t toWrite) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeUInt32()");
+#endif
     for(int j = 0; j < 32; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt64(uint64_t toWrite) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitWriter::writeUInt64()");
+#endif
     for(int j = 0; j < 64; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
@@ -1461,6 +1527,9 @@ namespace rectilinear {
   }
 
   bool BitReader::readBit() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readBit()");
+#endif
     if(bitIdx == 8) {
       istream->read((char*)&bits, 1);
       bitIdx = 0;
@@ -1470,6 +1539,9 @@ namespace rectilinear {
     return bit;
   }
   uint8_t BitReader::readColor() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readColor()");
+#endif
     uint8_t ret = 0;
     for(int i = 0; i < 3; i++) {
       ret = ret | ((int)readBit() << i);
@@ -1477,6 +1549,9 @@ namespace rectilinear {
     return ret;
   }
   uint8_t BitReader::readUInt8() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readUint8()");
+#endif
     uint8_t ret = 0;
     for(int i = 0; i < 8; i++) {
       ret = ret | ((int)readBit() << i);
@@ -1484,6 +1559,9 @@ namespace rectilinear {
     return ret;
   }
   uint16_t BitReader::readUInt16() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readUint16()");
+#endif
     uint16_t ret = 0;
     for(int i = 0; i < 16; i++) {
       ret = ret | ((int)readBit() << i);
@@ -1491,6 +1569,9 @@ namespace rectilinear {
     return ret;
   }
   uint32_t BitReader::readUInt32() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readUint32()");
+#endif
     uint32_t ret = 0;
     for(int i = 0; i < 32; i++) {
       ret = ret | ((int)readBit() << i);
@@ -1498,6 +1579,9 @@ namespace rectilinear {
     return ret;
   }
   uint64_t BitReader::readUInt64() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readUint64()");
+#endif
     uint64_t ret = 0;
     for(int i = 0; i < 64; i++) {
       ret = ret | ((uint64_t)readBit() << i);
@@ -1505,12 +1589,18 @@ namespace rectilinear {
     return ret;
   }
   void BitReader::readCounts(Counts &c) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::readCounts()");
+#endif
     c.all = readUInt32();
     c.symmetric180 = readUInt16();
     if(base % 4 == 0)
       c.symmetric90 = readUInt8();
   }
   BitReader::BitReader(uint8_t base, int n, int token, int D) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::BitReader()");
+#endif
     std::stringstream ss;
     ss << "base_" << (int)base << "_size_" << (int)n;
     ss << "_refinement_" << Combination::reverseToken(token);
@@ -1522,12 +1612,18 @@ namespace rectilinear {
     std::cout << "  Reader set up for " << fileName << std::endl;
   }
   BitReader::~BitReader() {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::~BitReader()");
+#endif
     if(istream != NULL) {
       istream->close();
       delete istream;
     }
   }
   bool BitReader::next(std::vector<Report> &v) {
+#ifdef PROFILING
+    Profiler::countInvocation("BitReader::next()");
+#endif
     Report r;
     r.baseSymmetric180 = readBit();
     r.baseSymmetric90 = (base % 4 == 0) && readBit();
@@ -1541,7 +1637,6 @@ namespace rectilinear {
       first = false;
       for(int i = 0; i < base-1; i++)
 	r.colors[i] = readColor();
-      uint64_t token = readUInt8();
       r.counts.all = readUInt32();
       sumTotal += r.counts.all;
       r.counts.symmetric180 = readUInt16();
@@ -1550,7 +1645,7 @@ namespace rectilinear {
       if(base % 4 == 0)
 	r.counts.symmetric90 = readUInt8();
       sumSymmetric90 += r.counts.symmetric90;
-      if(token == 0) {
+      if(r.counts.all == 0) {
 	// Cross checks:
 	uint64_t readBase = readUInt64();
 	uint64_t readTotal = readUInt64();
@@ -1578,27 +1673,342 @@ namespace rectilinear {
     }
   }
 
-  Lemma3::Lemma3(int n, int base, Combination &maxCombination): n(n), base(base), interceptionSkips(0), mirrorSkips(0), maxCombination(maxCombination) {
+  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer) {
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::BaseBuilder()");
+#endif
+    int size = (int)distances.size();
+    if(size == 1)
+      innerBuilder = new Size1InnerBaseBuilder(distances[0]);
+    else
+      innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
+  }
+
+  BaseBuilder::~BaseBuilder() {
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::~BaseBuilder()");
+#endif
+    delete innerBuilder;
+  }
+
+  bool BaseBuilder::checkMirrorSymmetries(const Combination &c) {
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::checkMirrorSymmetries()");
+#endif
+    Combination mx(c);
+    mx.mirrorX();
+    if(resultsMap.find(mx) != resultsMap.end()) {
+      duplicates[c] = mx;
+      return true;
+    }
+
+    Combination my(c);
+    my.mirrorY();
+    if(resultsMap.find(my) != resultsMap.end()) {
+      duplicates[c] = my;
+      return true;
+    }
+
+    // We do not mirror in both X and Y, as that is equal to 180 degree rotation.
+    return false;
+  }
+
+  Size1InnerBaseBuilder::Size1InnerBaseBuilder(int16_t D) : encoded(0), d(0), D(D) {
+#ifdef PROFILING
+    Profiler::countInvocation("Size1InnerBaseBuilder::Size1InnerBaseBuilder()");
+#endif
+    assert(D > 0);
+  }
+
+  bool Size1InnerBaseBuilder::nextCombination(Combination &c) {
+#ifdef PROFILING
+    Profiler::countInvocation("Size1InnerBaseBuilder::nextCombination()");
+#endif
+    assert(c.bricks[0][0] == FirstBrick);
+    while(true) {
+      if(encoded == 8 && d == D)
+	return false;
+      if(encoded == 8) {
+	d++;
+	encoded = 0;
+      }
+      bool isVertical = (encoded & 1) == 1;
+      int16_t multX = (encoded & 2) == 2 ? -1 : 1;
+      int16_t multY = (encoded & 4) == 4 ? -1 : 1;
+      b = Brick(isVertical, PLANE_MID + multX * (D-d), PLANE_MID + multY * d);
+      encoded++;
+      if(!FirstBrick.intersects(b)) {
+	resetCombination(c);
+	return true;
+      }
+    }
+  }
+
+  void Size1InnerBaseBuilder::resetCombination(Combination &c) {
+    c.bricks[0][1] = b;
+    c.history[1] = BrickIdentifier(0,1);
+  }
+
+  InnerBaseBuilder::InnerBaseBuilder(int16_t idx, const std::vector<int> &distances) :
+    idx(idx), encoded(8), d(distances[idx]), D(distances[idx]) {
+#ifdef PROFILING
+    Profiler::countInvocation("InnerBaseBuilder::InnerBaseBuilder()");
+#endif
+    assert(idx >= 1);
+    if(idx == 1)
+      inner = new Size1InnerBaseBuilder(distances[0]);
+    else
+      inner = new InnerBaseBuilder(idx-1, distances);
+  }
+
+  InnerBaseBuilder::~InnerBaseBuilder() {
+#ifdef PROFILING
+    Profiler::countInvocation("InnerBaseBuilder::~InnerBaseBuilder()");
+#endif
+    delete inner;
+  }
+
+  bool InnerBaseBuilder::nextCombination(Combination &c) {
+#ifdef PROFILING
+    Profiler::countInvocation("InnerBaseBuilder::nextCombination()");
+#endif
+    while(true) {
+      if(encoded == 8 && d == D) {
+	bool ret = inner->nextCombination(c);
+	if(!ret)
+	  return false;
+	encoded = 0;
+	d = 0;
+      }
+      else if(encoded == 8) {
+	d++;
+	encoded = 0;
+      }
+      bool isVertical = (encoded & 1) == 1;
+      int16_t multX = (encoded & 2) == 2 ? -1 : 1;
+      int16_t multY = (encoded & 4) == 4 ? -1 : 1;
+      b = Brick(isVertical, PLANE_MID + multX * (D-d), PLANE_MID + multY * d);
+      inner->resetCombination(c); // Ensure bricks to compare to
+      encoded++;
+      bool ok = true;
+      for(uint8_t i = 0; i <= idx; i++) {
+	if(c.bricks[0][i].intersects(b)) {
+	  ok = false;
+	  break;
+	}
+      }
+      if(ok) {
+	resetCombination(c);
+	return true;
+      }
+    }
+  }
+
+  void InnerBaseBuilder::resetCombination(Combination &c) {
+    inner->resetCombination(c);
+    c.bricks[0][idx+1] = b;
+    c.history[idx+1] = BrickIdentifier(0,idx+1);
+  }
+
+  bool BaseBuilder::nextBaseToBuildOn(Combination &outCombination, const Combination &maxCombination) {
+    std::lock_guard<std::mutex> guard(mutex);
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::nextBaseToBuildOn()");
+#endif
+    Combination c;
+    uint8_t base = (uint8_t)distances.size() + 1;
+    uint8_t toAdd = maxCombination.size - base;
+    c.size = base;
+    c.layerSizes[0] = base;
+    while(true) {
+      bool ret = innerBuilder->nextCombination(c);
+      if(!ret)
+	return false;
+
+      // Check if already seen:
+      c.normalize();
+      if(resultsMap.find(c) != resultsMap.end()) {
+	continue; // Already seen!
+      }
+      if(duplicates.find(c) != duplicates.end()) {
+	continue; // Already seen!
+      }
+
+      // Check that baseCombination does not belong to another time:
+      bool belongsToAnotherTime = false;
+      std::vector<int> baseCombinationDistances;
+      for(int i = 1; i < base; i++) {
+	int dist = c.bricks[0][i].dist(FirstBrick);
+	baseCombinationDistances.push_back(dist);
+      }
+      std::sort(baseCombinationDistances.begin(), baseCombinationDistances.end());
+      for(int i = 0; i < base-1; i++) {
+	if(baseCombinationDistances[i] != distances[i]) {
+	  belongsToAnotherTime = true;
+	  break;
+	}
+      }
+      if(belongsToAnotherTime) {
+	continue; // Not an actual skip
+      }
+
+      // Check for mirror symemtries:
+      if(checkMirrorSymmetries(c)) {
+	bases.push_back(c);
+	mirrorSkips++;
+	if(mirrorSkips % 1000000 == 0) {
+	  std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+	}
+	continue; // duplicates handled in checkMirrorSymmetries
+      }
+
+      // Check for interceptions
+      bool anyInterceptions = c.anyInterceptions(toAdd, maxCombination);
+      if(!anyInterceptions) {
+	bool anyBefore = noInterceptions.size != 1;
+	if(anyBefore) {
+	  duplicates[c] = noInterceptions;
+	  bases.push_back(c);
+	  interceptionSkips++;
+	  if(interceptionSkips % 1000000 == 0) {
+	    std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+	  }
+	  continue;
+	}
+	else {
+	  noInterceptions = c;
+	  assert(noInterceptions.size != 1);
+	}
+      }
+
+      resultsMap[c] = CountsMap(); // Reserve the entry so that check for "seen" above works.
+      bases.push_back(c);
+      noSkips++;
+      if(noSkips % 1000000 == 0) {
+	std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+      }
+      outCombination = c;
+      return true;
+    }
+  }
+
+  void BaseBuilder::registerCounts(Combination &base, CountsMap counts) {
+    std::lock_guard<std::mutex> guard(mutex);
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::registerCounts()");
+#endif
+    resultsMap[base] = counts;
+  }
+
+  void BaseBuilder::report() {
+#ifdef PROFILING
+    Profiler::countInvocation("BaseBuilder::report()");
+#endif
+    int base = 1 + (int)distances.size();
+    int colors[MAX_LAYER_SIZE];
+    for(std::vector<Combination>::const_iterator it = bases.begin(); it != bases.end(); it++) {
+      Combination c = *it;
+      CombinationMap::const_iterator it2 = duplicates.find(c);
+      if(it2 != duplicates.end()) {
+	c = it2->second; // Loop up using original instead
+      }
+      CountsMap cm = resultsMap[c];
+
+      // Write results:
+      bool baseSymmetric180 = c.is180Symmetric();
+      bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && c.is90Symmetric();
+      writer.writeBit(1); // New batch
+      writer.writeBit(baseSymmetric180);
+      if(base % 4 == 0)
+	writer.writeBit(baseSymmetric90);
+
+      bool any = false;
+      for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
+	if(any)
+	  writer.writeBit(0); // Indicate we are still in same batch
+	any = true;
+	int64_t token = it3->first;
+	for(int i = 0; i < base; i++) {
+	  colors[base-1-i] = token % 10;
+	  token /= 10;
+	}
+	for(int i = 1; i < base; i++)
+	  writer.writeColor(colors[i] - 1);
+	writer.writeCounts(it3->second);
+      }
+    }
+  }
+
+  Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
+				 n(0),
+				 maxCombination(NULL),
+				 neighbours(NULL),
+				 threadName("") {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3Runner::Lemma3Runner()");
+#endif
+  }
+  Lemma3Runner::Lemma3Runner(const Lemma3Runner &b) : baseBuilder(b.baseBuilder),
+						      n(b.n),
+						      maxCombination(b.maxCombination),
+						      neighbours(b.neighbours),
+						      threadName(b.threadName) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3Runner::Lemma3Runner(copy)");
+#endif
+  }
+  Lemma3Runner::Lemma3Runner(BaseBuilder *b,
+			     int n,
+			     Combination *maxCombination,
+			     int threadIndex,
+			     BrickPlane *neighbours) : baseBuilder(b),
+						       n(n),
+						       maxCombination(maxCombination),
+						       neighbours(neighbours) {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3Runner::Lemma3Runner(...)");
+#endif
+    std::string names[26] = {
+      "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
+      "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
+      "Ulla", "Vlad", "Wini", "Xiao", "Yrsa", "Zorg"};
+    threadName = names[threadIndex % 26];
+    if(threadIndex >= 26) {
+      std::stringstream ss; ss << threadName << (threadIndex/26);
+      threadName = ss.str();
+    }
+  }
+
+  void Lemma3Runner::run() {
+#ifdef PROFILING
+    Profiler::countInvocation("Lemma3Runner::run()");
+#endif
+    Combination c;
+    while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
+      if(maxCombination->size - c.size > 3)
+	std::cout << threadName << " builds on " << c << std::endl;
+      CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, true, true);
+      builder.build();
+      baseBuilder->registerCounts(c, builder.counts);
+    }
+  }
+
+  Lemma3::Lemma3(int n, int base, Combination &maxCombination): n(n), base(base), maxCombination(maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
-    assert(base >= 3);
+    assert(base >= 2);
     assert(base < n);
     assert(n <= MAX_BRICKS);
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
-      neighbours[i].unsetAll();
-    shouldSplit = n - base > 3;
-    if(maxCombination.height == 2)
-      shouldSplit = false;
   }
 
   void Lemma3::precompute(int maxDist) {
 #ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute()");
+    Profiler::countInvocation("Lemma3::precompute(int)");
 #endif
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
-      
+
       std::stringstream ss; ss << "base_" << base << "_size_" << n << "_refinement_";
       for(uint8_t i = 0; i < maxCombination.height; i++)
 	ss << (int)maxCombination.layerSizes[i];
@@ -1619,231 +2029,41 @@ namespace rectilinear {
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
-
-    std::cout << " Skips due to no possible overlaps: " << interceptionSkips << ", mirror skips: " << mirrorSkips << std::endl;
-
-    // Cross checks:
-    std::cout << "Cross checks:" << std::endl;
-    for(CountsMap::const_iterator it = crossCheck.begin(); it != crossCheck.end(); it++) {
-      std::cout << " " << it->first << ": " << it->second << std::endl;
-    }
   }
 
-  void Lemma3::checkMirrorSymmetries(const Combination &baseCombination,
-				     const CombinationResultsMap &seen,
-				     CountsMap &cm) {
-    Combination mx(baseCombination);
-    mx.mirrorX();
-    CombinationResultsMap::const_iterator it;
-    if((it = seen.find(mx)) != seen.end()) {
-      cm = it->second;
-      mirrorSkips++;
-      return;
-    }
-
-    Combination my(baseCombination);
-    my.mirrorY();
-    if((it = seen.find(my)) != seen.end()) {
-      cm = it->second;
-      mirrorSkips++;
-      return;
-    }
-
-    // We do not mirror in both X and Y, as that is equal to 180 degree rotation.
-  }
-
-  void Lemma3::precomputeOn(const Combination &baseCombination,
-			    BitWriter &writer,
-			    CombinationResultsMap &seen) {
+  void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer) {
 #ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precomputeOn()");
+    Profiler::countInvocation("Lemma3::precompute(vector, BitWriter)");
 #endif
-    CountsMap cm;
+    BaseBuilder baseBuilder(distances, writer);
 
-    // Optimization: Mirror symmetries:
-    checkMirrorSymmetries(baseCombination, seen, cm);
-    bool anyMirrorSymmetries = !cm.empty();
+    int processorCount = std::thread::hardware_concurrency() - 1;
 
-    // Optimization: If no interceptions between bricks, then skip!
-    bool anyInterceptions = !anyMirrorSymmetries && baseCombination.anyInterceptions(n-base, maxCombination);
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
+    for(int i = 0; i < processorCount * MAX_BRICKS; i++)
+      neighbourCache[i].unsetAll();
+    Lemma3Runner *builders = new Lemma3Runner[processorCount];
+    std::thread **threads = new std::thread*[processorCount];
 
-    if(anyMirrorSymmetries) {
-      // cm already set!
-    }
-    else if(anyInterceptions || noInterceptionsMap.empty()) {
-      if(shouldSplit)
-	std::cout << " Precomputing on " << baseCombination << std::endl;
-      CombinationBuilder builder(baseCombination, 0, (uint8_t)base, (uint8_t)n, neighbours, maxCombination, true, true);
-      if(shouldSplit)
-	builder.buildSplit();
-      else
-	builder.build();
-      cm = builder.counts;
-      if(!anyInterceptions) {
-	std::cout << "First no-interceptions map set up!" << std::endl;
-	noInterceptionsMap = cm;
-      }
-    }
-    else {
-#ifdef TRACE
-      std::cout << "No interceptions with " << (n-base) << " for " << baseCombination << std::endl;
-#endif
-      interceptionSkips++;
-      if(interceptionSkips % 10000 == 0) {
-	std::cout << " Skips due to no possible overlaps: " << interceptionSkips << ", mirror skips: " << mirrorSkips << std::endl;
-      }
-      cm = noInterceptionsMap;
+    for(int i = 0; i < processorCount; i++) {
+      builders[i] = Lemma3Runner(&baseBuilder, n, &maxCombination, i, &neighbourCache[i*MAX_BRICKS]);
+      threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 
-    // Update cache:
-    seen[baseCombination] = cm;
-
-    // Write results:
-    bool baseSymmetric180 = baseCombination.is180Symmetric();
-    bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && baseCombination.is90Symmetric();
-    writer.writeBit(1); // New batch
-    writer.writeBit(baseSymmetric180);
-    if(base % 4 == 0)
-      writer.writeBit(baseSymmetric90);
-
-    bool any = false;
-    CountsMap xCheck;
-    for(CountsMap::const_iterator it = cm.begin(); it != cm.end(); it++) {
-      if(any)
-	writer.writeBit(0);
-      any = true;
-      int64_t token = it->first;
-      int colors[MAX_LAYER_SIZE];
-      for(int i = 0; i < base; i++) {
-	colors[base-1-i] = token % 10;
-	token /= 10;
-      }
-
-      bool allOnes = true;
-      for(int i = 1; i < base; i++) {
-	writer.writeColor(colors[i] - 1);
-	if(colors[i] != 1)
-	  allOnes = false;
-      }
-      if(allOnes) {
-	CountsMap::iterator it2;
-	if((it2 = xCheck.find(token)) == xCheck.end())
-	  xCheck[token] = it->second;
-	else
-	  it2->second += it->second;
-      }
-
-      token = Combination::reverseToken(token);
-      token /= 10; // Remove base layer
-
-      assert(Combination::sizeOfToken(token) == n - base);
-
-      writer.writeUInt8(token);
-      writer.writeCounts(it->second);
+    for(int i = 0; i < processorCount; i++) {
+      threads[i]->join();
+      delete threads[i];
     }
-    for(CountsMap::const_iterator it = xCheck.begin(); it != xCheck.end(); it++) {
-      uint64_t token = it->first;
-      Counts c = it->second;
-      if(baseSymmetric180) {
-	if(baseSymmetric90) {
-	  c.all -= c.symmetric180 + c.symmetric90;
-	  assert(c.symmetric90 % 4 == 0);
-	  c.symmetric90 /= 4;
-	  assert(c.symmetric180 % 2 == 0);
-	  c.symmetric180 /= 2;
-	  assert(c.all % 4 == 0);
-	  c.all = c.all/4 + c.symmetric180 + c.symmetric90;
-	}
-	else
-	  c.all = (c.all - c.symmetric180)/2 + c.symmetric180;
-      }
-      CountsMap::iterator it2;
-      if((it2 = crossCheck.find(token)) == crossCheck.end())
-	crossCheck[token] = c;
-      else
-	it2->second += c;
-    }
-  }
+    delete[] threads;
+    delete[] builders;
+    delete[] neighbourCache;
 
-  void Lemma3::precomputeForPlacements(const std::vector<int> &distances,
-				       std::vector<Brick> &bricks,
-				       BitWriter &writer,
-				       CombinationResultsMap &seen) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precomputeForPlacements()");
-#endif
-    int S = (int)bricks.size();
-
-    if(S == base-1) {
-      Combination baseCombination; // Includes first brick
-      for(int i = 0; i < S; i++)
-	baseCombination.addBrick(bricks[i], 0);
-      baseCombination.normalize();
-      if(seen.find(baseCombination) != seen.end()) {
-#ifdef TRACE
-	std::cout << "   Already seen! " << baseCombination << std::endl;
-#endif
-	return;
-      }
-
-      // Check that baseCombination does not belong to another time:
-      std::vector<int> baseCombinationDistances;
-      for(int i = 1; i < base; i++) {
-	int dist = baseCombination.bricks[0][i].dist(FirstBrick);
-	baseCombinationDistances.push_back(dist);
-      }
-      std::sort(baseCombinationDistances.begin(), baseCombinationDistances.end());
-      for(int i = 0; i < base-1; i++) {
-	if(baseCombinationDistances[i] != distances[i]) {
-#ifdef TRACE
-	  std::cout << "Combination belongs to another time: " << baseCombination;
-	  for(int j = 0; j < base-1; j++)
-	    std::cout << " " << baseCombinationDistances[j];
-	  std::cout << std::endl;
-#endif
-	  return;
-	}
-      }
-
-      // All OK! Precompute:
-      precomputeOn(baseCombination, writer, seen);
-      return;
-    }
-
-    int DS = distances[S];
-    for(int16_t dx = 0; dx <= DS; dx++) {
-      int16_t dy = DS - dx;
-
-      for(int16_t multX = -1; multX <= 1; multX += 2) {
-	for(int16_t multY = -1; multY <= 1; multY += 2) {
-	  for(int v = 0; v <= 1; v++) {
-	    Brick b((bool)v, FirstBrick.x + multX*dx, FirstBrick.y + multY*dy);
-	    if(b.intersects(FirstBrick))
-	      continue;
-	    // Check for colission:
-	    bool ok = true;
-	    for(int i = 0; i < S; i++) {
-	      if(bricks[i].intersects(b)) {
-		ok = false;
-		break;
-	      }
-	    }
-	    if(!ok)
-	      continue;
-
-	    // Recursion:
-	    bricks.push_back(b);
-	    precomputeForPlacements(distances, bricks, writer, seen);
-	    bricks.pop_back();
-	  } // for v
-	} // for multY
-      } // for multX
-    } // for dx
+    baseBuilder.report();
   }
 
   void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer, int maxDist) {
 #ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(...)");
+    Profiler::countInvocation("Lemma3::precompute(vector, BitWriter, int)");
 #endif
     int S = (int)distances.size();
 
@@ -1855,10 +2075,8 @@ namespace rectilinear {
 
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
-      std::vector<Brick> bricks;
-      CombinationResultsMap seen;
       distances.push_back(maxDist); // Last dist is max dist
-      precomputeForPlacements(distances, bricks, writer, seen);
+      precompute(distances, writer);
       distances.pop_back();
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);

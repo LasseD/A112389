@@ -24,24 +24,21 @@ uint64_t get(char *argv) {
 }
 
 /*
-  Optimizations:
-  - Create BaseBuilder(distance) with methods:
-   - nextBase (sync)
-    - Use cache to check for rotational symmetries and mirror symmetries
-    - Reserve a base (see below)
-   - writeResults (sync)
-  - Have Lemma3 use BaseBuilder
-  
-  - Move precomputeForPlacements and up into thread handler:
-  - Have ThreadEnablingBuilder handle last part of iteration:
-   - MultiLayerBrickPicker -> BasePicker
-    - Have own CombinationResultsMap resultsMap
-    - next() => nextBase()
-     - Clear counts on builder
-     - Mark as "extra from base" if using base that is not ready yet
-     - Use "extra from base" when summing up
-      - "report_mutex" in picker
-  
+  Compile by:
+
+  g++ -std=c++11 -O3 -DNDEBUG *.cpp -o build.o
+
+  Examples:
+
+  Build precomputations for base 2 token <21> up to max dist 16:
+  time ./build.o 21 16
+
+  Count all for token <21>
+  time ./build.o 21
+
+  Sum up for <121> considering max dist 8:
+  ./build.o 1 2 1 8
+
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
   Let the base brick be the first "BFS Wave" or "wave"
@@ -71,6 +68,20 @@ uint64_t get(char *argv) {
   Lemma 3:
    Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
+
+  Cross check results:
+  <121> 37081 (32)
+  <21> 250 (20)
+  <22> 10411 (49)
+  <221> 1297413 (787)
+  <222> 43183164 (3305)
+  <31> 648 (8)
+  <131> 433685 (24)
+  <32> 148794 (443)
+  <231> 41019966 (1179)
+  <232> 3021093957 (46219)
+  <41> 550 (28)
+  <141> 2101339 (72)
 */
 bool connected(const Report &a, const Report &b, int base) {
   int ret = 1;
@@ -98,6 +109,7 @@ bool connected(const Report &a, const Report &b, int base) {
       }
     }
   }
+  assert(ret <= base);
   return ret == base;
 }
 
@@ -110,10 +122,6 @@ Counts countUp(const Report &a, const Report &b, int base) {
 }
 
 int runSumPrecomputations(int argc, char** argv) {
-  if(argc != 5) {
-    std::cerr << "This is for handling the precomputations. Usage: LEFT BASE RIGHT MAX_DIST" << std::endl;
-    return 3;
-  }
   int leftToken = get(argv[1]);
   int base = get(argv[2]);
   int rightToken = get(argv[3]);
@@ -122,6 +130,7 @@ int runSumPrecomputations(int argc, char** argv) {
   int leftSize = Combination::sizeOfToken(leftToken);
   int rightSize = Combination::sizeOfToken(rightToken);
   leftToken = leftToken * 10 + base;
+  rightToken = Combination::reverseToken(rightToken);
   int token = leftToken;
   {
     int tk = rightToken;
@@ -131,9 +140,9 @@ int runSumPrecomputations(int argc, char** argv) {
     }
   }
   
-  rightToken = Combination::reverseToken(rightToken) * 10 + base;
+  rightToken = rightToken * 10 + base;
   
-  Counts counts;
+  Counts counts, countsLeft;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
     BitReader reader1(base, leftSize + base, leftToken, D);
@@ -144,7 +153,7 @@ int runSumPrecomputations(int argc, char** argv) {
     while(reader1.next(l) && reader2.next(r)) {
       bool bs180, bs90;
 
-      Counts c;
+      Counts c, cl;
       // Match all connectivities:
       for(std::vector<Report>::const_iterator it1 = l.begin(); it1 != l.end(); it1++) {
 	const Report &report1 = *it1;
@@ -156,6 +165,9 @@ int runSumPrecomputations(int argc, char** argv) {
 	  assert(bs90 == report2.baseSymmetric90);
 	  c += countUp(report1, report2, base);
 	}
+	if(connected(report1, report1, base)) {
+	  cl += report1.counts;
+	}
       }
       if(bs90) {
 	c.all -= c.symmetric180 + c.symmetric90;
@@ -166,68 +178,90 @@ int runSumPrecomputations(int argc, char** argv) {
 	assert(c.all % 4 == 0);
 	c.all = c.all/4 + c.symmetric180 + c.symmetric90;
       }
-      else if(bs180) {	    
+      else if(bs180) {
 	c.all -= c.symmetric180;
 	assert(c.all % 2 == 0);
-	c.all /= 2;
-	c.all += c.symmetric180;
+	c.all = c.all/2 + c.symmetric180;
       }
       counts += c;
+
+      // Cross check:
+      if(bs90) {
+	// The non-rotational symmetric are overcounted:
+	cl.all -= cl.symmetric180 + cl.symmetric90;
+	assert(cl.symmetric90 % 4 == 0);
+	cl.symmetric90 /= 4;
+	assert(cl.symmetric180 % 2 == 0);
+	cl.symmetric180 /= 2;
+	assert(cl.all % 4 == 0);
+	cl.all = cl.all/4 + cl.symmetric180 + cl.symmetric90;
+      }
+      else if(bs180) {
+	// The non-symmetric are counted twice:
+	cl.all -= cl.symmetric180;
+	assert(cl.all % 2 == 0);
+	cl.all = cl.all/2 + cl.symmetric180;
+      }
+
+      countsLeft += cl;
+
       l.clear();
       r.clear();
     } // while(reader1.next(rm) && reader2.next(rm))
   } // for d = 2 .. maxDist
 
-  std::cout << "<" << token << "> " << counts << std::endl;
+  std::cout << std::endl << " <" << token << "> " << counts << std::endl;
+  std::cout << " <" << leftToken << "> " << countsLeft << std::endl << std::endl;
   
   return 0;
 }
 
 int main(int argc, char** argv) {
-#ifndef SUMS
-  if(!(argc == 2 || argc == 3)) {
-    std::cerr << "Usage: REFINEMENT [MAX_DIST]. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
-    return 1;
-  }
+  if(argc == 2 || argc == 3) {
+    uint64_t token = get(argv[1]);
+    Combination maxCombination;
+    Combination::getLayerSizesFromToken(token, maxCombination.layerSizes);
+    maxCombination.size = Combination::sizeOfToken(token);
+    maxCombination.height = Combination::heightOfToken(token);
 
-  uint64_t token = get(argv[1]);
-  Combination maxCombination;
-  Combination::getLayerSizesFromToken(token, maxCombination.layerSizes);
-  maxCombination.size = Combination::sizeOfToken(token);
-  maxCombination.height = Combination::heightOfToken(token);
-
-  uint8_t base = maxCombination.layerSizes[0];
-  if(maxCombination.size > MAX_BRICKS || base > MAX_LAYER_SIZE) {
-    std::cerr << "Unsupported refinement!" << std::endl;
-    return 3;
-  }
-
-  if(argc == 3) { // Lemma 3:
-    if(base < 2) {
-      std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
+    uint8_t base = maxCombination.layerSizes[0];
+    if(maxCombination.size > MAX_BRICKS || base > MAX_LAYER_SIZE) {
+      std::cerr << "Unsupported refinement!" << std::endl;
       return 3;
     }
-    int maxDist = get(argv[2]);
-    std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
-    Lemma3 lemma3(maxCombination.size, base, maxCombination);
-    lemma3.precompute(maxDist);
-  }
-  else { // Normal run for a refinement:
-    BrickPlane neighbours[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
-      neighbours[i].unsetAll();
 
-    Combination combination;
-    CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, true, false);
-    b.buildSplit();
-    b.report();
-  }
+    if(argc == 3) { // Lemma 3:
+      if(base < 2) {
+	std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
+	return 3;
+      }
+      int maxDist = get(argv[2]);
+      std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
+      Lemma3 lemma3(maxCombination.size, base, maxCombination);
+      lemma3.precompute(maxDist);
+    }
+    else { // Normal run for a refinement:
+      BrickPlane neighbours[MAX_BRICKS];
+      for(uint8_t i = 0; i < MAX_BRICKS; i++)
+	neighbours[i].unsetAll();
+
+      Combination combination;
+      CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, true, false);
+      b.buildSplit();
+      b.report();
+    }
 #ifdef PROFILING
-  Profiler::reportInvocations();
+    Profiler::reportInvocations();
 #endif
 
-  return 0;
-#else
-  return runSumPrecomputations(argc, argv);
-#endif
+    return 0;
+  }
+  else if(argc == 5) {
+    return runSumPrecomputations(argc, argv);
+  }
+  else {
+    std::cerr << "Usage 1: REFINEMENT [MAX_DIST]. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
+    std::cerr << "Usage 2: LEFT BASE RIGHT MAX_DIST. This is for handling the precomputations" << std::endl;
+    return 1;
+  }
 }
