@@ -23,23 +23,45 @@ The following table contains the known values of the sequence a(N). a<sup>180</s
 # Project Overview
 
 It took "a matter of months" to compute a(9) and more than 1.5 years to compute a(10).
-Given that there currently is no known way of computing the sequence without iterating through (most of) the models, the time to compute a(N+1) is roughly 100 times the time to compute a(N).
-As we might not be able to reserve computing resources for 150 years, we seek to find novel ways of computing subsets of a(11) more efficiently and reduce the amount of models, that have to be counted individually, to something more reasonable.
+Since there currently is no known way of computing the sequence without iterating through (most of) the models, the time to compute a(N+1) is roughly 100 times the time to compute a(N).
+As 150 years of computing resources is a high price to pay for a(11), we seek to find novel ways of computing subsets of a(11) more efficiently and reduce the amount of models that have to be counted individually to something more reasonable.
 
 ## Definitions
 
-TODO
+
+- A "brick" refers to a 2 x 4 LEGO brick with 8 stod on top. A brick has a position, and since we only concerns ourselves with bricks that are connected to each other using the studs, and only at rectillinear ("right") angles, the position of a brick is identified by its coordinate pair (x,y) and its orientation (horizontal or vertical). A brick also has a height. A "base brick" is located at (0,0) at height 0 and a brick connected to another from above has the height 1 larger than the other.
+
+
+- A "model" consists of one or more bricks connected by the studs. All connections are rectilinear. [Another project](https://github.com/LasseD/BrickCounting) concerns bricks connected at all possible angles. We consider two models to be the same if they are rotationally symmetric. The code base uses "combination" and "model" interchangeably.
+
+
+- A(N) is the set of all models with exactly N bricks.
+
+
+- a(N) is the size of A(N).
+
+
+- A<sup>180</sup>(N) is the subset of A(N) where the models are symmetric after 180 degrees of rotation. a<sup>180</sup>(N) is the size of A<sup>180</sup>(N). Similarly A<sup>90</sup>(N) is the subset of A(N) where the models are symmetric after 90 degrees of rotation, and a<sup>90</sup>(N) is the size of A<sup>90</sup>(N).
+
+
+- A "layer" of a model is the subset of bricks of the model whose height is the same. The "base layer" or "first layer" refers to the lower-most layer of a model (at height 0).
+
+
+- The "height" of a model is the number of layers of it.
+
+
+- A "refinement" A(N,M,Z1,Z2,...,ZM) is the subset of a(N) where the models have height M and the sized of the layers from base layer and up are Z1, Z2, ..., ZM. We use the shorthand <Z1Z2...ZM> to denote the refinement A(N,M,Z1,Z2,...,ZM). a(N,M,Z1,Z2,...,ZM) is the size of refinement A(N,M,Z1,Z2,...,ZM).
 
 
 ## Brute-Force Approach
 
 The folder [/brute_force_approach](brute_force_approach/) contains the source code for a "brute force" algorithm.
 
-The brute force algorithm constructs all models of a(N) by iterating through all models of a(N-1) and adding a single brick at every possible location.
+The brute force algorithm constructs A(N) by iterating through A(N-1) and adding a single brick at every possible location of every model.
 
 Each constructed model is checked for being the first of its kind being computed. Only the first models of their kind are counted, and optionally written to disk.
 
-This is a very simplistic and inefficient approach that has the advantage of being able to write all models to disk for visualization and having a baseline of comparison for more efficient algorithms.
+This is a very simplistic and inefficient approach that iterates through all models, but has the advantage of being able to write all models to disk for visualization and providing a baseline of comparison for more efficient algorithms.
 
 
 ## "BFS Wave" Approach
@@ -51,11 +73,11 @@ Divide the final counts as outlined in 'Eilers 2016' to address symmetries.
 
 Our "BFS Wave" algorithm constructs models iteratively by following this approach.
 
-Consider a model M (initially the single brick on the first layer), as well as a "wave" initially consisting of the single brick as well.
+Consider a model M (initially the single brick on the first layer), as well as a "wave" being the set initially consisting of the single brick.
 
-Let S be the set of bricks that can be connected to the bricks of the last wave while not connecting to any previous bricks of M.
+Let S be the set of bricks that can be connected to the bricks of the wave while not connecting to any previous bricks of M.
 
-New models are constructed by picking a subset T from S, placing the bricks of T on M and applying the algorithm iteratively with the lastest "wave" consisting of T.
+New models are constructed by picking a subset T from S, placing the bricks of T on M and applying the algorithm iteratively with the "wave" being T.
 
 This is repeated for all possible subsets T while ensuring that the bricks of T do not overlap with themselves.
 
@@ -64,13 +86,20 @@ Our implementation had the selection of T behave like how the iteration works in
 The folder [/bfs_wave_approach](bfs_wave_approach/) contains the source code.
 
 
-## Lemma 1
+## Lemma 1 “Divide and Conquer” (L1)
 
-Lemma “Divide and Conquer” (L1)
-The use of “bottlenecks” (layers with a single brick) allows us to easily compute the number of models of a refinement given the number of models of smaller bricks and heights (sub-refinements). Let b = a(X,m,Z1,...,Zn,...Zm), Zn=1, n>1, n<m be a refinement where Zn=1 is a bottleneck indicating that there is only a single brick in layer n.
-The models of b can be divided at the bottleneck with the models below (and including the bottleneck) being the refinement c = a(Xc,n,Z1,...,Zn), and above (also including the bottleneck) is the refinement d = a(Xd,m-n+1,Zn,...,Zm). We also call c and d the “sub-refinements” of a.
-We again use the subfices “s” and “n” to denote subsets with symmetric and non-symmetric models.
-All models of b can be constructed by combining models either by
+We call a layer of size 1 a “bottleneck”.
+
+Bottlenecks allow us to easily compute the number of models of a models from the size of smaller refinements:
+
+Let B = A(N,M,Z1,...,Zn,...ZM), Zn=1, 1<n<M be a refinement with the bottleneck Zn.
+
+Consider the refinements obtained by dividing B at the bottleneck:
+
+C = A(N_C,n,Z1,...,Zn) and D = A(N_D,m-n+1,Zn,...,ZM)
+
+TODO
+All models of B can be constructed by combining models either by
 cn and dn to create non-symmetric models: 2 models for each pair.
 cs and dn to create non-symmetric models: 1 model for each pair.
 cn and ds to create non-symmetric models: 1 model for each pair.
@@ -81,5 +110,7 @@ A(X,Y,Z1,...,Zn,...Zm)
 = (|cn|+|c|)*|dn| + |c|*|ds|
 = (|dn|+|d|)*|cn| + |d|*|cs|
 Of which |cs|*|ds| are symmetric
-Corollary C1
+
 Applying L1 recursively reveals that any refinement with at least one bottleneck can be computed from the sub-refinements that appear from splitting at the bottlenecks.
+
+TODO: Lemma1 code uses non-bottlenecks to compute all
