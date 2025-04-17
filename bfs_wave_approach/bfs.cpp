@@ -207,9 +207,9 @@ namespace rectilinear {
 #endif
     return ABS(x-b.x) + ABS(y-b.y);
   }
-  bool Brick::canIntercept(const Brick &a, const Brick &b, uint8_t toAdd) {
+  bool Brick::canReach(const Brick &a, const Brick &b, uint8_t toAdd) {
 #ifdef PROFILING
-    Profiler::countInvocation("Brick::canIntercept()");
+    Profiler::countInvocation("Brick::canReach()");
 #endif
     if(toAdd == 0)
       return false;
@@ -219,8 +219,8 @@ namespace rectilinear {
     // Ensure a.isVertical:
     if(!a.isVertical) {
       if(!b.isVertical)
-	return canIntercept(Brick(true, a.y, a.x), Brick(true, b.y, b.x), toAdd);
-      return canIntercept(b, a, toAdd);
+	return canReach(Brick(true, a.y, a.x), Brick(true, b.y, b.x), toAdd);
+      return canReach(b, a, toAdd);
     }
 
     int16_t dx = ABS(a.x-b.x);
@@ -241,8 +241,8 @@ namespace rectilinear {
     // toAdd >= 2:
     int16_t signX = a.x < b.x ? 1 : -1;
     int16_t signY = a.y < b.y ? 1 : -1;
-    return canIntercept(Brick(true, a.x+MIN(1, dx)*signX, a.y+MIN(3,dy)*signY), b, toAdd-1) ||
-      canIntercept(Brick(false, a.x+MIN(2,dx)*signX, a.y+MIN(2,dy)*signY), b, toAdd-1);
+    return canReach(Brick(true, a.x+MIN(1, dx)*signX, a.y+MIN(3,dy)*signY), b, toAdd-1) ||
+      canReach(Brick(false, a.x+MIN(2,dx)*signX, a.y+MIN(2,dy)*signY), b, toAdd-1);
   }
 
   BrickPicker::BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx) : v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), bricksIdx(bricksIdx), bricks(bricks), inner(NULL) {
@@ -411,15 +411,19 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::operator <");
 #endif
-    assert(height == b.height);
-    for(int i = 0; i < height; i++) {
-      assert(layerSizes[i] == b.layerSizes[i]);
-      int s = layerSizes[i];
-      for(int j = 0; j < s; j++) {
+    if(height != b.height)
+      return height < b.height;
+
+    for(uint8_t i = 0; i < height; i++) {
+      uint8_t s = layerSizes[i];
+
+      if(s != b.layerSizes[i])
+	return s < b.layerSizes[i];
+
+      for(uint8_t j = 0; j < s; j++) {
 	int res = bricks[i][j].cmp(b.bricks[i][j]);
-	if(res != 0) {
+	if(res != 0)
 	  return res < 0;
-	}
       }
     }
     return false;
@@ -886,48 +890,59 @@ namespace rectilinear {
     }
   }
 
-  bool Combination::anyInterceptions(int toAdd, uint8_t from) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::anyInterceptions(int, uint8_t)");
-#endif
-    const uint8_t &S = layerSizes[0];
-    if(from == S-1)
-      return false;
-    for(uint8_t i = from+1; i < S; i++) {
-      if(Brick::canIntercept(bricks[0][i], bricks[0][from], toAdd))
-	return true;
-    }
-    return anyInterceptions(toAdd, from+1);
-  }
-
-  bool Combination::anyInterceptions(int toAdd, const Combination &maxCombination) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::anyInterceptions(int, Combination)");
-#endif
-    assert(height == 1);
-    assert(layerSizes[0] > 1);
-    assert(layerSizes[0] == maxCombination.layerSizes[0]);
-
-    // Find read "toAdd":
+  int Combination::countBricksToBridge(const Combination &maxCombination) {
     if(maxCombination.height == 2) {
-      toAdd = 1; // Only one brick from second layer can intercept.
+      return 1; // Only one brick from second layer can be used.
     }
     else if(maxCombination.height == 3) {
-      // Layer 2 and 3 can only use bricks as if layer 2 is one larger than layer 3:
       if(maxCombination.layerSizes[2] >= maxCombination.layerSizes[1]) {
-	uint8_t diff = maxCombination.layerSizes[2] - maxCombination.layerSizes[1];
-	toAdd -= diff + 1;
+	// Bricks from layer 2 can all be used:
+	return 2 * maxCombination.layerSizes[1] - 1;
       }
       else { // Layer 2 is larger than layer 3:
-	uint8_t diff = maxCombination.layerSizes[1] - maxCombination.layerSizes[2];
-	if(diff > 1) // We can only use 1 more brick in second than third layer
-	  toAdd -= diff - 1;
+	// Only "Layer 3 + 1" bricks from Layer 2 can be used:
+	return 2 * maxCombination.layerSizes[2] + 1;
       }
     }
     else {
       // TODO: Improved analysis for other heights
+      // For now we assume all bricks above base layer can be used:
+      return maxCombination.size - maxCombination.layerSizes[0];
     }
-    return anyInterceptions(toAdd, 0);
+  }
+
+  int Combination::mapUnreachable(bool *unreachable, const Combination &maxCombination) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::mapUnreachable()");
+#endif
+    int countUnreachable = 0;
+
+    int bricksBetween = countBricksToBridge(maxCombination);
+    uint8_t base = maxCombination.layerSizes[0];
+
+    for(int i = 0; i < base; i++)
+      unreachable[i] = false;
+    // Notice: Starting at the right side to avoid changing colors
+    // TODO: Optimize to allows for any to be unreachable
+    for(int i = base-1; i > 0; i--) {
+      bool isReachable = false;
+      for(int j = 0; j < base; j++) {
+	if(j == i || unreachable[j])
+	  continue;
+	if(Brick::canReach(bricks[0][i], bricks[0][j], bricksBetween)) {
+	  isReachable = true;
+	  break;
+	}
+      }
+      if(!isReachable) {
+	unreachable[i] = true;
+	countUnreachable++;
+      }
+      else
+	break; // Do not skip over any reachable.
+    }
+
+    return countUnreachable;
   }
 
   CombinationBuilder::CombinationBuilder(const Combination &c,
@@ -1673,7 +1688,7 @@ namespace rectilinear {
     }
   }
 
-  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer), interceptionSkips(0), mirrorSkips(0), noSkips(0) {
+  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer), reachSkips(0), mirrorSkips(0), noSkips(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::BaseBuilder()");
 #endif
@@ -1817,7 +1832,6 @@ namespace rectilinear {
 #endif
     Combination c;
     uint8_t base = (uint8_t)distances.size() + 1;
-    uint8_t toAdd = maxCombination.size - base;
     c.size = base;
     c.layerSizes[0] = base;
     while(true) {
@@ -1857,27 +1871,48 @@ namespace rectilinear {
 	bases.push_back(c);
 	mirrorSkips++;
 	if(mirrorSkips % 10000 == 0) {
-	  std::cout << "Skips: No-reach " << (interceptionSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	}
 	continue; // duplicates handled in checkMirrorSymmetries
       }
 
-      // Check for interceptions
-      bool anyInterceptions = c.anyInterceptions(toAdd, maxCombination);
-      if(!anyInterceptions) {
-	bool anyBefore = noInterceptions.size != 1;
-	if(anyBefore) {
-	  duplicates[c] = noInterceptions;
-	  bases.push_back(c);
-	  interceptionSkips++;
-	  if(interceptionSkips % 10000 == 0) {
-	    std::cout << "Skips: NO-REACH " << (interceptionSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+      // Check for smaller bases:
+      if(false && !c.is180Symmetric()) {
+	bool unreachable[MAX_LAYER_SIZE];
+	int unreachableInBaseCount = c.mapUnreachable(unreachable, maxCombination);
+	if(unreachableInBaseCount > 0) {
+	  // Do not do this for symmetric bases, as they are counted differently
+	  Combination smallerBase;
+	  //smallerBase.height = 1;
+	  smallerBase.size = base - unreachableInBaseCount;
+	  smallerBase.layerSizes[0] = smallerBase.size;
+	  uint8_t smallerBaseIdx = 0;
+	  for(uint8_t i = 0; i < base; i++) {
+	    if(!unreachable[i]) {
+	      smallerBase.bricks[0][smallerBaseIdx] = c.bricks[0][i];
+	      smallerBase.history[smallerBaseIdx] = BrickIdentifier(0, smallerBaseIdx);
+	      smallerBaseIdx++;
+	    }
 	  }
-	  continue;
-	}
-	else {
-	  noInterceptions = c;
-	  assert(noInterceptions.size != 1);
+	  //smallerBase.normalize(); Do not normalize, as that can change colors
+	  std::cout << c << " reduced to " << smallerBase << std::endl;
+
+	  CombinationMap::iterator it = duplicates.find(smallerBase);
+	  if(it != duplicates.end()) {
+	    // Known smaller base: Point to same original:
+	    std::cout << " Known duplicate of: " << it->second << std::endl;
+	    duplicates[c] = it->second;
+	    bases.push_back(c);
+	    reachSkips++;
+	    if(reachSkips % 10000 == 0) {
+	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+	    }
+	    continue;
+	  }
+	  else {
+	    // First time the smaller base is encountered: Mark it
+	    duplicates[smallerBase] = c;
+	  }
 	}
       }
 
@@ -1885,7 +1920,7 @@ namespace rectilinear {
       bases.push_back(c);
       noSkips++;
       if(noSkips % 10000 == 0) {
-	std::cout << "Skips: No-reach " << (interceptionSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
+	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
       }
       outCombination = c;
       return true;
@@ -2068,7 +2103,7 @@ namespace rectilinear {
     int S = (int)distances.size();
 
     if(S == base-2) {
-      std::cout << " Precomputing for distances 0";
+      std::cout << " Precomputing for distances";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
       std::cout << " " << maxDist << std::endl;

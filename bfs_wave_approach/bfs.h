@@ -83,7 +83,7 @@ namespace rectilinear {
     bool mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const;
     int dist(const Brick &b) const;
 
-    static bool canIntercept(const Brick &a, const Brick &b, uint8_t toAdd);
+    static bool canReach(const Brick &a, const Brick &b, uint8_t toAdd);
   };
 
   typedef std::pair<Brick,uint8_t> LayerBrick;
@@ -106,7 +106,6 @@ namespace rectilinear {
     // State to check connectivity:
     uint8_t colors[MAX_BRICKS][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
-    bool anyInterceptions(int toAdd, uint8_t from) const;
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
@@ -141,11 +140,12 @@ namespace rectilinear {
     int64_t getTokenFromLayerSizes() const;
     void normalize(int &rotated);
     void normalize();
-    bool anyInterceptions(int toAdd, const Combination &maxCombination) const;
+    int mapUnreachable(bool *unreachable, const Combination &maxCombination) const;
     static int reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
     static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
+    static int countBricksToBridge(const Combination &maxCombination);
   };
 
   class BrickPicker {
@@ -338,11 +338,10 @@ namespace rectilinear {
     BitWriter &writer;
     CombinationMap duplicates; // Combination -> Combination
     CombinationResultsMap resultsMap; // Combination -> Result
-    Combination noInterceptions;
     std::vector<Combination> bases;
     std::mutex mutex;
     bool checkMirrorSymmetries(const Combination &c); // Return true if handled here
-    uint64_t interceptionSkips, mirrorSkips, noSkips;
+    uint64_t reachSkips, mirrorSkips, noSkips;
   public:
     BaseBuilder(const std::vector<int> distances, BitWriter &writer);
     ~BaseBuilder();
