@@ -140,7 +140,7 @@ namespace rectilinear {
     int64_t getTokenFromLayerSizes() const;
     void normalize(int &rotated);
     void normalize();
-    int mapUnreachable(bool *unreachable, const Combination &maxCombination) const;
+    int countUnreachable(const Combination &maxCombination) const;
     static int reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);

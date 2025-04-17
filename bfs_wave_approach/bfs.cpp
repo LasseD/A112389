@@ -892,17 +892,7 @@ namespace rectilinear {
 
   int Combination::countBricksToBridge(const Combination &maxCombination) {
     if(maxCombination.height == 2) {
-      return 1; // Only one brick from second layer can be used.
-    }
-    else if(maxCombination.height == 3) {
-      if(maxCombination.layerSizes[2] >= maxCombination.layerSizes[1]) {
-	// Bricks from layer 2 can all be used:
-	return 2 * maxCombination.layerSizes[1] - 1;
-      }
-      else { // Layer 2 is larger than layer 3:
-	// Only "Layer 3 + 1" bricks from Layer 2 can be used:
-	return 2 * maxCombination.layerSizes[2] + 1;
-      }
+      return MIN(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
     }
     else {
       // TODO: Improved analysis for other heights
@@ -911,7 +901,7 @@ namespace rectilinear {
     }
   }
 
-  int Combination::mapUnreachable(bool *unreachable, const Combination &maxCombination) const {
+  int Combination::countUnreachable(const Combination &maxCombination) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::mapUnreachable()");
 #endif
@@ -920,26 +910,19 @@ namespace rectilinear {
     int bricksBetween = countBricksToBridge(maxCombination);
     uint8_t base = maxCombination.layerSizes[0];
 
-    for(int i = 0; i < base; i++)
-      unreachable[i] = false;
     // Notice: Starting at the right side to avoid changing colors
     // TODO: Optimize to allows for any to be unreachable
     for(int i = base-1; i > 0; i--) {
       bool isReachable = false;
-      for(int j = 0; j < base; j++) {
-	if(j == i || unreachable[j])
-	  continue;
+      for(int j = 0; j < i; j++) {
 	if(Brick::canReach(bricks[0][i], bricks[0][j], bricksBetween)) {
 	  isReachable = true;
 	  break;
 	}
       }
-      if(!isReachable) {
-	unreachable[i] = true;
-	countUnreachable++;
-      }
-      else
-	break; // Do not skip over any reachable.
+      if(isReachable)
+	break;
+      countUnreachable++;
     }
 
     return countUnreachable;
@@ -1878,21 +1861,16 @@ namespace rectilinear {
 
       // Check for smaller bases:
       if(false && !c.is180Symmetric()) {
-	bool unreachable[MAX_LAYER_SIZE];
-	int unreachableInBaseCount = c.mapUnreachable(unreachable, maxCombination);
+	// Do not do this for symmetric bases, as counts rely on symmetry
+	int unreachableInBaseCount = c.countUnreachable(maxCombination);
 	if(unreachableInBaseCount > 0) {
-	  // Do not do this for symmetric bases, as they are counted differently
 	  Combination smallerBase;
 	  //smallerBase.height = 1;
 	  smallerBase.size = base - unreachableInBaseCount;
 	  smallerBase.layerSizes[0] = smallerBase.size;
-	  uint8_t smallerBaseIdx = 0;
-	  for(uint8_t i = 0; i < base; i++) {
-	    if(!unreachable[i]) {
-	      smallerBase.bricks[0][smallerBaseIdx] = c.bricks[0][i];
-	      smallerBase.history[smallerBaseIdx] = BrickIdentifier(0, smallerBaseIdx);
-	      smallerBaseIdx++;
-	    }
+	  for(uint8_t i = 1; i < smallerBase.size; i++) {
+	    smallerBase.bricks[0][i] = c.bricks[0][i];
+	    smallerBase.history[i] = BrickIdentifier(0, i);
 	  }
 	  //smallerBase.normalize(); Do not normalize, as that can change colors
 	  std::cout << c << " reduced to " << smallerBase << std::endl;
