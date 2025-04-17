@@ -1673,7 +1673,7 @@ namespace rectilinear {
     }
   }
 
-  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer) {
+  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer), interceptionSkips(0), mirrorSkips(0), noSkips(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::BaseBuilder()");
 #endif
@@ -1856,8 +1856,8 @@ namespace rectilinear {
       if(checkMirrorSymmetries(c)) {
 	bases.push_back(c);
 	mirrorSkips++;
-	if(mirrorSkips % 1000000 == 0) {
-	  std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+	if(mirrorSkips % 10000 == 0) {
+	  std::cout << "Skips: No-reach " << (interceptionSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	}
 	continue; // duplicates handled in checkMirrorSymmetries
       }
@@ -1870,8 +1870,8 @@ namespace rectilinear {
 	  duplicates[c] = noInterceptions;
 	  bases.push_back(c);
 	  interceptionSkips++;
-	  if(interceptionSkips % 1000000 == 0) {
-	    std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+	  if(interceptionSkips % 10000 == 0) {
+	    std::cout << "Skips: NO-REACH " << (interceptionSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	  }
 	  continue;
 	}
@@ -1884,8 +1884,8 @@ namespace rectilinear {
       resultsMap[c] = CountsMap(); // Reserve the entry so that check for "seen" above works.
       bases.push_back(c);
       noSkips++;
-      if(noSkips % 1000000 == 0) {
-	std::cout << "Skips: No-reach " << (interceptionSkips/1000000) << " m, mirror " << (mirrorSkips/1000000) << " m, none " << (noSkips/1000000) << " m" << std::endl;
+      if(noSkips % 10000 == 0) {
+	std::cout << "Skips: No-reach " << (interceptionSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
       }
       outCombination = c;
       return true;
@@ -2068,7 +2068,7 @@ namespace rectilinear {
     int S = (int)distances.size();
 
     if(S == base-2) {
-      std::cout << " Precomputing base " << base << " distances";
+      std::cout << " Precomputing for distances 0";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
       std::cout << " " << maxDist << std::endl;
