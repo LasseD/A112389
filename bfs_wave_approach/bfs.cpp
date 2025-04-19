@@ -894,6 +894,19 @@ namespace rectilinear {
     if(maxCombination.height == 2) {
       return MIN(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
     }
+    else if(maxCombination.height == 3) {
+      uint8_t L2 = maxCombination.layerSizes[1];
+      uint8_t L3 = maxCombination.layerSizes[2];
+      assert(L2 >= 2);
+      assert(L3 > 0);
+
+      // Consider <242>: The two L3 bricks can bridge all from L3:
+      uint8_t usefulL2 = MIN(L2, L3+2);
+      // Each L2 bricks can each support an L3 brick:
+      uint8_t usefulL3 = MIN(L2, L3);
+
+      return usefulL2 + usefulL3;
+    }
     else {
       // TODO: Improved analysis for other heights
       // For now we assume all bricks above base layer can be used:
@@ -911,7 +924,6 @@ namespace rectilinear {
     uint8_t base = maxCombination.layerSizes[0];
 
     // Notice: Starting at the right side to avoid changing colors
-    // TODO: Optimize to allows for any to be unreachable
     for(int i = base-1; i > 0; i--) {
       bool isReachable = false;
       for(int j = 0; j < i; j++) {
@@ -1230,7 +1242,7 @@ namespace rectilinear {
 	  continue;
 
 	// Optimization: Skip half of constructions in first builder (unless symmetric):
-	// TODO: re-enable
+	// TODO: re-enable for precomputations once this works for <221> and larger
 	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
@@ -1524,6 +1536,18 @@ namespace rectilinear {
     }
   }
 
+  std::ostream& operator << (std::ostream &os,const Report &r) {
+    os << "Base " << (int)r.base << " colors 1";
+    for(uint8_t i = 0; i < r.base-1; i++)
+      os << " " << (int)(1+r.colors[i]);
+    if(r.baseSymmetric90)
+      os << " [90";
+    else if(r.baseSymmetric180)
+      os << " [180]";
+    os << " " << r.counts;
+    return os;
+  }
+
   bool BitReader::readBit() {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::readBit()");
@@ -1623,6 +1647,7 @@ namespace rectilinear {
     Profiler::countInvocation("BitReader::next()");
 #endif
     Report r;
+    r.base = base;
     r.baseSymmetric180 = readBit();
     r.baseSymmetric90 = (base % 4 == 0) && readBit();
     bool first = true;
@@ -1860,7 +1885,7 @@ namespace rectilinear {
       }
 
       // Check for smaller bases:
-      if(false && !c.is180Symmetric()) {
+      if(!c.is180Symmetric()) {
 	// Do not do this for symmetric bases, as counts rely on symmetry
 	int unreachableInBaseCount = c.countUnreachable(maxCombination);
 	if(unreachableInBaseCount > 0) {
@@ -1873,16 +1898,16 @@ namespace rectilinear {
 	    smallerBase.history[i] = BrickIdentifier(0, i);
 	  }
 	  //smallerBase.normalize(); Do not normalize, as that can change colors
-	  std::cout << c << " reduced to " << smallerBase << std::endl;
+	  //std::cout << c << " reduced to " << smallerBase << std::endl;
 
 	  CombinationMap::iterator it = duplicates.find(smallerBase);
 	  if(it != duplicates.end()) {
 	    // Known smaller base: Point to same original:
-	    std::cout << " Known duplicate of: " << it->second << std::endl;
+	    //std::cout << " Known duplicate of: " << it->second << std::endl;
 	    duplicates[c] = it->second;
 	    bases.push_back(c);
 	    reachSkips++;
-	    if(reachSkips % 10000 == 0) {
+	    if(reachSkips % 50000 == 0) {
 	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	    }
 	    continue;
@@ -2000,7 +2025,7 @@ namespace rectilinear {
     while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
       if(maxCombination->size - c.size > 3)
 	std::cout << threadName << " builds on " << c << std::endl;
-      CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, true, true);
+      CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, false, true);
       builder.build();
       baseBuilder->registerCounts(c, builder.counts);
     }
