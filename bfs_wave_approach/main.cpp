@@ -70,55 +70,71 @@ uint64_t get(char *argv) {
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
 
   Cross check results:
-  <121> 37081 (32)
-  <21> 250 (20)
-  <22> 10411 (49)
-  <221> 1297413 (787)
-  <222> 43183164 (3305)
-  <31> 648 (8)
-  <131> 433685 (24)
-  <32> 148794 (443)
-  <231> 41019966 (1179)
-  <232> 3021093957 (46219)
-  <41> 550 (28)
-  <141> 2101339 (72)
-*/
-bool connected(const Report &a, const Report &b, int base) {
-  int ret = 1;
-  bool c[MAX_LAYER_SIZE];
-  for(int i = 0; i < base-1; i++) {
-    bool isColor1 = a.colors[i] == 0 || b.colors[i] == 0;
-    c[i] = isColor1;
-    if(isColor1)
-      ret++;
-  }
-  bool improved = true;
-  while(improved) {
-    improved = false;
-    for(int i = 0; i < base-1; i++) {
-      if(c[i])
-	continue;
-      // Attempt to color i:
-      for(int j = 0; j < base-1; j++) {
-	if(c[j] && (a.colors[i] == a.colors[j] || b.colors[i] == b.colors[j])) {
-	  c[i] = true;
-	  ret++;
-	  improved = true;
-	  break;
-	}
-      }
-    }
-  }
-  assert(ret <= base);
-  return ret == base;
-}
+  OK <121> 37081 (32)
+  OK <21> 250 (20)
+  OK <22> 10411 (49)
+  OK <221> 1297413 (787)
+  OK <222> 43183164 (3305)        DIST 8
+  OK <321> 17111962 (671)
+  OK <322> 561114147 (17838)
+  OK <323> 7320657167 (14953)
+  OK <1221> 157116243 (663)       DIST 16
+  OK <12221> 625676928843 (19191) DIST 16
+  OK <3221> 68698089712 (14219)
+  OK <4221> 392742794892 (301318)
 
-Counts countUp(const Report &a, const Report &b, int base) {
-  if(!connected(a, b, base))
+  OK <31> 648 (8)
+  OK <131> 433685 (24)
+  OK <32> 148794 (443)
+  OK <231> 41019966 (1179)
+  OK <232> 3021093957 (46219)
+  OK <33> 6246077 (432)
+  OK <331> 1358812234 (1104)        DIST 16
+  OK <332> 90630537410 (52944)
+  OK <333> 2609661915535 (52782)
+  OK <321> 17111962 (671)
+  OK <1321> 4581373745 (1471)
+  OK <2321> 334184934526 (47632)    DIST 24
+  OK <3321> 10036269263050 (59722)  DIST 24
+  OK <12321> 36790675675026 (39137) DIST 32
+
+  OK <41> 550 (28)
+  OK <141> 2101339 (72) DIST 16
+  OK <42> 849937 (473)
+  OK <242> 84806603578 (143406) DIST 24
+  FAIL <241> 561350899 (15089) DIST 24
+       <241> 561662720 (15089)
+  Overcount     311821
+  NO 180     555854930 (15089) So maybe miscounting for 180?
+*/
+Counts countUp(const Report &a, const Report &b) {
+  if(!Report::connected(a, b))
     return Counts();
-  return Counts(a.counts.all * b.counts.all,
-		a.counts.symmetric180 * b.counts.symmetric180,
-		a.counts.symmetric90 * b.counts.symmetric90);
+  std::cout << "Connected " << a << " and " << b << std::endl;
+
+  // Counts are for a given base "a" from above and "b" from below
+  // A and B are "raw" counts:
+  Counts A(a.counts.all - a.counts.symmetric180 - a.counts.symmetric90,
+	   a.counts.symmetric180 - a.counts.symmetric90,
+	   a.counts.symmetric90);
+  Counts B(b.counts.all - b.counts.symmetric180 - b.counts.symmetric90,
+	   b.counts.symmetric180 - b.counts.symmetric90,
+	   b.counts.symmetric90);
+	   
+  Counts BA(A.all * B.all,
+	    A.symmetric180 * B.symmetric180,
+	    A.symmetric90 * B.symmetric90);
+  Counts ba(a.counts.all * b.counts.all,
+	    a.counts.symmetric180 * b.counts.symmetric180,
+	    a.counts.symmetric90 * b.counts.symmetric90);
+  return ba;
+  // (A+B+C) * (D+E+F) = AD + ...
+  return Counts(a.counts.all*b.counts.all
+		- (A.symmetric180+A.symmetric90)*(B.symmetric180+B.symmetric90)
+		- A.symmetric90*B.symmetric90,
+		(A.symmetric180+A.symmetric90) * (B.symmetric180+B.symmetric90)
+		- BA.symmetric90,
+		BA.symmetric90);
 }
 
 int runSumPrecomputations(int argc, char** argv) {
@@ -163,9 +179,9 @@ int runSumPrecomputations(int argc, char** argv) {
 	  const Report &report2 = *it2;
 	  assert(bs180 == report2.baseSymmetric180);
 	  assert(bs90 == report2.baseSymmetric90);
-	  c += countUp(report1, report2, base);
+	  c += countUp(report1, report2);
 	}
-	if(connected(report1, report1, base)) {
+	if(Report::connected(report1, report1)) {
 	  cl += report1.counts;
 	}
       }
@@ -176,13 +192,19 @@ int runSumPrecomputations(int argc, char** argv) {
 	assert(c.symmetric180 % 2 == 0);
 	c.symmetric180 /= 2;
 	assert(c.all % 4 == 0);
-	c.all = c.all/4 + c.symmetric180 + c.symmetric90;
+	c.all /= 4;
       }
       else if(bs180) {
+	std::cout << " [180] FROM: " << c << std::endl;
+	assert(c.symmetric90 == 0);
 	c.all -= c.symmetric180;
 	assert(c.all % 2 == 0);
-	c.all = c.all/2 + c.symmetric180;
+	c.all /= 2;
+	std::cout << " [180]   TO: " << c << std::endl;
       }
+      std::cout << std::endl;
+      c.symmetric180 += c.symmetric90;
+      c.all += c.symmetric180;
       counts += c;
 
       // Cross check:

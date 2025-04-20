@@ -106,6 +106,7 @@ namespace rectilinear {
     // State to check connectivity:
     uint8_t colors[MAX_BRICKS][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
+    uint8_t countConnected(uint8_t layer, uint8_t idx);
   public:
     uint8_t layerSizes[MAX_BRICKS], height, size;
     Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
@@ -141,6 +142,7 @@ namespace rectilinear {
     void normalize(int &rotated);
     void normalize();
     int countUnreachable(const Combination &maxCombination) const;
+    bool isConnected();
     static int reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
@@ -204,7 +206,7 @@ namespace rectilinear {
     void report();
     bool addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
-  private:
+    //private:
     void build(BrickPicker *picker, int toPick);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
@@ -273,13 +275,18 @@ namespace rectilinear {
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
 
+  typedef std::map<Combination,CountsMap> CombinationResultsMap;
+  typedef std::map<Combination,Combination> CombinationMap;
+
   struct Report {
-    uint8_t colors[6]; // Lemma 3 is only used up to base 7
+    uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
     bool baseSymmetric180, baseSymmetric90;
     Counts counts;
-  };
 
-  typedef std::map<uint64_t,std::vector<Report> > ReportMap;
+    friend std::ostream& operator <<(std::ostream &os, const Report &r);
+    static bool connected(const Report &a, const Report &b);
+    static void getReports(const CountsMap &cm, std::vector<Report> &reports, uint8_t base, bool b180, bool b90);
+  };
 
   class BitReader {
     std::ifstream *istream;
@@ -298,9 +305,6 @@ namespace rectilinear {
     ~BitReader();
     bool next(std::vector<Report> &v);
   };
-
-  typedef std::map<Combination,CountsMap> CombinationResultsMap;
-  typedef std::map<Combination,Combination> CombinationMap;
 
   class ICombinationProducer {
   public:

@@ -753,6 +753,46 @@ namespace rectilinear {
     }
   }
 
+  uint8_t Combination::countConnected(uint8_t layer, uint8_t idx) {
+    colors[layer][idx] = 1;
+    const Brick &b = bricks[layer][idx];
+    uint8_t ret = 1;
+    // Add for layer below:
+    if(layer > 0) {
+      uint8_t s = layerSizes[layer-1];
+      for(uint8_t i = 0; i < s; i++) {
+	if(colors[layer-1][i] == 1)
+	  continue;
+	const Brick &b2 = bricks[layer-1][i];
+	if(b.intersects(b2))
+	  ret += countConnected(layer-1, i);
+      }
+    }
+    // Add for layer above:
+    if(layer < height-1) {
+      uint8_t s = layerSizes[layer+1];
+      for(uint8_t i = 0; i < s; i++) {
+	if(colors[layer+1][i] == 1)
+	  continue;
+	const Brick &b2 = bricks[layer+1][i];
+	if(b.intersects(b2))
+	  ret += countConnected(layer+1, i);
+      }
+    }
+    return ret;
+  }
+
+  bool Combination::isConnected() {
+    // Reset state:
+    for(uint8_t i = 0; i < height; i++) {
+      uint8_t s = layerSizes[i];
+      for(uint8_t j = 0; j < s; j++)
+	colors[i][j] = 0;
+    }
+    // Run DFS:
+    return size == countConnected(0, 0);
+  }
+
   int64_t Combination::encodeConnectivity(int64_t token) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::encodeConnectivity()");
@@ -1209,7 +1249,6 @@ namespace rectilinear {
     const uint8_t leftToPlace = maxSize - baseCombination.size;
     assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
-
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
     int cntDoneLayers = 0;
@@ -1267,7 +1306,7 @@ namespace rectilinear {
     }
   }
 
-  ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
+ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder()");
 #endif
@@ -1548,6 +1587,52 @@ namespace rectilinear {
     return os;
   }
 
+  bool Report::connected(const Report &a, const Report &b) {
+    int ret = 1;
+    bool c[MAX_LAYER_SIZE];
+    for(int i = 0; i < a.base-1; i++) {
+      bool isColor1 = a.colors[i] == 0 || b.colors[i] == 0;
+      c[i] = isColor1;
+      if(isColor1)
+	ret++;
+    }
+    bool improved = true;
+    while(improved) {
+      improved = false;
+      for(int i = 0; i < a.base-1; i++) {
+	if(c[i])
+	  continue;
+	// Attempt to color i:
+	for(int j = 0; j < a.base-1; j++) {
+	  if(c[j] && (a.colors[i] == a.colors[j] || b.colors[i] == b.colors[j])) {
+	    c[i] = true;
+	    ret++;
+	    improved = true;
+	    break;
+	  }
+	}
+      }
+    }
+    assert(ret <= a.base);
+    return ret == a.base;
+  }
+
+  void Report::getReports(const CountsMap &cm, std::vector<Report> &reports, uint8_t base, bool b180, bool b90) {
+    for(CountsMap::const_iterator it = cm.begin(); it != cm.end(); it++) {
+      Report r;
+      r.base = base;
+      r.baseSymmetric180 = b180;
+      r.baseSymmetric90 = b90;
+      r.counts = it->second;
+      uint64_t token = it->first;
+      for(uint8_t i = 0; i < base-1; i++) {
+	r.colors[i] = token % 10 - 1;
+	token/=10;
+      }
+      reports.push_back(r);
+    }
+  }
+  
   bool BitReader::readBit() {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::readBit()");
@@ -1948,7 +2033,7 @@ namespace rectilinear {
       Combination c = *it;
       CombinationMap::const_iterator it2 = duplicates.find(c);
       if(it2 != duplicates.end()) {
-	c = it2->second; // Loop up using original instead
+	c = it2->second; // Use original instead
       }
       CountsMap cm = resultsMap[c];
 
@@ -1959,6 +2044,19 @@ namespace rectilinear {
       writer.writeBit(baseSymmetric180);
       if(base % 4 == 0)
 	writer.writeBit(baseSymmetric90);
+
+      // TODO RM!
+      if(baseSymmetric90) {
+	std::cout << "Symmetric90 base: " << c << std::endl;
+	for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++)
+	  std::cout << " " << it3->first << ": " << it3->second << std::endl;
+      }
+      else if(baseSymmetric180) {
+	std::cout << "Symmetric180 base: " << c << std::endl;
+	for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++)
+	  std::cout << " " << it3->first << ": " << it3->second << std::endl;
+      }
+      // TODO END!
 
       bool any = false;
       for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
@@ -2028,6 +2126,93 @@ namespace rectilinear {
       CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, false, true);
       builder.build();
       baseBuilder->registerCounts(c, builder.counts);
+
+#ifdef DEBUG
+      // Debugging <142>:
+      Combination max41; max41.size = 5; max41.height = 2; max41.layerSizes[0] = 4; max41.layerSizes[1] = 1;
+      CombinationBuilder builder41(c, 0, c.size, c.size+1, neighbours, max41, false, true);
+
+      // Build all <142> combinations with this base:
+      std::vector<LayerBrick> potentialBricks41, potentialBricks42;
+      builder.findPotentialBricksForNextWave(potentialBricks42);
+      builder41.findPotentialBricksForNextWave(potentialBricks41);
+      LayerBrick pick42[2];
+      BrickPicker picker42(potentialBricks42, 0, 2, pick42, 0);
+      Combination c142; c142.size = 7; c142.height = 3; c142.layerSizes[0] = 1; c142.layerSizes[1] = 4; c142.layerSizes[2] = 2;
+      Counts counts142;
+      while(picker42.next()) {
+	for(std::vector<LayerBrick>::const_iterator it = potentialBricks41.begin(); it != potentialBricks41.end(); it++) {
+	  c142.bricks[0][0] = it->BRICK;
+	  for(int i = 0; i < 4; i++)
+	    c142.bricks[1][i] = c.bricks[0][i];
+	  for(int i = 0; i < 2; i++)
+	    c142.bricks[2][i] = pick42[i].BRICK;
+	  if(c142.isConnected()) {
+	    c.normalize();
+	    counts142.all++;
+	    if(c.is180Symmetric()) {
+	      counts142.symmetric180++;
+	      if(c.is90Symmetric())
+		counts142.symmetric90++;
+	    }
+	  }
+	}
+      }
+
+      // Compare counts:
+      builder41.build();
+      std::vector<Report> r42, r41;
+      Counts countsMult;
+      bool b180 = c.is180Symmetric();
+      bool b90 = b180 && c.is90Symmetric();
+      Report::getReports(builder.counts, r42, c.size, b180, b90);
+      Report::getReports(builder41.counts, r41, c.size, b180, b90);
+      std::cout << "Base " << c << std::endl;
+      for(std::vector<Report>::const_iterator it1 = r42.begin(); it1 != r42.end(); it1++) {
+	const Report &report1 = *it1;
+	for(std::vector<Report>::const_iterator it2 = r41.begin(); it2 != r41.end(); it2++) {
+	  const Report &report2 = *it2;
+	  if(Report::connected(report1, report2)) {
+	    const Counts &a = report1.counts;
+	    const Counts &b = report2.counts;
+	    Counts ba(a.all*b.all, a.symmetric180*b.symmetric180, a.symmetric90*b.symmetric90);
+	    countsMult += ba;
+	    std::cout << "Connected <42> " << report1 << ", <41> " << report2 << " -> " << ba << std::endl;
+	  }
+	}
+      }
+      if(b90) {
+	countsMult.all -= countsMult.symmetric180 + countsMult.symmetric90;
+	assert(countsMult.symmetric90 % 4 == 0);
+	countsMult.symmetric90 /= 4;
+	assert(countsMult.symmetric180 % 2 == 0);
+	countsMult.symmetric180 /= 2;
+	assert(countsMult.all % 4 == 0);
+	countsMult.all = countsMult.all/4 + countsMult.symmetric180 + countsMult.symmetric90;
+      }
+      else if(b180) {
+	assert(countsMult.symmetric90 == 0);
+	countsMult.all -= countsMult.symmetric180;
+	assert(countsMult.all % 2 == 0);
+	countsMult.all = countsMult.all/2 + countsMult.symmetric180;
+      }
+
+      if(counts142 != countsMult) {
+	std::cerr << "<142> ERROR ON BASE " << c << " sym180: " << b180 << " sym90: " << b90 << std::endl;
+	std::cerr << "Counted: " << counts142 << std::endl;
+	std::cerr << "Multiplied: " << countsMult << std::endl;
+	std::cerr << "Reports for <41>: " << r41.size() << std::endl;
+	std::cerr << "Reports for <42>: " << r42.size() << std::endl;
+	std::cerr << "CountsMap <42>: " << builder.counts.size() << std::endl;	
+	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
+	  std::cout << " " << it->first << ": " << it->second << std::endl;
+	std::cerr << "CountsMap <41>: " << builder.counts.size() << std::endl;	
+	for(CountsMap::const_iterator it = builder41.counts.begin(); it != builder41.counts.end(); it++)
+	  std::cout << " " << it->first << ": " << it->second << std::endl;
+	int *kil = NULL;
+	kil[69] = 42; // Invoke seg fault
+      }
+#endif
     }
   }
 
@@ -2080,6 +2265,10 @@ namespace rectilinear {
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
     for(int i = 0; i < processorCount * MAX_BRICKS; i++)
       neighbourCache[i].unsetAll();
+
+    Lemma3Runner runner(&baseBuilder, n, &maxCombination, 0, neighbourCache);
+    runner.run();
+    /*
     Lemma3Runner *builders = new Lemma3Runner[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
@@ -2096,7 +2285,7 @@ namespace rectilinear {
     delete[] builders;
     delete[] neighbourCache;
 
-    baseBuilder.report();
+    baseBuilder.report();*/
   }
 
   void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer, int maxDist) {
