@@ -52,6 +52,7 @@ namespace rectilinear {
     Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90);
     Counts(const Counts& c);
     Counts& operator +=(const Counts &c);
+    Counts& operator -=(const Counts &c);
     Counts operator -(const Counts &c) const;
     Counts operator /(const int &v) const;
     bool operator ==(const Counts &c) const;
@@ -179,6 +180,8 @@ namespace rectilinear {
     bool next(Combination &c, int &picked);
   };
 
+  typedef std::map<Combination,Counts> CombinationCountsMap;
+
   class CombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize, maxSize;
@@ -187,6 +190,7 @@ namespace rectilinear {
     bool isFirstBuilder, encodeConnectivity;
   public:
     CountsMap counts;
+    CombinationCountsMap baseCounts; // TODO: RM Later
 
     CombinationBuilder(const Combination &c,
 		       const uint8_t waveStart,
@@ -285,6 +289,7 @@ namespace rectilinear {
 
     friend std::ostream& operator <<(std::ostream &os, const Report &r);
     static bool connected(const Report &a, const Report &b);
+    static Counts countUp(const Report &reportA, const Report &reportB);
     static void getReports(const CountsMap &cm, std::vector<Report> &reports, uint8_t base, bool b180, bool b90);
   };
 
@@ -369,13 +374,14 @@ namespace rectilinear {
 		 int threadIndex,
 		 BrickPlane *neighbours);
 
-    void run();
+    void run(CombinationCountsMap &counts1XY);
   };
 
   class Lemma3 {
     int n, base;
     CountsMap counts;
     Combination maxCombination;
+    CombinationCountsMap counts1XY;
   public:
     Lemma3(int n, int base, Combination &maxCombination);
     void precompute(int maxDist);

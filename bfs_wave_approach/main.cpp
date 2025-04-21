@@ -68,73 +68,58 @@ uint64_t get(char *argv) {
   Lemma 3:
    Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
-
-  Cross check results:
-  OK <121> 37081 (32)
-  OK <21> 250 (20)
-  OK <22> 10411 (49)
-  OK <221> 1297413 (787)
-  OK <222> 43183164 (3305)        DIST 8
-  OK <321> 17111962 (671)
-  OK <322> 561114147 (17838)
-  OK <323> 7320657167 (14953)
-  OK <1221> 157116243 (663)       DIST 16
-  OK <12221> 625676928843 (19191) DIST 16
-  OK <3221> 68698089712 (14219)
-  OK <4221> 392742794892 (301318)
-
-  OK <31> 648 (8)
-  OK <131> 433685 (24)
-  OK <32> 148794 (443)
-  OK <231> 41019966 (1179)
-  OK <232> 3021093957 (46219)
-  OK <33> 6246077 (432)
-  OK <331> 1358812234 (1104)        DIST 16
-  OK <332> 90630537410 (52944)
-  OK <333> 2609661915535 (52782)
-  OK <321> 17111962 (671)
-  OK <1321> 4581373745 (1471)
-  OK <2321> 334184934526 (47632)    DIST 24
-  OK <3321> 10036269263050 (59722)  DIST 24
-  OK <12321> 36790675675026 (39137) DIST 32
-
-  OK <41> 550 (28)
-  OK <141> 2101339 (72) DIST 16
-  OK <42> 849937 (473)
-  OK <242> 84806603578 (143406) DIST 24
-  FAIL <241> 561350899 (15089) DIST 24
-       <241> 561662720 (15089)
-  Overcount     311821
-  NO 180     555854930 (15089) So maybe miscounting for 180?
 */
-Counts countUp(const Report &a, const Report &b) {
-  if(!Report::connected(a, b))
-    return Counts();
-  std::cout << "Connected " << a << " and " << b << std::endl;
+void checkCounts(uint64_t token, const Counts &c) {
+  CountsMap m;
+  m[121] = Counts(37081, (32), 0);
+  m[21] = Counts(250, (20), 0);
+  m[22] = Counts(10411, (49), 0);
+  m[221] = Counts(1297413, (787), 0);
+  m[222] = Counts(43183164, (3305), 0);
+  m[321] = Counts(17111962, (671), 0);
+  m[322] = Counts(561114147, (17838), 0);
+  m[323] = Counts(7320657167, (14953), 0);
+  m[1221] = Counts(157116243, (663), 0);
+  m[12221] = Counts(625676928843, (19191), 0);
+  m[3221] = Counts(68698089712, (14219), 0);
+  m[4221] = Counts(392742794892, (301318), 0);
 
-  // Counts are for a given base "a" from above and "b" from below
-  // A and B are "raw" counts:
-  Counts A(a.counts.all - a.counts.symmetric180 - a.counts.symmetric90,
-	   a.counts.symmetric180 - a.counts.symmetric90,
-	   a.counts.symmetric90);
-  Counts B(b.counts.all - b.counts.symmetric180 - b.counts.symmetric90,
-	   b.counts.symmetric180 - b.counts.symmetric90,
-	   b.counts.symmetric90);
-	   
-  Counts BA(A.all * B.all,
-	    A.symmetric180 * B.symmetric180,
-	    A.symmetric90 * B.symmetric90);
-  Counts ba(a.counts.all * b.counts.all,
-	    a.counts.symmetric180 * b.counts.symmetric180,
-	    a.counts.symmetric90 * b.counts.symmetric90);
-  return ba;
-  // (A+B+C) * (D+E+F) = AD + ...
-  return Counts(a.counts.all*b.counts.all
-		- (A.symmetric180+A.symmetric90)*(B.symmetric180+B.symmetric90)
-		- A.symmetric90*B.symmetric90,
-		(A.symmetric180+A.symmetric90) * (B.symmetric180+B.symmetric90)
-		- BA.symmetric90,
-		BA.symmetric90);
+  m[31] = Counts(648, (8), 0);
+  m[131] = Counts(433685, (24), 0);
+  m[32] = Counts(148794, (443), 0);
+  m[231] = Counts(41019966, (1179), 0);
+  m[232] = Counts(3021093957, (46219), 0);
+  m[33] = Counts(6246077, (432), 0);
+  m[331] = Counts(1358812234, (1104), 0);
+  m[332] = Counts(90630537410, (52944), 0);
+  m[333] = Counts(2609661915535, (52782), 0);
+  m[1321] = Counts(4581373745, (1471), 0);
+  m[2321] = Counts(334184934526, (47632), 0);
+  m[3321] = Counts(10036269263050, (59722), 0);
+  m[12321] = Counts(36790675675026, (39137), 0);
+
+  m[41] = Counts(550, (28), 0);
+  m[141] = Counts(2101339, (72), 0);
+  m[42] = Counts(849937, (473), 0);
+  m[242] = Counts(84806603578, (143406), 0);
+  m[241] = Counts(561350899, (15089), 0);
+  // ./sums.o     561662720, (15089)
+  // ./build.o    561350899, (15089)
+
+  uint64_t reversed = Combination::reverseToken(token);
+  if(m.find(reversed) != m.end())
+    token = reversed;
+  else if(m.find(token) == m.end())
+    return; // No cross check!
+  Counts c2 = m[token];
+  if(c == c2) {
+    std::cout << "OK <" << token << "> " << c << std::endl;
+    return; // All OK
+  }
+  std::cerr << "CROSS CHECK ERROR!" << std::endl << "EXPECTED" << std::endl;
+  std::cerr << " <" << token << "> " << c2 << std::endl;
+  std::cerr << "RECEIVED" << std::endl;
+  std::cerr << " <" << token << "> " << c << std::endl;
 }
 
 int runSumPrecomputations(int argc, char** argv) {
@@ -158,7 +143,7 @@ int runSumPrecomputations(int argc, char** argv) {
   
   rightToken = rightToken * 10 + base;
   
-  Counts counts, countsLeft;
+  Counts counts, countsLeft, countsRight;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
     BitReader reader1(base, leftSize + base, leftToken, D);
@@ -167,26 +152,38 @@ int runSumPrecomputations(int argc, char** argv) {
     std::vector<Report> l, r;
 
     while(reader1.next(l) && reader2.next(r)) {
-      bool bs180, bs90;
+      bool bs180, bs90, first = true;
 
-      Counts c, cl;
+      Counts c, cl, cr;
       // Match all connectivities:
       for(std::vector<Report>::const_iterator it1 = l.begin(); it1 != l.end(); it1++) {
 	const Report &report1 = *it1;
-	bs180 = report1.baseSymmetric180;
-	bs90 = report1.baseSymmetric90;
+	if(first) {
+	  bs180 = report1.baseSymmetric180;
+	  bs90 = report1.baseSymmetric90;
+	}
+	else {
+	  assert(bs180 == report1.baseSymmetric180);
+	  assert(bs90 == report1.baseSymmetric90);
+	}
+
 	for(std::vector<Report>::const_iterator it2 = r.begin(); it2 != r.end(); it2++) {
 	  const Report &report2 = *it2;
-	  assert(bs180 == report2.baseSymmetric180);
-	  assert(bs90 == report2.baseSymmetric90);
-	  c += countUp(report1, report2);
+	  c += Report::countUp(report1, report2);
 	}
-	if(Report::connected(report1, report1)) {
+	if(Report::connected(report1, report1))
 	  cl += report1.counts;
-	}
       }
+      for(std::vector<Report>::const_iterator it2 = r.begin(); it2 != r.end(); it2++) {
+	const Report &report2 = *it2;
+	assert(bs180 == report2.baseSymmetric180);
+	assert(bs90 == report2.baseSymmetric90);
+	if(Report::connected(report2, report2))
+	  cr += report2.counts;
+      }
+
       if(bs90) {
-	c.all -= c.symmetric180 + c.symmetric90;
+	//c.all -= c.symmetric180 + c.symmetric90;
 	assert(c.symmetric90 % 4 == 0);
 	c.symmetric90 /= 4;
 	assert(c.symmetric180 % 2 == 0);
@@ -195,14 +192,12 @@ int runSumPrecomputations(int argc, char** argv) {
 	c.all /= 4;
       }
       else if(bs180) {
-	std::cout << " [180] FROM: " << c << std::endl;
+	// Non-symmetric are double-counted when base is symmetric180
 	assert(c.symmetric90 == 0);
-	c.all -= c.symmetric180;
+	//c.all -= c.symmetric180;
 	assert(c.all % 2 == 0);
 	c.all /= 2;
-	std::cout << " [180]   TO: " << c << std::endl;
       }
-      std::cout << std::endl;
       c.symmetric180 += c.symmetric90;
       c.all += c.symmetric180;
       counts += c;
@@ -217,23 +212,37 @@ int runSumPrecomputations(int argc, char** argv) {
 	cl.symmetric180 /= 2;
 	assert(cl.all % 4 == 0);
 	cl.all = cl.all/4 + cl.symmetric180 + cl.symmetric90;
+
+	cr.all -= cr.symmetric180 + cr.symmetric90;
+	assert(cr.symmetric90 % 4 == 0);
+	cr.symmetric90 /= 4;
+	assert(cr.symmetric180 % 2 == 0);
+	cr.symmetric180 /= 2;
+	assert(cr.all % 4 == 0);
+	cr.all = cr.all/4 + cr.symmetric180 + cr.symmetric90;
       }
       else if(bs180) {
 	// The non-symmetric are counted twice:
 	cl.all -= cl.symmetric180;
 	assert(cl.all % 2 == 0);
 	cl.all = cl.all/2 + cl.symmetric180;
+
+	cr.all -= cr.symmetric180;
+	assert(cr.all % 2 == 0);
+	cr.all = cr.all/2 + cr.symmetric180;
       }
 
       countsLeft += cl;
+      countsRight += cr;
 
       l.clear();
       r.clear();
     } // while(reader1.next(rm) && reader2.next(rm))
   } // for d = 2 .. maxDist
 
-  std::cout << std::endl << " <" << token << "> " << counts << std::endl;
-  std::cout << " <" << leftToken << "> " << countsLeft << std::endl << std::endl;
+  checkCounts(token, counts);
+  checkCounts(leftToken, countsLeft);
+  checkCounts(rightToken, countsRight);
   
   return 0;
 }

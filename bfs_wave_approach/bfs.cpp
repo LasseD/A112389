@@ -62,6 +62,15 @@ namespace rectilinear {
     symmetric90 += c.symmetric90;
     return *this;
   }
+  Counts& Counts::operator -=(const Counts& c) {
+#ifdef PROFILING
+    Profiler::countInvocation("Counts::operator -=");
+#endif
+    all -= c.all;
+    symmetric180 -= c.symmetric180;
+    symmetric90 -= c.symmetric90;
+    return *this;
+  }
   Counts Counts::operator -(const Counts& c) const {
 #ifdef PROFILING
     Profiler::countInvocation("Counts::operator -");
@@ -1196,6 +1205,18 @@ namespace rectilinear {
       else
 	it->second += cx;
 
+      // TODO: RM
+      Combination base; base.size = base.layerSizes[0] = baseCombination.layerSizes[1];
+      base.height = 1;
+      for(uint8_t i = 0; i < base.size; i++)
+	base.bricks[0][i] = baseCombination.bricks[1][i];
+      base.normalize();
+      CombinationCountsMap::iterator bit = baseCounts.find(base);
+      if(bit != baseCounts.end())
+	bit->second += cx;
+      else
+	baseCounts[base] = cx;
+
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
@@ -1218,6 +1239,14 @@ namespace rectilinear {
 	counts[token] = toAdd;
       else
 	it2->second += toAdd;
+    }
+
+    for(CombinationCountsMap::const_iterator bit = b.baseCounts.begin(); bit != b.baseCounts.end(); bit++) {
+      CombinationCountsMap::iterator bit2 = baseCounts.find(bit->first);
+      if(bit2 != baseCounts.end())
+	bit2->second += bit->second;
+      else
+	baseCounts[bit->first] = bit->second;
     }
   }
 
@@ -1439,7 +1468,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.all += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric180;
 
-      countsForToken.all /= 2 * layerSizes[0];
+      countsForToken.all /= 2 * layerSizes[0]; // Because each model is built toward two directions
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
       std::cout << " <" << token << "> " << countsForToken << std::endl;
@@ -1615,6 +1644,45 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
     assert(ret <= a.base);
     return ret == a.base;
+  }
+
+  Counts Report::countUp(const Report &reportA, const Report &reportB) {
+    if(!Report::connected(reportA, reportB))
+      return Counts();
+    // a and b are raw counts from building on base, so non-symmetric are double-counted!
+    Counts a = reportA.counts;
+    Counts b = reportB.counts;
+    if(reportA.baseSymmetric90) {
+      assert(reportB.baseSymmetric90);
+      assert(a.all % 4 == 0);
+      assert(b.all % 4 == 0);
+      a.all /= 4;
+      b.all /= 4;
+      assert(a.symmetric180 % 2 == 0);
+      assert(b.symmetric180 % 2 == 0);
+      a.symmetric180 /= 2;
+      b.symmetric180 /= 2;
+    }
+    else if(reportA.baseSymmetric180) {
+      assert(reportB.baseSymmetric180);
+      assert(a.all % 2 == 0);
+      assert(b.all % 2 == 0);
+      a.all /= 2;
+      b.all /= 2;
+    }
+    
+    Counts ba(a.all * b.all,
+	      a.symmetric180 * b.symmetric180,
+	      a.symmetric90 * b.symmetric90);
+
+    Counts ret = Counts(ba.all // non-symmetric
+			+ a.all * (b.symmetric180 + b.symmetric90)
+			+ b.all * (a.symmetric180 + a.symmetric90),
+			(a.symmetric180 + a.symmetric90) * (b.symmetric180 + b.symmetric90),
+			ba.symmetric90);
+
+    std::cout << "Connected " << reportA << ", " << reportB << " -> " << ret << std::endl;
+    return ret;
   }
 
   void Report::getReports(const CountsMap &cm, std::vector<Report> &reports, uint8_t base, bool b180, bool b90) {
@@ -2115,7 +2183,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  void Lemma3Runner::run() {
+  void Lemma3Runner::run(CombinationCountsMap &computed1XY) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3Runner::run()");
 #endif
@@ -2128,60 +2196,29 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       baseBuilder->registerCounts(c, builder.counts);
 
 #ifdef DEBUG
-      // Debugging <142>:
-      Combination max41; max41.size = 5; max41.height = 2; max41.layerSizes[0] = 4; max41.layerSizes[1] = 1;
-      CombinationBuilder builder41(c, 0, c.size, c.size+1, neighbours, max41, false, true);
+      int base = c.size;
+      Combination maxX1; maxX1.size = base+1; maxX1.height = 2; maxX1.layerSizes[0] = base; maxX1.layerSizes[1] = 1;
+      CombinationBuilder builderX1(c, 0, base, base+1, neighbours, maxX1, false, true);
 
-      // Build all <142> combinations with this base:
-      std::vector<LayerBrick> potentialBricks41, potentialBricks42;
-      builder.findPotentialBricksForNextWave(potentialBricks42);
-      builder41.findPotentialBricksForNextWave(potentialBricks41);
-      LayerBrick pick42[2];
-      BrickPicker picker42(potentialBricks42, 0, 2, pick42, 0);
-      Combination c142; c142.size = 7; c142.height = 3; c142.layerSizes[0] = 1; c142.layerSizes[1] = 4; c142.layerSizes[2] = 2;
-      Counts counts142;
-      while(picker42.next()) {
-	for(std::vector<LayerBrick>::const_iterator it = potentialBricks41.begin(); it != potentialBricks41.end(); it++) {
-	  c142.bricks[0][0] = it->BRICK;
-	  for(int i = 0; i < 4; i++)
-	    c142.bricks[1][i] = c.bricks[0][i];
-	  for(int i = 0; i < 2; i++)
-	    c142.bricks[2][i] = pick42[i].BRICK;
-	  if(c142.isConnected()) {
-	    c.normalize();
-	    counts142.all++;
-	    if(c.is180Symmetric()) {
-	      counts142.symmetric180++;
-	      if(c.is90Symmetric())
-		counts142.symmetric90++;
-	    }
-	  }
-	}
-      }
+      // Build all <1X2> combinations with this base:
+      std::vector<LayerBrick> potentialBricksX1, potentialBricksX2;
+      builder.findPotentialBricksForNextWave(potentialBricksX2);
+      builderX1.findPotentialBricksForNextWave(potentialBricksX1);
 
       // Compare counts:
-      builder41.build();
-      std::vector<Report> r42, r41;
+      builderX1.build();
+      std::vector<Report> rX2, rX1;
       Counts countsMult;
       bool b180 = c.is180Symmetric();
       bool b90 = b180 && c.is90Symmetric();
-      Report::getReports(builder.counts, r42, c.size, b180, b90);
-      Report::getReports(builder41.counts, r41, c.size, b180, b90);
+      Report::getReports(builder.counts, rX2, base, b180, b90);
+      Report::getReports(builderX1.counts, rX1, base, b180, b90);
       std::cout << "Base " << c << std::endl;
-      for(std::vector<Report>::const_iterator it1 = r42.begin(); it1 != r42.end(); it1++) {
-	const Report &report1 = *it1;
-	for(std::vector<Report>::const_iterator it2 = r41.begin(); it2 != r41.end(); it2++) {
-	  const Report &report2 = *it2;
-	  if(Report::connected(report1, report2)) {
-	    const Counts &a = report1.counts;
-	    const Counts &b = report2.counts;
-	    Counts ba(a.all*b.all, a.symmetric180*b.symmetric180, a.symmetric90*b.symmetric90);
-	    countsMult += ba;
-	    std::cout << "Connected <42> " << report1 << ", <41> " << report2 << " -> " << ba << std::endl;
-	  }
-	}
+      for(std::vector<Report>::const_iterator it1 = rX2.begin(); it1 != rX2.end(); it1++) {
+	for(std::vector<Report>::const_iterator it2 = rX1.begin(); it2 != rX1.end(); it2++)
+	  countsMult += Report::countUp(*it1, *it2);
       }
-      if(b90) {
+      /*if(b90) {
 	countsMult.all -= countsMult.symmetric180 + countsMult.symmetric90;
 	assert(countsMult.symmetric90 % 4 == 0);
 	countsMult.symmetric90 /= 4;
@@ -2195,22 +2232,30 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	countsMult.all -= countsMult.symmetric180;
 	assert(countsMult.all % 2 == 0);
 	countsMult.all = countsMult.all/2 + countsMult.symmetric180;
-      }
+	}*/
 
-      if(counts142 != countsMult) {
-	std::cerr << "<142> ERROR ON BASE " << c << " sym180: " << b180 << " sym90: " << b90 << std::endl;
-	std::cerr << "Counted: " << counts142 << std::endl;
-	std::cerr << "Multiplied: " << countsMult << std::endl;
-	std::cerr << "Reports for <41>: " << r41.size() << std::endl;
-	std::cerr << "Reports for <42>: " << r42.size() << std::endl;
-	std::cerr << "CountsMap <42>: " << builder.counts.size() << std::endl;	
+      Combination cNorm(c);
+      cNorm.normalize();
+      CombinationCountsMap::iterator bit = computed1XY.find(cNorm);
+      if(bit == computed1XY.end()) {
+	std::cerr << "Unknown base! " << c << " -> " << cNorm << std::endl;
+	assert(false);
+      }
+      Counts fromBuilding = bit->second;
+      fromBuilding.all += fromBuilding.symmetric180;
+      fromBuilding.all /= 2;
+
+      if(countsMult != fromBuilding) {
+	std::cerr << "ERROR:" << std::endl;
+	std::cerr << "Mults:   " << countsMult << std::endl;
+	std::cerr << "Counted: " << fromBuilding << std::endl;
+	std::cerr << "CountsMap <" << base << "2>: " << builder.counts.size() << std::endl;	
 	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
 	  std::cout << " " << it->first << ": " << it->second << std::endl;
-	std::cerr << "CountsMap <41>: " << builder.counts.size() << std::endl;	
-	for(CountsMap::const_iterator it = builder41.counts.begin(); it != builder41.counts.end(); it++)
+					      std::cerr << "CountsMap <" << base << "1>: " << builder.counts.size() << std::endl;	
+	for(CountsMap::const_iterator it = builderX1.counts.begin(); it != builderX1.counts.end(); it++)
 	  std::cout << " " << it->first << ": " << it->second << std::endl;
-	int *kil = NULL;
-	kil[69] = 42; // Invoke seg fault
+	assert(false);
       }
 #endif
     }
@@ -2229,6 +2274,24 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precompute(int)");
 #endif
+
+    std::cout << "Building all <1XY> combinations for comparison" << std::endl;
+
+    // Debugging <1XY>:
+    // Compare with normal construction for <1XY>:
+    Combination base1XY, max1XY; max1XY.size = 1+maxCombination.size; max1XY.height = 3;
+    max1XY.layerSizes[1] = base; max1XY.layerSizes[2] = maxCombination.layerSizes[1];
+    BrickPlane neighbours[3];
+    for(int i = 0; i < 3; i++)
+      neighbours[i].unsetAll();
+    CombinationBuilder builder1XY(base1XY, 0, 1, max1XY.size, neighbours, max1XY, true, false);
+    //builder1XY.buildSplit();
+    builder1XY.build();
+    counts1XY = builder1XY.baseCounts;
+    builder1XY.report();
+
+    std::cout << "Combinations built!" << std::endl;
+
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
@@ -2267,7 +2330,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       neighbourCache[i].unsetAll();
 
     Lemma3Runner runner(&baseBuilder, n, &maxCombination, 0, neighbourCache);
-    runner.run();
+    runner.run(counts1XY);
     /*
     Lemma3Runner *builders = new Lemma3Runner[processorCount];
     std::thread **threads = new std::thread*[processorCount];
