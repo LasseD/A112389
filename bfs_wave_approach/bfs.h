@@ -144,11 +144,12 @@ namespace rectilinear {
     void normalize();
     int countUnreachable(const Combination &maxCombination) const;
     bool isConnected();
-    static int reverseToken(int64_t token);
+    static int64_t reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
     static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
     static int countBricksToBridge(const Combination &maxCombination);
+    static bool checkCounts(uint64_t token, const Counts &c);
   };
 
   class BrickPicker {
@@ -230,8 +231,8 @@ namespace rectilinear {
     ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
 
     ThreadEnablingBuilder(Combination &c,
- 			  const uint16_t waveStart,
- 			  const uint16_t maxSize,
+ 			  const uint8_t waveStart,
+ 			  const uint8_t maxSize,
 			  BrickPlane *neighbours,
 			  Combination &maxCombination,
  			  MultiLayerBrickPicker *picker,
@@ -269,6 +270,7 @@ namespace rectilinear {
     BitWriter(const std::string &fileName, uint8_t base);
     ~BitWriter(); // Write end indicator with symmetric > total
     void writeColor(uint8_t toWrite); // 3 bits, starting from 0
+    void writeBrick(const Brick &b); // isVertical, x, y
     void writeBit(bool bit); // Also used for baseSymmetric bit
     void writeUInt16(uint16_t toWrite); // Used for symmetric180 and token
     void writeUInt8(uint8_t toWrite); // Used for symmetric90 - only when base = 4
@@ -286,6 +288,7 @@ namespace rectilinear {
     uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
     bool baseSymmetric180, baseSymmetric90;
     Counts counts;
+    Combination c;
 
     friend std::ostream& operator <<(std::ostream &os, const Report &r);
     static bool connected(const Report &a, const Report &b);
@@ -300,6 +303,7 @@ namespace rectilinear {
 
     bool readBit();
     uint8_t readColor();
+    void readBrick(Brick &b);
     uint8_t readUInt8();
     uint16_t readUInt16();
     uint32_t readUInt32();
@@ -345,6 +349,7 @@ namespace rectilinear {
     const std::vector<int> distances;
     ICombinationProducer *innerBuilder;
     BitWriter &writer;
+  public:
     CombinationMap duplicates; // Combination -> Combination
     CombinationResultsMap resultsMap; // Combination -> Result
     std::vector<Combination> bases;
@@ -374,14 +379,20 @@ namespace rectilinear {
 		 int threadIndex,
 		 BrickPlane *neighbours);
 
+#ifdef DEBUG
     void run(CombinationCountsMap &counts1XY);
+#else
+    void run();
+#endif
   };
 
   class Lemma3 {
     int n, base;
     CountsMap counts;
     Combination maxCombination;
+#ifdef DEBUG
     CombinationCountsMap counts1XY;
+#endif
   public:
     Lemma3(int n, int base, Combination &maxCombination);
     void precompute(int maxDist);

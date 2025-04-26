@@ -69,59 +69,6 @@ uint64_t get(char *argv) {
    Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
 */
-void checkCounts(uint64_t token, const Counts &c) {
-  CountsMap m;
-  m[121] = Counts(37081, (32), 0);
-  m[21] = Counts(250, (20), 0);
-  m[22] = Counts(10411, (49), 0);
-  m[221] = Counts(1297413, (787), 0);
-  m[222] = Counts(43183164, (3305), 0);
-  m[321] = Counts(17111962, (671), 0);
-  m[322] = Counts(561114147, (17838), 0);
-  m[323] = Counts(7320657167, (14953), 0);
-  m[1221] = Counts(157116243, (663), 0);
-  m[12221] = Counts(625676928843, (19191), 0);
-  m[3221] = Counts(68698089712, (14219), 0);
-  m[4221] = Counts(392742794892, (301318), 0);
-
-  m[31] = Counts(648, (8), 0);
-  m[131] = Counts(433685, (24), 0);
-  m[32] = Counts(148794, (443), 0);
-  m[231] = Counts(41019966, (1179), 0);
-  m[232] = Counts(3021093957, (46219), 0);
-  m[33] = Counts(6246077, (432), 0);
-  m[331] = Counts(1358812234, (1104), 0);
-  m[332] = Counts(90630537410, (52944), 0);
-  m[333] = Counts(2609661915535, (52782), 0);
-  m[1321] = Counts(4581373745, (1471), 0);
-  m[2321] = Counts(334184934526, (47632), 0);
-  m[3321] = Counts(10036269263050, (59722), 0);
-  m[12321] = Counts(36790675675026, (39137), 0);
-
-  m[41] = Counts(550, (28), 0);
-  m[141] = Counts(2101339, (72), 0);
-  m[42] = Counts(849937, (473), 0);
-  m[242] = Counts(84806603578, (143406), 0);
-  m[241] = Counts(561350899, (15089), 0);
-  // ./sums.o     561662720, (15089)
-  // ./build.o    561350899, (15089)
-
-  uint64_t reversed = Combination::reverseToken(token);
-  if(m.find(reversed) != m.end())
-    token = reversed;
-  else if(m.find(token) == m.end())
-    return; // No cross check!
-  Counts c2 = m[token];
-  if(c == c2) {
-    std::cout << "OK <" << token << "> " << c << std::endl;
-    return; // All OK
-  }
-  std::cerr << "CROSS CHECK ERROR!" << std::endl << "EXPECTED" << std::endl;
-  std::cerr << " <" << token << "> " << c2 << std::endl;
-  std::cerr << "RECEIVED" << std::endl;
-  std::cerr << " <" << token << "> " << c << std::endl;
-}
-
 int runSumPrecomputations(int argc, char** argv) {
   int leftToken = get(argv[1]);
   int base = get(argv[2]);
@@ -140,9 +87,25 @@ int runSumPrecomputations(int argc, char** argv) {
       tk /= 10;
     }
   }
-  
+
   rightToken = rightToken * 10 + base;
-  
+
+#ifdef DEBUG
+  // Cross check against counted:
+  Combination c, maxC;
+  maxC.size = Combination::sizeOfToken(token);
+  maxC.height = Combination::heightOfToken(token);
+  Combination::getLayerSizesFromToken(token, maxC.layerSizes);
+  BrickPlane neighbours[MAX_BRICKS];
+  for(int i = 0; i < MAX_BRICKS; i++)
+    neighbours[i].unsetAll();
+  CombinationBuilder builder(c, 0, 1, maxC.size, neighbours, maxC, true, false);
+  builder.buildSplit();
+  //counts1XY = builder.baseCounts;
+  builder.report();
+  std::cout << "Combinations built!" << std::endl;
+#endif
+
   Counts counts, countsLeft, countsRight;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
@@ -150,10 +113,11 @@ int runSumPrecomputations(int argc, char** argv) {
     BitReader reader2(base, rightSize + base, rightToken, D);
 
     std::vector<Report> l, r;
-
-    while(reader1.next(l) && reader2.next(r)) {
+    while(reader1.next(l)) {
+      bool ok = reader2.next(r); assert(ok);
       bool bs180, bs90, first = true;
 
+      Combination baseCombination;
       Counts c, cl, cr;
       // Match all connectivities:
       for(std::vector<Report>::const_iterator it1 = l.begin(); it1 != l.end(); it1++) {
@@ -161,15 +125,18 @@ int runSumPrecomputations(int argc, char** argv) {
 	if(first) {
 	  bs180 = report1.baseSymmetric180;
 	  bs90 = report1.baseSymmetric90;
+	  baseCombination = report1.c;
+	  first = false;
 	}
 	else {
 	  assert(bs180 == report1.baseSymmetric180);
 	  assert(bs90 == report1.baseSymmetric90);
+	  assert(baseCombination == report1.c);
 	}
-
 	for(std::vector<Report>::const_iterator it2 = r.begin(); it2 != r.end(); it2++) {
-	  const Report &report2 = *it2;
-	  c += Report::countUp(report1, report2);
+	  Counts fromUp = Report::countUp(report1, *it2);
+	  c += fromUp;
+	  //std::cout << " " << report1 << " <> " << *it2 << " -> " << fromUp << std::endl;
 	}
 	if(Report::connected(report1, report1))
 	  cl += report1.counts;
@@ -178,28 +145,23 @@ int runSumPrecomputations(int argc, char** argv) {
 	const Report &report2 = *it2;
 	assert(bs180 == report2.baseSymmetric180);
 	assert(bs90 == report2.baseSymmetric90);
+	assert(baseCombination == report2.c);
 	if(Report::connected(report2, report2))
 	  cr += report2.counts;
       }
-
       if(bs90) {
-	//c.all -= c.symmetric180 + c.symmetric90;
 	assert(c.symmetric90 % 4 == 0);
 	c.symmetric90 /= 4;
 	assert(c.symmetric180 % 2 == 0);
 	c.symmetric180 /= 2;
 	assert(c.all % 4 == 0);
-	c.all /= 4;
+	c.all = c.all/4 + c.symmetric180 + c.symmetric90;
       }
       else if(bs180) {
-	// Non-symmetric are double-counted when base is symmetric180
 	assert(c.symmetric90 == 0);
-	//c.all -= c.symmetric180;
 	assert(c.all % 2 == 0);
-	c.all /= 2;
+	c.all = c.all/2 + c.symmetric180;
       }
-      c.symmetric180 += c.symmetric90;
-      c.all += c.symmetric180;
       counts += c;
 
       // Cross check:
@@ -232,6 +194,32 @@ int runSumPrecomputations(int argc, char** argv) {
 	cr.all = cr.all/2 + cr.symmetric180;
       }
 
+#ifdef DEBUG
+      CombinationCountsMap::iterator bit = builder.baseCounts.find(baseCombination);
+      if(bit == builder.baseCounts.end()) {
+	if(c.all != 0) {
+	  std::cerr << "   Unknown base! " << baseCombination << std::endl;
+	  std::cerr << "File:    " << c << std::endl;
+	  assert(false);
+	}
+      }
+      else {
+	Counts fromBuilding = bit->second;
+	fromBuilding.all += fromBuilding.symmetric180;
+	fromBuilding.all /= 2 * maxC.layerSizes[0];
+	fromBuilding.symmetric180 /= maxC.layerSizes[0];
+
+	if(c != fromBuilding) {
+	  std::cerr << "Base " << baseCombination << std::endl;
+	  std::cerr << "File:    " << c << std::endl;
+	  std::cerr << "Counted: " << fromBuilding << std::endl;
+	  assert(false);
+	}
+	//std::cout << "   Handled base " << baseCombination << std::endl;
+	builder.baseCounts.erase(bit); // Ensure not counted again
+      }
+#endif
+
       countsLeft += cl;
       countsRight += cr;
 
@@ -240,9 +228,15 @@ int runSumPrecomputations(int argc, char** argv) {
     } // while(reader1.next(rm) && reader2.next(rm))
   } // for d = 2 .. maxDist
 
-  checkCounts(token, counts);
-  checkCounts(leftToken, countsLeft);
-  checkCounts(rightToken, countsRight);
+  Combination::checkCounts(token, counts);
+  Combination::checkCounts(leftToken, countsLeft);
+  Combination::checkCounts(rightToken, countsRight);
+
+#ifdef DEBUG
+  for(CombinationCountsMap::iterator it = builder.baseCounts.begin(); it != builder.baseCounts.end(); it++) {
+    std::cerr << "Unmatched base " << it->first << ": " << it->second << std::endl;
+  }
+#endif
   
   return 0;
 }
