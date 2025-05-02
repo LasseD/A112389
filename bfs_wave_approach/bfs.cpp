@@ -1,4 +1,3 @@
-#include <set>
 #include <vector>
 #include <algorithm>
 #include <assert.h>
@@ -190,7 +189,7 @@ namespace rectilinear {
     if(isVertical)
       return DIFFLT(b.x, x, 2) && DIFFLT(b.y, y, 4);
     else
-      return DIFFLT(b.x, x, 4) && DIFFLT(b.y, y, 2);
+      return DIFFLT(b.y, y, 2) && DIFFLT(b.x, x, 4);
   }
   void Brick::mirror(Brick &b, const int16_t &cx, const int16_t &cy) const {
 #ifdef PROFILING
@@ -447,9 +446,8 @@ namespace rectilinear {
       assert(layerSizes[i] == b.layerSizes[i]);
       uint8_t s = layerSizes[i];
       for(uint8_t j = 0; j < s; j++) {
-	if(bricks[i][j] != b.bricks[i][j]) {
+	if(bricks[i][j] != b.bricks[i][j])
 	  return false;
-	}
       }
     }
     return true;
@@ -600,11 +598,7 @@ namespace rectilinear {
     Profiler::countInvocation("Combination::isLayerSymmetric()");
 #endif
     const uint8_t layerSize = layerSizes[layer];
-    if(layerSize == 1) {
-      const Brick &b = bricks[layer][0];
-      return b.x*2 == cx && b.y*2 == cy;
-    }
-    else if(layerSize == 2) {
+    if(layerSize == 2) {
       return bricks[layer][0].mirrorEq(bricks[layer][1], cx, cy);
     }
     else if(layerSize == 3) {
@@ -636,24 +630,27 @@ namespace rectilinear {
       return false;
       }*/
     else {
-#ifdef PROFILING
-      Profiler::countInvocation("Combination::isLayerSymmetric::FALLBACK");
-#endif
-      std::set<Brick> seen;
-      Brick mirror;
+      Brick seen[MAX_LAYER_SIZE];
+      int seenSize = 0;
       for(uint8_t i = 0; i < layerSize; i++) {
 	const Brick &b = bricks[layer][i];
 	if(b.x*2 == cx && b.y*2 == cy)
 	  continue; // Skip brick in center
-	b.mirror(mirror, cx, cy);
-	if(seen.find(mirror) == seen.end()) {
-	  seen.insert(b);
+	bool found = false;
+	for(int i = 0; i < seenSize; i++) {
+	  if(b.mirrorEq(seen[i], cx, cy)) {
+	    found = true;
+	    // RM:
+	    seenSize--;
+	    for(int j = i; j < seenSize; j++)
+	      seen[j] = seen[j+1];
+	    break;
+	  }
 	}
-	else {
-	  seen.erase(mirror);
-	}
+	if(!found)
+	  seen[seenSize++] = b;
       }
-      return seen.empty();
+      return seenSize == 0;
     }
   }
 
@@ -808,20 +805,23 @@ namespace rectilinear {
     assert(height > 1);
     assert(layerSizes[0] >= 2);
 
-    // Reset state:
+    // Reset colors (state):
     for(uint8_t i = 0; i < height; i++) {
       uint8_t s = layerSizes[i];
       for(uint8_t j = 0; j < s; j++)
 	colors[i][j] = 0;
     }
+
     // Run DFS:
-    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+    uint8_t s0 = layerSizes[0];
+    for(uint8_t i = 0; i < s0-1; i++)
       colorConnected(0, i, i+1);
-    }
+    if(colors[0][s0-1] == 0)
+      colors[0][s0-1] = s0; // No need to run DFS on last
+
     // Encode:
-    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+    for(uint8_t i = 0; i < layerSizes[0]; i++)
       token = 10 * token + colors[0][i];
-    }
     return token;
   }
   
@@ -1000,8 +1000,10 @@ namespace rectilinear {
     uint64_t reversed = Combination::reverseToken(token);
     if(m.find(reversed) != m.end())
       token = reversed;
-    else if(m.find(token) == m.end())
+    else if(m.find(token) == m.end()) {
+      std::cout << "NEW <" << token << "> " << c << std::endl;
       return true; // No cross check!
+    }
     Counts c2 = m[token];
     if(c == c2) {
       std::cout << "OK <" << token << "> " << c << std::endl;
@@ -1163,14 +1165,14 @@ namespace rectilinear {
 #endif
     bool canBeSymmetric180 = true;
 
-    uint8_t fullLayers = 0; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
+    bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
     int16_t cx0, cy0, cx1, cy1;
 
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       int8_t diff = maxCombination.layerSizes[i] - (int8_t)baseCombination.layerSizes[i];
       if(diff == 0) {
 	// Full layer: Check if can be symmetric:
-	if(fullLayers == 0) {
+	if(!hasFullLayers) {
 	  baseCombination.getLayerCenter(i, cx0, cy0);
 	  if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
 	    canBeSymmetric180 = false;
@@ -1188,7 +1190,7 @@ namespace rectilinear {
 	    break;
 	  }
 	}
-	fullLayers++; // Because diff is 0
+	hasFullLayers = true; // Because diff is 0
       }
     }
     return canBeSymmetric180;
@@ -1201,13 +1203,15 @@ namespace rectilinear {
 #ifdef TRACE
     std::cout << "    Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
+    // Optimization: Check if all layers can be filled:
+    // "non-full" layers: Layers that are not filled by v:
     int cntNonFullLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
 	cntNonFullLayers++;
     }
     bool checkedLayers[MAX_BRICKS];
-    for(int i = 0; i < MAX_BRICKS; i++)
+    for(uint8_t i = 0; i < maxCombination.height; i++)
       checkedLayers[i] = false;
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
       const LayerBrick &lb = *it;
@@ -1219,9 +1223,9 @@ namespace rectilinear {
 	cntNonFullLayers--;
       }
     }
-    if(cntNonFullLayers > 0) {
+    if(cntNonFullLayers > 0)
       return; // Can't possibly fill!
-    }
+    // End of optimization
 
     LayerBrick bricks[MAX_BRICKS];
     BrickPicker picker(v, 0, leftToPlace, bricks, 0);
@@ -1241,9 +1245,8 @@ namespace rectilinear {
 	continue;
 
       int64_t token = baseCombination.getTokenFromLayerSizes();
-      if(encodeConnectivity) {
+      if(encodeConnectivity)
 	token = baseCombination.encodeConnectivity(token);
-      }
 
       Counts cx(1,0,0);
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
@@ -1341,7 +1344,7 @@ namespace rectilinear {
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
     int cntDoneLayers = 0;
-    for(uint8_t i = 0; i < MAX_BRICKS; i++) {
+    for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(maxCombination.layerSizes[i] == baseCombination.layerSizes[i])
 	cntDoneLayers++;
     }
@@ -2297,17 +2300,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       bool b90 = b180 && c.is90Symmetric();
       Report::getReports(builder.counts, rX2, base, b180, b90);
       Report::getReports(builderX1.counts, rX1, base, b180, b90);
-#ifdef DEBUG
-      //std::cout << c << std::endl;
-#endif
       for(std::vector<Report>::const_iterator it1 = rX2.begin(); it1 != rX2.end(); it1++) {
 	for(std::vector<Report>::const_iterator it2 = rX1.begin(); it2 != rX1.end(); it2++) {
 	  Counts c2 = Report::countUp(*it1, *it2);
 	  countsMult += c2;
-#ifdef DEBUG
-	  //if(c2.all > 0)
-	  //std::cout << " " << *it1 << " <> " << *it2 << " -> " << c2 << std::endl;
-#endif
 	}
       }
       if(b90) {
@@ -2354,7 +2350,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  std::cerr << " " << it->first << ": " << it->second << std::endl;
 	assert(false);
       }
-      //std::cout << "OK " << c << std::endl;
       computed1XY.erase(bit);
     }
 #endif
