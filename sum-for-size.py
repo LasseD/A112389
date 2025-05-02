@@ -249,10 +249,8 @@ def getN(prefix):
 printed = {}
 cntRefinements = 0
 cntLemma1 = 0
-cntLemma2 = 0
-cntLemma3 = 0
 def printXY(X, Y, prefix, rem, actuallyPrint):
-    global cntRefinements, cntLemma1, cntLemma2, cntLemma3
+    global cntRefinements, cntLemma1
 
     if rem == 0 and len(prefix) == Y:
         s = getS(prefix)
@@ -267,10 +265,6 @@ def printXY(X, Y, prefix, rem, actuallyPrint):
         cntRefinements = cntRefinements + 1
         if '1' in prefix[1:-1]:
             cntLemma1 = cntLemma1 + 1
-        elif '2' in prefix[1:-1]:
-            cntLemma2 = cntLemma2 + 1
-        elif '3' in prefix[1:-1]:
-            cntLemma3 = cntLemma3 + 1
         if n != None and s != None:
             print('  <' + prefix + '>', s + getN(prefix), '(' + str(s) + ')')
             printed[prefix[::-1]] = True
@@ -305,9 +299,6 @@ for X in range(2,to+1):
 print()
 print('Number of refinements:', cntRefinements)
 print('Found using Lemma 1:', cntLemma1)
-print('Computable using Lemma 2 and not Lemma 1:', cntLemma2)
-print('Computable using Lemma 3 (not 1 or 2):', cntLemma3)
-print('Remaining refinements:', cntRefinements-cntLemma1-cntLemma2-cntLemma3)
 print()
 
 # Code below recreates Table 7 from Eilers (2016):
