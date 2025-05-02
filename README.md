@@ -90,7 +90,7 @@ The folder [/bfs_wave_approach](bfs_wave_approach/) contains the source code.
 
 We call a layer of size 1 a “bottleneck”.
 
-Bottlenecks allow us to easily compute the number of models of a models from the size of smaller refinements:
+If a refinement has a bottleneck, then we can easily compute its size from the size of smaller refinements:
 
 Let B = A(N,M,Z1,...,Zn,...ZM), Zn=1, 1<n<M be a refinement with the bottleneck Zn.
 
@@ -98,19 +98,28 @@ Consider the refinements obtained by dividing B at the bottleneck:
 
 C = A(N_C,n,Z1,...,Zn) and D = A(N_D,m-n+1,Zn,...,ZM)
 
-TODO
-All models of B can be constructed by combining models either by
-cn and dn to create non-symmetric models: 2 models for each pair.
-cs and dn to create non-symmetric models: 1 model for each pair.
-cn and ds to create non-symmetric models: 1 model for each pair.
-cs and cs to create symmetric models: 1 model for each pair.
+All models in B can be constructed by combining all models from C with those from D.
+We have to pay attention for symmetries.
+Consider a non-symmetric model c from C. The models in B that can be constructed from c is 2 * |D| minus the symmetric models in D, as they would otherwise be double-counted. The multiplier "2" comes from the fact that all non-symmetric models can be rotated 180 degrees at the bottleneck.
 
-A(X,Y,Z1,...,Zn,...Zm)
-= 2*|cn|*|dn| + |cs|*|dn| + |cn|*|ds| + |cs|*|ds|
-= (|cn|+|c|)*|dn| + |c|*|ds|
-= (|dn|+|d|)*|cn| + |d|*|cs|
-Of which |cs|*|ds| are symmetric
+If c is symmetric, then all models of D can be used once to construct models in B.
+By using the 180-suprfix to denote rotationally symmetric models, we get the formula to compute the size of B:
 
-Applying L1 recursively reveals that any refinement with at least one bottleneck can be computed from the sub-refinements that appear from splitting at the bottlenecks.
+|B| = 2 * (|C|-C<sup>180</sup>|) * (|D|-|D<sup>180</sup>|) + |C| * |D<sup>180</sup>| + |D| * |C<sup>180</sup>| + |C<sup>180</sup>| * |D<sup>180</sup>|
 
-TODO: Lemma1 code uses non-bottlenecks to compute all
+And the number of symmetric models in B are:
+
+|B<sup>180</sup>| = |C<sup>180</sup>| * |D<sup>180</sup>|
+
+L1 thusprovides us with an efficient method of computing the size of all refinements that have at least one bottleneck, should the size of smaller refinements be at hand.
+
+
+### Applying L1 to compute A112389
+
+The method from L1 is used in the python script "sum-for-size.py" where results for refinements without bottlenecks are being typed in, thus allowing you to compute the numbers a(N) and a<sup>180</sup>(N). As an example, compute the numbers for six bricks by typing:
+
+```
+python sum-for-size.py 6
+```
+
+The results will be printed on a line with "TOTAL" followed by a(N), followed by a<sup>180</sup>(N) in parenthesis.
