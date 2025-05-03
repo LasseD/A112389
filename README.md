@@ -103,15 +103,19 @@ We have to pay attention for symmetries.
 Consider a non-symmetric model c from C. The models in B that can be constructed from c is 2 * |D| minus the symmetric models in D, as they would otherwise be double-counted. The multiplier "2" comes from the fact that all non-symmetric models can be rotated 180 degrees at the bottleneck.
 
 If c is symmetric, then all models of D can be used once to construct models in B.
-By using the 180-suprfix to denote rotationally symmetric models, we get the formula to compute the size of B:
+By using the 180-superfix to denote rotationally symmetric models and "-" to denote models that are not, we get the formulas to compute the size of B:
 
-|B| = 2 * (|C|-C<sup>180</sup>|) * (|D|-|D<sup>180</sup>|) + |C| * |D<sup>180</sup>| + |D| * |C<sup>180</sup>| + |C<sup>180</sup>| * |D<sup>180</sup>|
 
-And the number of symmetric models in B are:
+|B| = |B<sup>-</sup>| + |B<sup>180</sup>|
+
+
+|B| = 2 * |C<sup>-</sup>| * |D<sup>-</sup>| + |C<sup>-</sup>| * |D<sup>180</sup>| + |D<sup>-</sup>| * |C<sup>180</sup>|
+
 
 |B<sup>180</sup>| = |C<sup>180</sup>| * |D<sup>180</sup>|
 
-L1 thusprovides us with an efficient method of computing the size of all refinements that have at least one bottleneck, should the size of smaller refinements be at hand.
+
+L1 thus provides us with an efficient method of computing the size of all refinements that have at least one bottleneck, should the size of smaller refinements be at hand.
 
 
 ### Applying L1 to compute A112389
