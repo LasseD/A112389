@@ -100,19 +100,19 @@ C = A(N_C,n,Z1,...,Zn) and D = A(N_D,m-n+1,Zn,...,ZM)
 
 All models in B can be constructed by combining all models from C with those from D.
 We have to pay attention for symmetries.
-Consider a non-symmetric model c from C. The models in B that can be constructed from c is 2 * |D| minus the symmetric models in D, as they would otherwise be double-counted. The multiplier "2" comes from the fact that all non-symmetric models can be rotated 180 degrees at the bottleneck.
+Consider a non-symmetric model c from C. The models in B that can be constructed from c is 2 |D| minus the symmetric models in D, as they would otherwise be double-counted. The multiplier "2" comes from the fact that all non-symmetric models can be rotated 180 degrees at the bottleneck.
 
 If c is symmetric, then all models of D can be used once to construct models in B.
-By using the 180-superfix to denote rotationally symmetric models and "-" to denote models that are not, we get the formulas to compute the size of B:
-
-
-|B| = |B<sup>-</sup>| + |B<sup>180</sup>|
+By using the 180-superfix to denote rotationally symmetric models and "-" to denote models that are not, this can be written as following:
 
 
 |B<sup>-</sup>| = 2 |C<sup>-</sup>| |D<sup>-</sup>| + |C<sup>-</sup>| |D<sup>180</sup>| + |D<sup>-</sup>| |C<sup>180</sup>|
 
 
 |B<sup>180</sup>| = |C<sup>180</sup>| |D<sup>180</sup>|
+
+
+|B| = |B<sup>-</sup>| + |B<sup>180</sup>|
 
 
 L1 thus provides us with an efficient method of computing the size of all refinements that have at least one bottleneck, should the size of smaller refinements be at hand.

@@ -964,6 +964,7 @@ namespace rectilinear {
 
   bool Combination::checkCounts(uint64_t token, const Counts &c) {
     CountsMap m;
+    m[11] = Counts(24, 2, 0);
     m[121] = Counts(37081, (32), 0);
     m[21] = Counts(250, (20), 0);
     m[22] = Counts(10411, (49), 0);
@@ -1052,7 +1053,10 @@ namespace rectilinear {
 					 bool encodeConnectivity) :
     baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxCombination(maxCombination), isFirstBuilder(isFirstBuilder), encodeConnectivity(encodeConnectivity) {
 #ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder()::FAST");
+    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(...)");
+#endif
+#ifdef TRACE
+    std::cout << "Combination Builder on " << c << " to size " << maxSize << std::endl;
 #endif
   }
 
@@ -1201,7 +1205,7 @@ namespace rectilinear {
     Profiler::countInvocation("CombinationBuilder::placeAllLeftToPlace()");
 #endif
 #ifdef TRACE
-    std::cout << "    Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
+    std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
     // Optimization: Check if all layers can be filled:
     // "non-full" layers: Layers that are not filled by v:
@@ -1329,7 +1333,7 @@ namespace rectilinear {
     for(uint8_t i = 0; i < baseCombination.height; i++) {
       if(maxCombination.layerSizes[i] < baseCombination.layerSizes[i]) {
 #ifdef TRACE
-	std::cout << "Initial picker has picked too much!: " << (int)maxCombination.layerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
+	std::cout << "   Initial picker has picked too much!: " << (int)maxCombination.layerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
 #endif
 	return; // In case initial picker picks too much
       }
@@ -1343,13 +1347,17 @@ namespace rectilinear {
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
-    int cntDoneLayers = 0;
+    int layersTodo = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(maxCombination.layerSizes[i] == baseCombination.layerSizes[i])
-	cntDoneLayers++;
+      if(maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+	layersTodo++;
     }
-    if(cntDoneLayers <= 1)
+    if(layersTodo <= 1) {
+#ifdef TRACE
+      std::cout << "   Early exit of build due to only " << layersTodo << " layers not done" << std::endl;
+#endif
       return; // All done in placeAllLeftToPlace()
+    }
 
     LayerBrick bricks[MAX_BRICKS];
 
@@ -1474,7 +1482,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  void CombinationBuilder::buildSplit() {
+  void CombinationBuilder::buildSplit(int threadCount) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::buildSplit()");
 #endif
@@ -1489,10 +1497,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
     LayerBrick bricks[MAX_BRICKS];
 
-    int processorCount = std::thread::hardware_concurrency();
-#ifndef ALLTHREADS
-    processorCount -= 2; // Unless ALLTHREADS specified, leave 2 cores for OS to contiue being functional.
-#endif
+    int processorCount = threadCount-1;//std::thread::hardware_concurrency();
     std::cout << "Using " << processorCount << " hardware threads" << std::endl;
 
     MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
@@ -1534,7 +1539,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.all /= 2 * layerSizes[0]; // Because each model is built toward two directions
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
-      std::cout << " <" << token << "> " << countsForToken << std::endl;
+      //std::cout << " <" << token << "> " << countsForToken << std::endl;
+      Combination::checkCounts(token, countsForToken);
     }
   }
 
@@ -2355,7 +2361,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
   }
 
-  Lemma3::Lemma3(int n, int base, Combination &maxCombination): n(n), base(base), maxCombination(maxCombination) {
+  Lemma3::Lemma3(int n, int base, int threadCount, Combination &maxCombination): n(n), base(base), threadCount(threadCount), maxCombination(maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
@@ -2380,8 +2386,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     for(int i = 0; i < 3; i++)
       neighbours[i].unsetAll();
     CombinationBuilder builder1XY(base1XY, 0, 1, max1XY.size, neighbours, max1XY, true, false);
-    builder1XY.buildSplit();
-    //builder1XY.build();
+    builder1XY.buildSplit(threadCount);
     counts1XY = builder1XY.baseCounts;
     builder1XY.report();
     std::cout << "Combinations built!" << std::endl;
@@ -2436,7 +2441,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     BaseBuilder baseBuilder(distances, writer);
 
-    int processorCount = std::thread::hardware_concurrency() - 1;
+    int processorCount = threadCount-1;//std::thread::hardware_concurrency() - 1;
 
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
     for(int i = 0; i < processorCount * MAX_BRICKS; i++)

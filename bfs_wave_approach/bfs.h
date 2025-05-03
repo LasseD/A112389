@@ -208,7 +208,7 @@ namespace rectilinear {
     CombinationBuilder();
 
     void build();
-    void buildSplit();
+    void buildSplit(int threadCount);
     void report();
     bool addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
@@ -388,14 +388,14 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int n, base;
+    int n, base, threadCount;
     CountsMap counts;
     Combination maxCombination;
 #ifdef DEBUG
     CombinationCountsMap counts1XY;
 #endif
   public:
-    Lemma3(int n, int base, Combination &maxCombination);
+    Lemma3(int n, int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);
   private:
     void precompute(std::vector<int> &distances, BitWriter &writer);

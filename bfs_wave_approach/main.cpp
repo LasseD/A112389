@@ -100,8 +100,6 @@ int runSumPrecomputations(int argc, char** argv) {
   for(int i = 0; i < MAX_BRICKS; i++)
     neighbours[i].unsetAll();
   CombinationBuilder builder(c, 0, 1, maxC.size, neighbours, maxC, true, false);
-  builder.buildSplit();
-  //counts1XY = builder.baseCounts;
   builder.report();
   std::cout << "Combinations built!" << std::endl;
 #endif
@@ -242,7 +240,7 @@ int runSumPrecomputations(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
-  if(argc == 2 || argc == 3) {
+  if(argc == 3 || argc == 4) {
     uint64_t token = get(argv[1]);
     Combination maxCombination;
     Combination::getLayerSizesFromToken(token, maxCombination.layerSizes);
@@ -255,24 +253,30 @@ int main(int argc, char** argv) {
       return 3;
     }
 
-    if(argc == 3) { // Lemma 3:
+    if(argc == 4) { // Lemma 3:
       if(base < 2) {
 	std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
 	return 3;
       }
       int maxDist = get(argv[2]);
+      int threads = get(argv[3]);
       std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
-      Lemma3 lemma3(maxCombination.size, base, maxCombination);
+      Lemma3 lemma3(maxCombination.size, base, threads, maxCombination);
       lemma3.precompute(maxDist);
     }
     else { // Normal run for a refinement:
+      int threads = get(argv[2]);
+
       BrickPlane neighbours[MAX_BRICKS];
       for(uint8_t i = 0; i < MAX_BRICKS; i++)
 	neighbours[i].unsetAll();
 
       Combination combination;
-      CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, true, false);
-      b.buildSplit();
+      CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, false, false);
+      if(threads > 2)
+	b.buildSplit(threads);
+      else
+	b.build();
       b.report();
     }
 #ifdef PROFILING
@@ -285,7 +289,7 @@ int main(int argc, char** argv) {
     return runSumPrecomputations(argc, argv);
   }
   else {
-    std::cerr << "Usage 1: REFINEMENT [MAX_DIST]. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]" << std::endl;
+    std::cerr << "Usage 1: REFINEMENT [MAX_DIST] THREADS. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]. THREADS-1 worker threads will be spawned" << std::endl;
     std::cerr << "Usage 2: LEFT BASE RIGHT MAX_DIST. This is for handling the precomputations" << std::endl;
     return 1;
   }
