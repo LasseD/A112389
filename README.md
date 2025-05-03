@@ -109,10 +109,10 @@ By using the 180-superfix to denote rotationally symmetric models and "-" to den
 |B| = |B<sup>-</sup>| + |B<sup>180</sup>|
 
 
-|B| = 2 * |C<sup>-</sup>| * |D<sup>-</sup>| + |C<sup>-</sup>| * |D<sup>180</sup>| + |D<sup>-</sup>| * |C<sup>180</sup>|
+|B<sup>-</sup>| = 2 |C<sup>-</sup>| |D<sup>-</sup>| + |C<sup>-</sup>| |D<sup>180</sup>| + |D<sup>-</sup>| |C<sup>180</sup>|
 
 
-|B<sup>180</sup>| = |C<sup>180</sup>| * |D<sup>180</sup>|
+|B<sup>180</sup>| = |C<sup>180</sup>| |D<sup>180</sup>|
 
 
 L1 thus provides us with an efficient method of computing the size of all refinements that have at least one bottleneck, should the size of smaller refinements be at hand.
