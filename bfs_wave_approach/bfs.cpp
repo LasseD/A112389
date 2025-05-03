@@ -1046,24 +1046,19 @@ namespace rectilinear {
   CombinationBuilder::CombinationBuilder(const Combination &c,
 					 const uint8_t waveStart,
 					 const uint8_t waveSize,
-					 const uint8_t maxSize,
 					 BrickPlane *neighbours,
 					 Combination &maxCombination,
 					 bool isFirstBuilder,
 					 bool encodeConnectivity) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), maxSize(maxSize), neighbours(neighbours), maxCombination(maxCombination), isFirstBuilder(isFirstBuilder), encodeConnectivity(encodeConnectivity) {
+    baseCombination(c), waveStart(waveStart), waveSize(waveSize), neighbours(neighbours), maxCombination(maxCombination), isFirstBuilder(isFirstBuilder), encodeConnectivity(encodeConnectivity) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(...)");
-#endif
-#ifdef TRACE
-    std::cout << "Combination Builder on " << c << " to size " << maxSize << std::endl;
 #endif
   }
 
   CombinationBuilder::CombinationBuilder(const CombinationBuilder& b) : baseCombination(b.baseCombination),
 									waveStart(b.waveStart),
 									waveSize(b.waveSize),
-									maxSize(b.maxSize),
 									neighbours(b.neighbours),
 									maxCombination(b.maxCombination),
 									isFirstBuilder(b.isFirstBuilder),
@@ -1075,7 +1070,6 @@ namespace rectilinear {
 
   CombinationBuilder::CombinationBuilder() : waveStart(0),
 					     waveSize(0),
-					     maxSize(0),
 					     neighbours(NULL),
 					     isFirstBuilder(false),
 					     encodeConnectivity(false) {
@@ -1342,7 +1336,7 @@ namespace rectilinear {
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
-    const uint8_t leftToPlace = maxSize - baseCombination.size;
+    const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
     assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
@@ -1396,7 +1390,7 @@ namespace rectilinear {
 	  }
 	}
 
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, maxSize, neighbours, maxCombination, false, encodeConnectivity);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
 
@@ -1420,7 +1414,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
  					       const uint8_t waveStart,
- 					       const uint8_t maxSize,
 					       BrickPlane *neighbours,
 					       Combination &maxCombination,
  					       MultiLayerBrickPicker *picker,
@@ -1430,7 +1423,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
 
-    b = CombinationBuilder(c, waveStart, 0, maxSize, neighbours, maxCombination, true, encodeConnectivity);
+    b = CombinationBuilder(c, waveStart, 0, neighbours, maxCombination, true, encodeConnectivity);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -1448,7 +1441,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     bool ret = p->next(baseCombination, picked);
     if(ret) {
-      //if(maxSize - baseCombination.size > 3)
+      if(maxCombination.size - baseCombination.size > 3)
 	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
       waveSize = picked; // Update wave size based on pick
     }
@@ -1489,7 +1482,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
-    const uint16_t leftToPlace = maxSize - baseCombination.size;
+    const uint16_t leftToPlace = maxCombination.size - baseCombination.size;
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
     if(leftToPlace <= 1)
@@ -1508,7 +1501,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, maxSize, &neighbourCache[i*MAX_BRICKS], maxCombination, &picker, i, encodeConnectivity);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, &neighbourCache[i*MAX_BRICKS], maxCombination, &picker, i, encodeConnectivity);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
@@ -2221,7 +2214,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
-				 n(0),
 				 maxCombination(NULL),
 				 neighbours(NULL),
 				 threadName("") {
@@ -2230,7 +2222,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
   }
   Lemma3Runner::Lemma3Runner(const Lemma3Runner &b) : baseBuilder(b.baseBuilder),
-						      n(b.n),
 						      maxCombination(b.maxCombination),
 						      neighbours(b.neighbours),
 						      threadName(b.threadName) {
@@ -2239,11 +2230,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
   }
   Lemma3Runner::Lemma3Runner(BaseBuilder *b,
-			     int n,
 			     Combination *maxCombination,
 			     int threadIndex,
 			     BrickPlane *neighbours) : baseBuilder(b),
-						       n(n),
 						       maxCombination(maxCombination),
 						       neighbours(neighbours) {
 #ifdef PROFILING
@@ -2272,7 +2261,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
       if(maxCombination->size - c.size > 3)
 	std::cout << threadName << " builds on " << c << std::endl;
-      CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, false, true);
+      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true);
       builder.build();
       baseBuilder->registerCounts(c, builder.counts);
     } // while baseBuilder->nextBaseToBuildOn
@@ -2361,7 +2350,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
   }
 
-  Lemma3::Lemma3(int n, int base, int threadCount, Combination &maxCombination): n(n), base(base), threadCount(threadCount), maxCombination(maxCombination) {
+  Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), maxCombination(maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
@@ -2405,7 +2394,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
-      std::stringstream ss; ss << "base_" << base << "_size_" << n << "_refinement_";
+      std::stringstream ss; ss << "base_" << base << "_size_" << (int)maxCombination.size << "_refinement_";
       for(uint8_t i = 0; i < maxCombination.height; i++)
 	ss << (int)maxCombination.layerSizes[i];
       ss << "/d" << d << ".bin";
@@ -2448,14 +2437,14 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       neighbourCache[i].unsetAll();
 
 #ifdef DEBUG
-    Lemma3Runner runner(&baseBuilder, n, &maxCombination, 0, neighbourCache);
+    Lemma3Runner runner(&baseBuilder, &maxCombination, 0, neighbourCache);
     runner.run(counts1XY);
 #else
     Lemma3Runner *builders = new Lemma3Runner[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      builders[i] = Lemma3Runner(&baseBuilder, n, &maxCombination, i, &neighbourCache[i*MAX_BRICKS]);
+      builders[i] = Lemma3Runner(&baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_BRICKS]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 

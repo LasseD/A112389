@@ -99,7 +99,7 @@ int runSumPrecomputations(int argc, char** argv) {
   BrickPlane neighbours[MAX_BRICKS];
   for(int i = 0; i < MAX_BRICKS; i++)
     neighbours[i].unsetAll();
-  CombinationBuilder builder(c, 0, 1, maxC.size, neighbours, maxC, true, false);
+  CombinationBuilder builder(c, 0, 1, neighbours, maxC, true, false);
   builder.report();
   std::cout << "Combinations built!" << std::endl;
 #endif
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
       int maxDist = get(argv[2]);
       int threads = get(argv[3]);
       std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
-      Lemma3 lemma3(maxCombination.size, base, threads, maxCombination);
+      Lemma3 lemma3(base, threads, maxCombination);
       lemma3.precompute(maxDist);
     }
     else { // Normal run for a refinement:
@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
 	neighbours[i].unsetAll();
 
       Combination combination;
-      CombinationBuilder b(combination, 0, 1, maxCombination.size, neighbours, maxCombination, false, false);
+      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, false, false);
       if(threads > 2)
 	b.buildSplit(threads);
       else

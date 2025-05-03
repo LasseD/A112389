@@ -186,7 +186,7 @@ namespace rectilinear {
 
   class CombinationBuilder {
     Combination baseCombination;
-    uint8_t waveStart, waveSize, maxSize;
+    uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
     bool isFirstBuilder, encodeConnectivity;
@@ -197,7 +197,6 @@ namespace rectilinear {
     CombinationBuilder(const Combination &c,
 		       const uint8_t waveStart,
 		       const uint8_t waveSize,
-		       const uint8_t maxSize,
 		       BrickPlane *neighbours,
 		       Combination &maxCombination,
 		       bool isFirstBuilder,
@@ -233,7 +232,6 @@ namespace rectilinear {
 
     ThreadEnablingBuilder(Combination &c,
  			  const uint8_t waveStart,
- 			  const uint8_t maxSize,
 			  BrickPlane *neighbours,
 			  Combination &maxCombination,
  			  MultiLayerBrickPicker *picker,
@@ -367,7 +365,6 @@ namespace rectilinear {
 
   class Lemma3Runner {
     BaseBuilder *baseBuilder;
-    int n;
     Combination *maxCombination;
     BrickPlane *neighbours;
     std::string threadName;
@@ -375,7 +372,6 @@ namespace rectilinear {
     Lemma3Runner();
     Lemma3Runner(const Lemma3Runner &b);
     Lemma3Runner(BaseBuilder *b,
-		 int n,
 		 Combination *maxCombination,
 		 int threadIndex,
 		 BrickPlane *neighbours);
@@ -388,14 +384,14 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int n, base, threadCount;
+    int base, threadCount;
     CountsMap counts;
     Combination maxCombination;
 #ifdef DEBUG
     CombinationCountsMap counts1XY;
 #endif
   public:
-    Lemma3(int n, int base, int threads, Combination &maxCombination);
+    Lemma3(int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);
   private:
     void precompute(std::vector<int> &distances, BitWriter &writer);
