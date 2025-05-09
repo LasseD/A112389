@@ -253,12 +253,11 @@ namespace rectilinear {
       canReach(Brick(false, a.x+MIN(2,dx)*signX, a.y+MIN(2,dy)*signY), b, toAdd-1);
   }
 
-  BrickPicker::BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx) : v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), bricksIdx(bricksIdx), bricks(bricks), inner(NULL) {
+  BrickPicker::BrickPicker(const std::vector<LayerBrick> &v,
+			   const int vIdx,
+			   const int numberOfBricksToPick): v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), inner(NULL) {
 #ifdef PROFILING
     Profiler::countInvocation("BrickPicker::BrickPicker()");
-#endif
-#ifdef TRACE
-    std::cout << "   BrickPicker for " << numberOfBricksToPick << " bricks, starting at " << vIdx << " of " << v.size() << " at layer created with " << bricksIdx << " previous bricks added " <<std::endl;
 #endif
   }
 
@@ -271,21 +270,22 @@ namespace rectilinear {
     }
   }
 
-  bool BrickPicker::checkVIdx() const {
+  bool BrickPicker::checkVIdx(const Combination &c, const Combination &maxCombination) const {
 #ifdef PROFILING
     Profiler::countInvocation("BrickPicker::checkVIdx()");
 #endif
     // Check for colissions against placed bricks:
-    for(int i = 0; i < bricksIdx; i++) {
-      if(bricks[i].LAYER == v[vIdx].LAYER &&
-	 bricks[i].BRICK.intersects(v[vIdx].BRICK)) {
+    uint8_t layer = v[vIdx].LAYER;
+    if(c.layerSizes[layer] == maxCombination.layerSizes[layer])
+      return false;
+    for(uint8_t i = 0; i < c.layerSizes[layer]; i++) {
+      if(c.bricks[layer][i].intersects(v[vIdx].BRICK))
 	return false;
-      }
     }
     return true;
   }
 
-  void BrickPicker::nextVIdx() {
+  void BrickPicker::nextVIdx(const Combination &c, const Combination &maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("BrickPicker::nextVIdx()");
 #endif
@@ -293,74 +293,73 @@ namespace rectilinear {
       vIdx++;
       if(vIdx >= (int)v.size())
 	return; // Out of bounds!
-      bricks[bricksIdx] = v[vIdx];
     }
-    while(!checkVIdx());
+    while(!checkVIdx(c, maxCombination));
   }
 
-  bool BrickPicker::next() {
+  bool BrickPicker::next(Combination &c, const Combination &maxCombination) {
 #ifdef PROFILING
     Profiler::countInvocation("BrickPicker::next()");
 #endif
     if(numberOfBricksToPick == 1) {
-      nextVIdx();
-      return vIdx < (int)v.size();
+      nextVIdx(c, maxCombination);
+      bool ok = vIdx < (int)v.size();
+      if(ok)
+	c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+      return ok;
     }
 
+    // More than one brick to pick:
     if(inner != NULL) {
-      if(inner->next())
-	return true;
-      else {
-	delete inner;
-	inner = NULL;
-      }
+      c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+      if(inner->next(c, maxCombination))
+	return true; // inner placed remaining bricks
+      c.removeLastBrick(); // Could not complete
+      delete inner;
+      inner = NULL;
     }
 
     while(true) {
-      nextVIdx();
-      if(vIdx + numberOfBricksToPick - 1 >= (int)v.size()) {
+      nextVIdx(c, maxCombination);
+      if(vIdx + numberOfBricksToPick - 1 >= (int)v.size())
 	return false;
-      }
-      inner = new BrickPicker(v, vIdx+1, numberOfBricksToPick-1, bricks, bricksIdx+1);
-      if(inner->next()) {
+      c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+      inner = new BrickPicker(v, vIdx+1, numberOfBricksToPick-1);
+      if(inner->next(c, maxCombination))
 	return true;
-      }
+      c.removeLastBrick(); // Could not complete
       delete inner;
       inner = NULL;
     }
   }
 
-  MultiLayerBrickPicker::MultiLayerBrickPicker(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
+  MultiBatchSizeBrickPicker::MultiBatchSizeBrickPicker(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
 #ifdef PROFILING
-    Profiler::countInvocation("MultiLayerBrickPicker::MultiLayerBrickPicker()");
+    Profiler::countInvocation("MultiBatchSizeBrickPicker::MultiBatchSizeBrickPicker()");
 #endif
     assert(maxPick >= 1);
-    inner = new BrickPicker(v, 0, 1, bricks, 0);
+    inner = new BrickPicker(v, 0, 1);
   }
 
-  bool MultiLayerBrickPicker::next(Combination &c, int &picked) {
+  bool MultiBatchSizeBrickPicker::next(Combination &c, int &picked, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(nextMutex);
 #ifdef PROFILING
-    Profiler::countInvocation("MultiLayerBrickPicker::next()");
+    Profiler::countInvocation("MultiBatchSizeBrickPicker::next()");
 #endif
-    if(inner == NULL) {
+    if(inner == NULL)
       return false;
-    }
+
     bool ret;
-    while(!(ret = inner->next())) {
+    while(!(ret = inner->next(c, maxCombination))) {
       delete inner;
-      if(toPick == maxPick) {
+      if(toPick == maxPick) { // Done!
 	inner = NULL;
 	return false;
       }
-      inner = new BrickPicker(v, 0, ++toPick, bricks, 0);
+      inner = new BrickPicker(v, 0, ++toPick);
     }
 
-    for(int i = 0; i < toPick; i++) {
-      c.addBrick(bricks[i].BRICK, bricks[i].LAYER);
-    }
     picked = toPick;
-
     return true;
   }
 
@@ -1049,8 +1048,15 @@ namespace rectilinear {
 					 BrickPlane *neighbours,
 					 Combination &maxCombination,
 					 bool isFirstBuilder,
-					 bool encodeConnectivity) :
-    baseCombination(c), waveStart(waveStart), waveSize(waveSize), neighbours(neighbours), maxCombination(maxCombination), isFirstBuilder(isFirstBuilder), encodeConnectivity(encodeConnectivity) {
+					 bool encodeConnectivity,
+					 bool encodingLocked) : baseCombination(c),
+								waveStart(waveStart),
+								waveSize(waveSize),
+								neighbours(neighbours),
+								maxCombination(maxCombination),
+								isFirstBuilder(isFirstBuilder),
+								encodeConnectivity(encodeConnectivity),
+								encodingLocked(encodingLocked) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(...)");
 #endif
@@ -1062,7 +1068,8 @@ namespace rectilinear {
 									neighbours(b.neighbours),
 									maxCombination(b.maxCombination),
 									isFirstBuilder(b.isFirstBuilder),
-									encodeConnectivity(b.encodeConnectivity) {
+									encodeConnectivity(b.encodeConnectivity),
+									encodingLocked(b.encodingLocked) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(CombinationBuilder&)");
 #endif
@@ -1072,7 +1079,8 @@ namespace rectilinear {
 					     waveSize(0),
 					     neighbours(NULL),
 					     isFirstBuilder(false),
-					     encodeConnectivity(false) {
+					     encodeConnectivity(false),
+					     encodingLocked(false) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder()");
 #endif
@@ -1225,26 +1233,14 @@ namespace rectilinear {
       return; // Can't possibly fill!
     // End of optimization
 
-    LayerBrick bricks[MAX_BRICKS];
-    BrickPicker picker(v, 0, leftToPlace, bricks, 0);
-    while(picker.next()) {
-      bool ok = true;
-      for(uint8_t i = 0; i < leftToPlace; i++) {
-	// Check if layer is already full:
-	if(baseCombination.layerSizes[bricks[i].LAYER] == maxCombination.layerSizes[bricks[i].LAYER]) {
-	  ok = false;
-	  for(uint8_t j = 0; j < i; j++)
-	    baseCombination.removeLastBrick();
-	  break;
-	}
-	baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
+    BrickPicker picker(v, 0, leftToPlace);
+    int64_t token = -1;
+    while(picker.next(baseCombination, maxCombination)) {
+      if(!encodingLocked || token == -1) {
+	token = baseCombination.getTokenFromLayerSizes();
+	if(encodeConnectivity)
+	  token = baseCombination.encodeConnectivity(token);
       }
-      if(!ok)
-	continue;
-
-      int64_t token = baseCombination.getTokenFromLayerSizes();
-      if(encodeConnectivity)
-	token = baseCombination.encodeConnectivity(token);
 
       Counts cx(1,0,0);
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
@@ -1259,7 +1255,7 @@ namespace rectilinear {
 	it->second += cx;
 
 #ifdef DEBUG
-      if(baseCombination.height == 3) {
+      if(maxCombination.height == 3) {
 	// Report on bases from middle layer:
 	Combination base; base.size = base.layerSizes[0] = baseCombination.layerSizes[1];
 	base.height = 1;
@@ -1324,20 +1320,10 @@ namespace rectilinear {
 #ifdef TRACE
     std::cout << "  Building on " << baseCombination << std::endl;
 #endif
-    for(uint8_t i = 0; i < baseCombination.height; i++) {
-      if(maxCombination.layerSizes[i] < baseCombination.layerSizes[i]) {
-#ifdef TRACE
-	std::cout << "   Initial picker has picked too much!: " << (int)maxCombination.layerSizes[i] << " > " << (int)baseCombination.layerSizes[i] << " on layer " << (int)i << std::endl;
-#endif
-	return; // In case initial picker picks too much
-      }
-    }
-
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    assert(leftToPlace < MAX_BRICKS);
     const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
@@ -1353,29 +1339,13 @@ namespace rectilinear {
       return; // All done in placeAllLeftToPlace()
     }
 
-    LayerBrick bricks[MAX_BRICKS];
-
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
       // Pick toPick from neighbours:
-      BrickPicker picker(v, 0, toPick, bricks, 0);
+      BrickPicker picker(v, 0, toPick);
 
-      while(picker.next()) {
-	bool ok = true;
-	for(uint8_t i = 0; i < toPick; i++) {
-	  // Check if layer is already full:
-	  if(baseCombination.layerSizes[bricks[i].LAYER] == maxCombination.layerSizes[bricks[i].LAYER]) {
-	    ok = false;
-	    for(uint8_t j = 0; j < i; j++)
-	      baseCombination.removeLastBrick();
-	    break;
-	  }
-	  baseCombination.addBrick(bricks[i].BRICK, bricks[i].LAYER);
-	}
-	if(!ok)
-	  continue;
-
+      while(picker.next(baseCombination, maxCombination)) {
 	// Optimization: Skip half of constructions in first builder (unless symmetric):
-	// TODO: re-enable for precomputations once this works for <221> and larger
+	// Is not enabled for precomputations, and base order changes on symmetries
 	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
@@ -1390,7 +1360,8 @@ namespace rectilinear {
 	  }
 	}
 
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity);
+	bool nextEncodingLocked = encodingLocked && toPick == 1;
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity, nextEncodingLocked);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
 
@@ -1416,14 +1387,14 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
  					       const uint8_t waveStart,
 					       BrickPlane *neighbours,
 					       Combination &maxCombination,
- 					       MultiLayerBrickPicker *picker,
+ 					       MultiBatchSizeBrickPicker *picker,
 					       int threadIndex,
 					       bool encodeConnectivity) : picker(picker) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
 #endif
 
-    b = CombinationBuilder(c, waveStart, 0, neighbours, maxCombination, true, encodeConnectivity);
+    b = CombinationBuilder(c, waveStart, 0, neighbours, maxCombination, true, encodeConnectivity, false);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -1435,11 +1406,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  bool CombinationBuilder::addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName) {
+  bool CombinationBuilder::addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName) {
 #ifdef PROFILING
     Profiler::countInvocation("ThreadEnablingBuilder::addFromPicker()");
 #endif
-    bool ret = p->next(baseCombination, picked);
+    bool ret = p->next(baseCombination, picked, maxCombination);
     if(ret) {
       if(maxCombination.size - baseCombination.size > 3)
 	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
@@ -1493,7 +1464,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     int processorCount = threadCount-1;//std::thread::hardware_concurrency();
     std::cout << "Using " << processorCount << " hardware threads" << std::endl;
 
-    MultiLayerBrickPicker picker(v, leftToPlace-1); // Shared picker
+    MultiBatchSizeBrickPicker picker(v, leftToPlace-1); // Shared picker
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
     for(int i = 0; i < processorCount * MAX_BRICKS; i++)
       neighbourCache[i].unsetAll();
@@ -1999,9 +1970,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     assert(D > 0);
   }
 
-  bool Size1InnerBaseBuilder::nextCombination(Combination &c) {
+  bool Size1InnerBaseBuilder::nextBase(Combination &c) {
 #ifdef PROFILING
-    Profiler::countInvocation("Size1InnerBaseBuilder::nextCombination()");
+    Profiler::countInvocation("Size1InnerBaseBuilder::nextBase()");
 #endif
     assert(c.bricks[0][0] == FirstBrick);
     while(true) {
@@ -2047,13 +2018,13 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     delete inner;
   }
 
-  bool InnerBaseBuilder::nextCombination(Combination &c) {
+  bool InnerBaseBuilder::nextBase(Combination &c) {
 #ifdef PROFILING
-    Profiler::countInvocation("InnerBaseBuilder::nextCombination()");
+    Profiler::countInvocation("InnerBaseBuilder::nextBase()");
 #endif
     while(true) {
       if(encoded == 8 && d == D) {
-	bool ret = inner->nextCombination(c);
+	bool ret = inner->nextBase(c);
 	if(!ret)
 	  return false;
 	encoded = 0;
@@ -2097,7 +2068,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     uint8_t base = (uint8_t)distances.size() + 1;
     Combination c; c.size = base; c.layerSizes[0] = base;
     while(true) {
-      if(!innerBuilder->nextCombination(c))
+      if(!innerBuilder->nextBase(c))
 	return false;
       c.normalize();
 
@@ -2261,7 +2232,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
       if(maxCombination->size - c.size > 3)
 	std::cout << threadName << " builds on " << c << std::endl;
-      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true);
+      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true, false);
       builder.build();
       baseBuilder->registerCounts(c, builder.counts);
     } // while baseBuilder->nextBaseToBuildOn
@@ -2270,7 +2241,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     for(std::vector<Combination>::const_iterator it = baseBuilder->bases.begin(); it != baseBuilder->bases.end(); it++) {
       Combination c = *it;
       Combination original(c);
-      CombinationBuilder builder(c, 0, c.size, n, neighbours, *maxCombination, false, true);
+      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true, false);
       CombinationMap::const_iterator countsIt = baseBuilder->duplicates.find(c);
       if(countsIt != baseBuilder->duplicates.end()) {
 	//std::cout << c << " is a duplicate of " << countsIt->second << std::endl;
@@ -2280,7 +2251,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
       uint8_t base = c.size;
       Combination maxX1; maxX1.size = base+1; maxX1.height = 2; maxX1.layerSizes[0] = base; maxX1.layerSizes[1] = 1;
-      CombinationBuilder builderX1(original, 0, base, base+1, neighbours, maxX1, false, true);
+      CombinationBuilder builderX1(original, 0, base, neighbours, maxX1, false, true, false);
 
       // Build all <1X2> combinations with this base:
       std::vector<LayerBrick> potentialBricksX1, potentialBricksX2;
@@ -2355,8 +2326,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Profiler::countInvocation("Lemma3::Lemma3()");
 #endif
     assert(base >= 2);
-    assert(base < n);
-    assert(n <= MAX_BRICKS);
+    assert(base < maxCombination.size);
+    assert(maxCombination.size <= MAX_BRICKS);
   }
 
   void Lemma3::precompute(int maxDist) {
@@ -2374,7 +2345,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     BrickPlane neighbours[3];
     for(int i = 0; i < 3; i++)
       neighbours[i].unsetAll();
-    CombinationBuilder builder1XY(base1XY, 0, 1, max1XY.size, neighbours, max1XY, true, false);
+    CombinationBuilder builder1XY(base1XY, 0, 1, neighbours, max1XY, true, false, false);
     builder1XY.buildSplit(threadCount);
     counts1XY = builder1XY.baseCounts;
     builder1XY.report();

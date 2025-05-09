@@ -88,10 +88,9 @@ namespace rectilinear {
     static bool canReach(const Brick &a, const Brick &b, uint8_t toAdd);
   };
 
-  typedef std::pair<Brick,uint8_t> LayerBrick;
-  
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
+  typedef std::pair<Brick,uint8_t> LayerBrick;
   typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // layer, idx
   typedef std::map<int64_t,Counts> CountsMap; // token -> counts
 
@@ -154,23 +153,22 @@ namespace rectilinear {
   };
 
   class BrickPicker {
-    const std::vector<LayerBrick> &v;
-    int vIdx;
-    const int numberOfBricksToPick, bricksIdx;
-    LayerBrick *bricks;
+    const std::vector<LayerBrick> &v; // Available bricks
+    int vIdx; // First index of available bricks
+    const int numberOfBricksToPick;
     BrickPicker *inner;
 
-    bool checkVIdx() const;
-    void nextVIdx();
+    bool checkVIdx(const Combination &c, const Combination &maxCombination) const;
+    void nextVIdx(const Combination &c, const Combination &maxCombination);
 
   public:
-    BrickPicker(const std::vector<LayerBrick> &v, int vIdx, const int numberOfBricksToPick, LayerBrick *bricks, const int bricksIdx);
+    BrickPicker(const std::vector<LayerBrick> &v, const int vIdx, const int numberOfBricksToPick);
     ~BrickPicker();
 
-    bool next();
+    bool next(Combination &c, const Combination &maxCombination);
   };
 
-  class MultiLayerBrickPicker {
+  class MultiBatchSizeBrickPicker {
     const std::vector<LayerBrick> &v;
     const int maxPick;
     int toPick;
@@ -178,8 +176,8 @@ namespace rectilinear {
     BrickPicker *inner;
     std::mutex nextMutex;
   public:
-    MultiLayerBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
-    bool next(Combination &c, int &picked);
+    MultiBatchSizeBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
+    bool next(Combination &c, int &picked, const Combination &maxCombination);
   };
 
   typedef std::map<Combination,Counts> CombinationCountsMap;
@@ -189,7 +187,7 @@ namespace rectilinear {
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
-    bool isFirstBuilder, encodeConnectivity;
+    bool isFirstBuilder, encodeConnectivity, encodingLocked;
   public:
     CountsMap counts;
     CombinationCountsMap baseCounts; // TODO: RM Later
@@ -200,7 +198,8 @@ namespace rectilinear {
 		       BrickPlane *neighbours,
 		       Combination &maxCombination,
 		       bool isFirstBuilder,
-		       bool encodeConnectivity);
+		       bool encodeConnectivity,
+		       bool encodingLocked);
 
     CombinationBuilder(const CombinationBuilder& b);
 
@@ -209,10 +208,11 @@ namespace rectilinear {
     void build();
     void buildSplit(int threadCount);
     void report();
-    bool addFromPicker(MultiLayerBrickPicker *p, int &picked, const std::string &threadName);
+    bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
-    //private:
-    void build(BrickPicker *picker, int toPick);
+#ifndef DEBUG
+  private:
+#endif
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
@@ -220,7 +220,7 @@ namespace rectilinear {
   };
 
   class ThreadEnablingBuilder {
-    MultiLayerBrickPicker *picker;
+    MultiBatchSizeBrickPicker *picker;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
     std::string threadName;
   public:
@@ -234,7 +234,7 @@ namespace rectilinear {
  			  const uint8_t waveStart,
 			  BrickPlane *neighbours,
 			  Combination &maxCombination,
- 			  MultiLayerBrickPicker *picker,
+ 			  MultiBatchSizeBrickPicker *picker,
 			  int threadIndex,
 			  bool encodeConnectivity);
 
@@ -314,39 +314,39 @@ namespace rectilinear {
     bool next(std::vector<Report> &v);
   };
 
-  class ICombinationProducer {
+  class IBaseProducer {
   public:
-    virtual bool nextCombination(Combination &c) = 0;
+    virtual bool nextBase(Combination &c) = 0;
     virtual void resetCombination(Combination &c) = 0;
-    virtual ~ICombinationProducer() = default;
+    virtual ~IBaseProducer() = default;
   };
 
-  class Size1InnerBaseBuilder final : public ICombinationProducer {
+  class Size1InnerBaseBuilder final : public IBaseProducer {
     int16_t encoded, d;
     const int16_t D;
     Brick b;
   public:
     Size1InnerBaseBuilder(int16_t D);
-    bool nextCombination(Combination &c);
+    bool nextBase(Combination &c);
     void resetCombination(Combination &c);
   };
 
-  class InnerBaseBuilder final : public ICombinationProducer {
+  class InnerBaseBuilder final : public IBaseProducer {
     const int16_t idx;
     int16_t encoded, d;
     const int16_t D;
-    ICombinationProducer * inner;
+    IBaseProducer * inner;
     Brick b;
   public:
     InnerBaseBuilder(int16_t size, const std::vector<int> &distances);
     ~InnerBaseBuilder();
-    bool nextCombination(Combination &c);
+    bool nextBase(Combination &c);
     void resetCombination(Combination &c);
   };
 
   class BaseBuilder {
     const std::vector<int> distances;
-    ICombinationProducer *innerBuilder;
+    IBaseProducer *innerBuilder;
     BitWriter &writer;
   public:
     CombinationMap duplicates; // Combination -> Combination

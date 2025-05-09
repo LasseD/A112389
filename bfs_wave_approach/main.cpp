@@ -235,7 +235,7 @@ int runSumPrecomputations(int argc, char** argv) {
     std::cerr << "Unmatched base " << it->first << ": " << it->second << std::endl;
   }
 #endif
-  
+
   return 0;
 }
 
@@ -272,11 +272,15 @@ int main(int argc, char** argv) {
 	neighbours[i].unsetAll();
 
       Combination combination;
-      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, false, false);
-      if(threads > 2)
+      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false);
+      if(threads > 2) {
+	std::cout << "Running with " << threads << " threads for <" << token << "> of size " << (int)maxCombination.size << std::endl;
 	b.buildSplit(threads);
-      else
+      }
+      else {
+	std::cout << "Running single threaded for <" << token << "> of size " << (int)maxCombination.size << std::endl;
 	b.build();
+      }
       b.report();
     }
 #ifdef PROFILING
