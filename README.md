@@ -127,3 +127,17 @@ python sum-for-size.py 6
 ```
 
 The results will be printed on a line with "TOTAL" followed by a(N), followed by a<sup>180</sup>(N) in parenthesis.
+
+
+## Lemma 2 "Two Brick Base" L2
+
+TODO
+
+
+## Lemma 3 "Generalization to all Bases" L3
+
+### Running Time
+
+Consider the precomputations for base B up to maximal distance D where models of size n are built for each base.
+
+(8D)^B  *  B * O(A(n)) = (8D)^B  *  B * 100^n

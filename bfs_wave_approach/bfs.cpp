@@ -682,10 +682,12 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is90Symmetric()");
 #endif
+    if((size & 3) != 0)
+      return false;
     if(!canRotate90())
       return false;
     for(uint8_t i = 0; i < height; i++) {
-      if(layerSizes[i] % 4 != 0)
+      if((layerSizes[i] & 3) != 0)
 	return false;
     }
     Combination rotated(*this);
@@ -701,9 +703,8 @@ namespace rectilinear {
     Profiler::countInvocation("Combination::canRotate90()");
 #endif
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
-      if(!bricks[0][i].isVertical) {
+      if(!bricks[0][i].isVertical)
 	return true;
-      }
     }
     return false;
   }
@@ -1234,12 +1235,17 @@ namespace rectilinear {
     // End of optimization
 
     BrickPicker picker(v, 0, leftToPlace);
-    int64_t token = -1;
+    int64_t token = -1, prevToken = -1;
+    CountsMap::iterator it;
     while(picker.next(baseCombination, maxCombination)) {
       if(!encodingLocked || token == -1) {
 	token = baseCombination.getTokenFromLayerSizes();
 	if(encodeConnectivity)
 	  token = baseCombination.encodeConnectivity(token);
+	if(token != prevToken) {
+	  it = counts.find(token);
+	  prevToken = token;
+	}
       }
 
       Counts cx(1,0,0);
@@ -1248,9 +1254,10 @@ namespace rectilinear {
 	if(baseCombination.is90Symmetric())
 	  cx.symmetric90++;
       }
-      CountsMap::iterator it;
-      if((it = counts.find(token)) == counts.end())
+      if(it == counts.end()) {
 	counts[token] = cx;
+	it = counts.find(token); // TODO: Use faster insert that gives iterator
+      }
       else
 	it->second += cx;
 
@@ -1293,6 +1300,7 @@ namespace rectilinear {
 	it2->second += toAdd;
     }
 
+#ifdef DEBUG
     for(CombinationCountsMap::const_iterator bit = b.baseCounts.begin(); bit != b.baseCounts.end(); bit++) {
       CombinationCountsMap::iterator bit2 = baseCounts.find(bit->first);
       Counts toAdd = bit->second;
@@ -1305,6 +1313,7 @@ namespace rectilinear {
       else
 	baseCounts[bit->first] = toAdd;
     }
+#endif
   }
 
   /*
@@ -1360,6 +1369,8 @@ namespace rectilinear {
 	  }
 	}
 
+	// Encoding can only take on a single value if bricks being picked belong to same base bricks.
+	// TODO: Check encoding
 	bool nextEncodingLocked = encodingLocked && toPick == 1;
 	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity, nextEncodingLocked);
  	builder.build();
@@ -1531,7 +1542,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     // End indicator:
     writeBit(1);
     writeBit(0); // baseSymmetric180
-    if(base % 4 == 0)
+    if((base & 3) == 0)
       writeBit(0); // baseSymmetric90
     for(int i = 1; i < base; i++)
       writeBrick(FirstBrick);
@@ -1539,7 +1550,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       writeColor(0);
     writeUInt32(0); // total
     writeUInt16(0); // symmetric180
-    if(base % 4 == 0)
+    if((base & 3) == 0)
       writeUInt8(0); // symmetric90
     // Totals:
     writeUInt64(base);
@@ -1599,7 +1610,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     writeUInt16(c.symmetric180);
     sumSymmetric180 += c.symmetric180;
 
-    if(base % 4 == 0) {
+    if((base & 3) == 0) {
       writeUInt8(c.symmetric90);
       sumSymmetric90 += c.symmetric90;
     }
@@ -1827,7 +1838,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     c.all = readUInt32();
     c.symmetric180 = readUInt16();
-    c.symmetric90 = (base % 4 == 0) ? readUInt8() : 0;
+    c.symmetric90 = ((base & 3) == 0) ? readUInt8() : 0;
   }
   BitReader::BitReader(uint8_t base, int n, int token, int D) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
 #ifdef PROFILING
@@ -1859,7 +1870,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Report r;
     r.base = base;
     r.baseSymmetric180 = readBit();
-    r.baseSymmetric90 = (base % 4 == 0) && readBit();
+    r.baseSymmetric90 = ((base & 3) == 0) && readBit();
     r.c.bricks[0][0] = FirstBrick;
     for(uint8_t i = 1; i < base; i++)
       readBrick(r.c.bricks[0][i]);
@@ -1881,7 +1892,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       r.counts.symmetric180 = readUInt16();
       sumSymmetric180 += r.counts.symmetric180;
       r.counts.symmetric90 = 0;
-      if(base % 4 == 0)
+      if((base & 3) == 0)
 	r.counts.symmetric90 = readUInt8();
       sumSymmetric90 += r.counts.symmetric90;
       if(r.counts.all == 0) {
@@ -2159,10 +2170,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
       // Write results:
       bool baseSymmetric180 = c.is180Symmetric();
-      bool baseSymmetric90 = baseSymmetric180 && (base % 4 == 0) && c.is90Symmetric();
+      bool baseSymmetric90 = baseSymmetric180 && c.is90Symmetric();
       writer.writeBit(1); // New batch
       writer.writeBit(baseSymmetric180);
-      if(base % 4 == 0)
+      if((base & 3) == 0)
 	writer.writeBit(baseSymmetric90);
       for(int i = 1; i < base; i++)
 	writer.writeBrick(it->bricks[0][i]);
@@ -2345,7 +2356,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     BrickPlane neighbours[3];
     for(int i = 0; i < 3; i++)
       neighbours[i].unsetAll();
-    CombinationBuilder builder1XY(base1XY, 0, 1, neighbours, max1XY, true, false, false);
+    CombinationBuilder builder1XY(base1XY, 0, 1, neighbours, max1XY, true, false, true);
     builder1XY.buildSplit(threadCount);
     counts1XY = builder1XY.baseCounts;
     builder1XY.report();

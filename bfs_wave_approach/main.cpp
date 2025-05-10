@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
 	neighbours[i].unsetAll();
 
       Combination combination;
-      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false);
+      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
       if(threads > 2) {
 	std::cout << "Running with " << threads << " threads for <" << token << "> of size " << (int)maxCombination.size << std::endl;
 	b.buildSplit(threads);

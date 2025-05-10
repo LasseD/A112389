@@ -190,7 +190,9 @@ namespace rectilinear {
     bool isFirstBuilder, encodeConnectivity, encodingLocked;
   public:
     CountsMap counts;
-    CombinationCountsMap baseCounts; // TODO: RM Later
+#ifdef DEBUG
+    CombinationCountsMap baseCounts;
+#endif
 
     CombinationBuilder(const Combination &c,
 		       const uint8_t waveStart,
