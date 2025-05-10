@@ -404,8 +404,6 @@ namespace rectilinear {
     bricks[0][0] = FirstBrick;
     layerSizes[0] = 1;
     history[0] = BrickIdentifier(0,0);
-    for(uint8_t i = 1; i < MAX_BRICKS; i++)
-      layerSizes[i] = 0;
   }
   Combination::Combination(const Combination &b) {
 #ifdef PROFILING
@@ -413,8 +411,32 @@ namespace rectilinear {
 #endif
     copy(b);
   }
+  Combination::Combination(const Base &b) : height(1), size(b.layerSize) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::Combination(Base &)");
+#endif
+    layerSizes[0] = size;
+    for(uint8_t j = 0; j < size; j++)
+      bricks[0][j] = b.bricks[j];
+    for(uint8_t i = 0; i < size; i++)
+      history[i] = BrickIdentifier(0, i);
+  }
 
-  bool Combination::operator <(const Combination& b) const {
+  Base::Base() : layerSize(1) {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::Base()");
+#endif
+    bricks[0] = FirstBrick;
+  }
+  Base::Base(const Base &b) : layerSize(b.layerSize) {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::Base(Base &)");
+#endif
+    for(uint8_t i = 0; i < layerSize; i++)
+      bricks[i] = b.bricks[i];
+  }
+
+   bool Combination::operator <(const Combination& b) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::operator <");
 #endif
@@ -436,6 +458,21 @@ namespace rectilinear {
     return false;
   }
 
+   bool Base::operator <(const Base& b) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::operator <");
+#endif
+    if(layerSize != b.layerSize)
+      return layerSize < b.layerSize;
+
+    for(uint8_t j = 0; j < layerSize; j++) {
+      int res = bricks[j].cmp(b.bricks[j]);
+      if(res != 0)
+	return res < 0;
+    }
+    return false;
+  }
+
   bool Combination::operator ==(const Combination& b) const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::operator ==");
@@ -448,6 +485,19 @@ namespace rectilinear {
 	if(bricks[i][j] != b.bricks[i][j])
 	  return false;
       }
+    }
+    return true;
+  }
+
+  bool Base::operator ==(const Base& b) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::operator ==");
+#endif
+    if(layerSize != b.layerSize)
+      return false;
+    for(uint8_t j = 0; j < layerSize; j++) {
+      if(bricks[j] != b.bricks[j])
+	return false;
     }
     return true;
   }
@@ -466,13 +516,20 @@ namespace rectilinear {
     return os;
   }
 
+  std::ostream& operator << (std::ostream &os, const Base &b) {
+    os << "<Base>:";
+    for(uint8_t j = 0; j < b.layerSize; j++)
+      os << " " << b.bricks[j] << " ";
+    return os;
+  }
+
   void Combination::copy(const Combination &b) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::copy()");
 #endif
     height = b.height;
     size = b.size;
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+    for(uint8_t i = 0; i < b.height; i++)
       layerSizes[i] = b.layerSizes[i];
     for(uint8_t i = 0; i < height; i++) {
       for(uint8_t j = 0; j < layerSizes[i]; j++)
@@ -480,6 +537,15 @@ namespace rectilinear {
     }
     for(uint8_t i = 0; i < size; i++)
       history[i] = b.history[i];
+  }
+
+  void Base::copy(const Base &b) {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::copy()");
+#endif
+    layerSize = b.layerSize;
+    for(uint8_t j = 0; j < layerSize; j++)
+      bricks[j] = b.bricks[j];
   }
 
   void Combination::sortBricks() {
@@ -491,6 +557,13 @@ namespace rectilinear {
       if(layerSize > 1)
 	std::sort(bricks[layer], &bricks[layer][layerSize]);
     }
+  }
+
+  void Base::sortBricks() {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::sortBricks()");
+#endif
+    std::sort(bricks, &bricks[layerSize]);
   }
 
   void Combination::translateMinToOrigo() {
@@ -516,6 +589,29 @@ namespace rectilinear {
 	bricks[i][j].y += PLANE_MID - miny;
       }
     }
+  }  
+
+  void Base::translateMinToOrigo() {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::translateMinToOrigo()");
+#endif
+    int16_t minx = 10000, miny = 10000;
+
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j];
+      if(b.isVertical) {
+	// Vertical bricks in layer 0 can be 'min':
+	if(b.x < minx || (b.x == minx && b.y < miny)) {
+	  minx = b.x;
+	  miny = b.y;
+	}
+      }
+    }
+    // Move all in relation to smallest min:
+    for(uint8_t j = 0; j < layerSize; j++) {
+      bricks[j].x += PLANE_MID - minx;
+      bricks[j].y += PLANE_MID - miny;
+    }
   }
 
   void Combination::rotate90() {
@@ -527,6 +623,18 @@ namespace rectilinear {
 	const Brick &b = bricks[i][j];
 	bricks[i][j] = Brick(!b.isVertical, b.y, PLANE_MID - (b.x - PLANE_MID));
       }
+    }
+    translateMinToOrigo();
+    sortBricks();
+  }
+
+  void Base::rotate90() {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::rotate90()");
+#endif
+    for(uint8_t j = 0; j < layerSize; j++) {
+      const Brick &b = bricks[j];
+      bricks[j] = Brick(!b.isVertical, b.y, PLANE_MID - (b.x - PLANE_MID));
     }
     translateMinToOrigo();
     sortBricks();
@@ -548,29 +656,39 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::reverse fast enough?
   }
 
-  void Combination::mirrorX() {
+  void Base::rotate180() {
 #ifdef PROFILING
-    Profiler::countInvocation("Combination::mirrorX()");
+    Profiler::countInvocation("Base::rotate180()");
 #endif
-    for(uint8_t i = 0; i < height; i++) {
-      for(uint8_t j = 0; j < layerSizes[i]; j++) {
-	Brick &b = bricks[i][j];
-	b.x = PLANE_MID - (b.x - PLANE_MID);
-      }
+    // Perform rotation:
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j];
+      b.x = PLANE_MID - (b.x - PLANE_MID);
+      b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
     sortBricks(); // TODO: Is std::reverse fast enough?
   }
 
-  void Combination::mirrorY() {
+  void Base::mirrorX() {
 #ifdef PROFILING
-    Profiler::countInvocation("Combination::mirrorY()");
+    Profiler::countInvocation("Base::mirrorX()");
 #endif
-    for(uint8_t i = 0; i < height; i++) {
-      for(uint8_t j = 0; j < layerSizes[i]; j++) {
-	Brick &b = bricks[i][j];
-	b.y = PLANE_MID - (b.y - PLANE_MID);
-      }
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j];
+      b.x = PLANE_MID - (b.x - PLANE_MID);
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::reverse fast enough?
+  }
+
+  void Base::mirrorY() {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::mirrorY()");
+#endif
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j];
+      b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
     sortBricks(); // TODO: Is std::reverse fast enough?
@@ -590,6 +708,22 @@ namespace rectilinear {
     cy *= 2;
     cx /= layerSizes[layer];
     cy /= layerSizes[layer];
+  }
+
+  void Base::getLayerCenter(int16_t &cx, int16_t &cy) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::getLayerCenter()");
+#endif
+    cx = 0;
+    cy = 0;
+    for(uint8_t i = 0; i < layerSize; i++) {
+      cx += bricks[i].x;
+      cy += bricks[i].y;
+    }
+    cx *= 2;
+    cy *= 2;
+    cx /= layerSize;
+    cy /= layerSize;
   }
 
   bool Combination::isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const {
@@ -653,6 +787,33 @@ namespace rectilinear {
     }
   }
 
+  bool Base::isLayerSymmetric(const int16_t &cx, const int16_t &cy) const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::isLayerSymmetric()");
+#endif
+    Brick seen[MAX_LAYER_SIZE];
+    int seenSize = 0;
+    for(uint8_t i = 0; i < layerSize; i++) {
+      const Brick &b = bricks[i];
+      if(b.x*2 == cx && b.y*2 == cy)
+	continue; // Skip brick in center
+      bool found = false;
+      for(int i = 0; i < seenSize; i++) {
+	if(b.mirrorEq(seen[i], cx, cy)) {
+	  found = true;
+	  // RM:
+	  seenSize--;
+	  for(int j = i; j < seenSize; j++)
+	    seen[j] = seen[j+1];
+	  break;
+	}
+      }
+      if(!found)
+	seen[seenSize++] = b;
+    }
+    return seenSize == 0;
+  }
+
   bool Combination::is180Symmetric() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is180Symmetric()");
@@ -678,6 +839,15 @@ namespace rectilinear {
     return true;
   }
 
+  bool Base::is180Symmetric() const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::is180Symmetric()");
+#endif
+    int16_t cx0, cy0;
+    getLayerCenter(cx0, cy0);
+    return isLayerSymmetric(cx0, cy0);
+  }
+
   bool Combination::is90Symmetric() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::is90Symmetric()");
@@ -698,12 +868,39 @@ namespace rectilinear {
     return rotated == dis;
   }
 
+  bool Base::is90Symmetric() const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::is90Symmetric()");
+#endif
+    if((layerSize & 3) != 0)
+      return false;
+    if(!canRotate90())
+      return false;
+    Base rotated(*this);
+    rotated.rotate90();
+    Base dis(*this);
+    dis.translateMinToOrigo();
+    dis.sortBricks();      
+    return rotated == dis;
+  }
+
   bool Combination::canRotate90() const {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::canRotate90()");
 #endif
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
       if(!bricks[0][i].isVertical)
+	return true;
+    }
+    return false;
+  }
+
+  bool Base::canRotate90() const {
+#ifdef PROFILING
+    Profiler::countInvocation("Base::canRotate90()");
+#endif
+    for(uint8_t i = 0; i < layerSize; i++) {
+      if(!bricks[i].isVertical)
 	return true;
     }
     return false;
@@ -718,9 +915,12 @@ namespace rectilinear {
     bricks[layer][layerSize] = b;
 
     size++;
-    if(layer == height)
+    if(layer == height) {
       height++;
-    layerSizes[layer]++;
+      layerSizes[layer] = 1;
+    }
+    else
+      layerSizes[layer]++;
   }
 
   void Combination::removeLastBrick() {
@@ -836,14 +1036,14 @@ namespace rectilinear {
     return ret;
   }
 
-  void Combination::normalize(int &rotated) {
+  void Base::normalize() {
 #ifdef PROFILING
-    Profiler::countInvocation("Combination::normalize(...)");
+    Profiler::countInvocation("Base::normalize()");
 #endif
     // Ensure FirstBrick is first and all is sorted:
     bool hasVerticalLayer0Brick = false;
-    for(uint8_t i = 0; i < layerSizes[0]; i++) {
-      Brick &b = bricks[0][i];
+    for(uint8_t i = 0; i < layerSize; i++) {
+      Brick &b = bricks[i];
       if(b.isVertical) {
 	hasVerticalLayer0Brick = true;
 	break;
@@ -855,35 +1055,22 @@ namespace rectilinear {
       translateMinToOrigo();
       sortBricks();
     }
-    else {
+    else
       rotate90();
-      rotated = 90;
-    }
 
-    Combination c(*this);
+    Base c(*this);
     if(canRotate90()) {
       for(int i = 0; i < 3; i++) {
 	c.rotate90();
-	if(c < *this) {
+	if(c < *this)
 	  copy(c);
-	  rotated = 90*(i+1);
-	}
       }
     }
     else {
       c.rotate180();
-      if(c < *this) {
+      if(c < *this)
 	copy(c);
-	rotated = 180;
-      }
     }
-  }
-  void Combination::normalize() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::normalize()");
-#endif
-    int ignore;
-    normalize(ignore);
   }
 
   int64_t Combination::reverseToken(int64_t token) {
@@ -1017,20 +1204,19 @@ namespace rectilinear {
     return false;
   }
 
-  int Combination::countUnreachable(const Combination &maxCombination) const {
+  int Base::countUnreachable(const Combination &maxCombination) const {
 #ifdef PROFILING
-    Profiler::countInvocation("Combination::mapUnreachable()");
+    Profiler::countInvocation("Base::mapUnreachable()");
 #endif
     int countUnreachable = 0;
 
-    int bricksBetween = countBricksToBridge(maxCombination);
-    uint8_t base = maxCombination.layerSizes[0];
+    int bricksBetween = Combination::countBricksToBridge(maxCombination);
 
     // Notice: Starting at the right side to avoid changing colors
-    for(uint8_t i = base-1; i > 0; i--) {
+    for(uint8_t i = layerSize-1; i > 0; i--) {
       bool isReachable = false;
       for(uint8_t j = 0; j < i; j++) {
-	if(Brick::canReach(bricks[0][i], bricks[0][j], bricksBetween)) {
+	if(Brick::canReach(bricks[i], bricks[j], bricksBetween)) {
 	  isReachable = true;
 	  break;
 	}
@@ -1060,6 +1246,21 @@ namespace rectilinear {
 								encodingLocked(encodingLocked) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::CombinationBuilder(...)");
+#endif
+  }
+
+  CombinationBuilder::CombinationBuilder(const Base &c,
+					 BrickPlane *neighbours,
+					 Combination &maxCombination) : baseCombination(c),
+									waveStart(0),
+									waveSize(c.layerSize),
+									neighbours(neighbours),
+									maxCombination(maxCombination),
+									isFirstBuilder(false),
+									encodeConnectivity(true),
+									encodingLocked(false) {
+#ifdef PROFILING
+    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(Base...)");
 #endif
   }
 
@@ -1217,7 +1418,7 @@ namespace rectilinear {
       if(maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
 	cntNonFullLayers++;
     }
-    bool checkedLayers[MAX_BRICKS];
+    bool checkedLayers[MAX_HEIGHT];
     for(uint8_t i = 0; i < maxCombination.height; i++)
       checkedLayers[i] = false;
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
@@ -1264,10 +1465,9 @@ namespace rectilinear {
 #ifdef DEBUG
       if(maxCombination.height == 3) {
 	// Report on bases from middle layer:
-	Combination base; base.size = base.layerSizes[0] = baseCombination.layerSizes[1];
-	base.height = 1;
-	for(uint8_t i = 0; i < base.size; i++)
-	  base.bricks[0][i] = baseCombination.bricks[1][i];
+	Base base; base.layerSize = baseCombination.layerSizes[1];
+	for(uint8_t i = 0; i < base.layerSize; i++)
+	  base.bricks[i] = baseCombination.bricks[1][i];
 	base.normalize();
 	CombinationCountsMap::iterator bit = baseCounts.find(base);
 	if(bit != baseCounts.end())
@@ -1472,18 +1672,18 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
     LayerBrick bricks[MAX_BRICKS];
 
-    int processorCount = threadCount-1;//std::thread::hardware_concurrency();
-    std::cout << "Using " << processorCount << " hardware threads" << std::endl;
+    int processorCount = MAX(2, threadCount-1);//std::thread::hardware_concurrency();
+    std::cout << "Using " << processorCount << " builder threads" << std::endl;
 
     MultiBatchSizeBrickPicker picker(v, leftToPlace-1); // Shared picker
-    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
-    for(int i = 0; i < processorCount * MAX_BRICKS; i++)
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
+    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
     ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, &neighbourCache[i*MAX_BRICKS], maxCombination, &picker, i, encodeConnectivity);
+      threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, &neighbourCache[i*MAX_HEIGHT], maxCombination, &picker, i, encodeConnectivity);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
@@ -1501,7 +1701,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::report()");
 #endif
-    uint8_t layerSizes[MAX_BRICKS];
+    uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
       int64_t token = it->first;
       Combination::getLayerSizesFromToken(token, layerSizes);
@@ -1871,12 +2071,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     r.base = base;
     r.baseSymmetric180 = readBit();
     r.baseSymmetric90 = ((base & 3) == 0) && readBit();
-    r.c.bricks[0][0] = FirstBrick;
+    r.c.bricks[0] = FirstBrick;
     for(uint8_t i = 1; i < base; i++)
-      readBrick(r.c.bricks[0][i]);
-    r.c.height = 1;
-    r.c.size = base;
-    r.c.layerSizes[0] = base;
+      readBrick(r.c.bricks[i]);
+    r.c.layerSize = base;
     bool first = true;
     while(true) {
       if(!first) {
@@ -1942,11 +2140,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     delete innerBuilder;
   }
 
-  bool BaseBuilder::checkMirrorSymmetries(const Combination &c) {
+  bool BaseBuilder::checkMirrorSymmetries(const Base &c) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::checkMirrorSymmetries()");
 #endif
-    Combination mx(c);
+    Base mx(c);
     mx.mirrorX();
     if(resultsMap.find(mx) != resultsMap.end()) {
       duplicates[c] = mx;
@@ -1958,7 +2156,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       return true;
     }
 
-    Combination my(c);
+    Base my(c);
     my.mirrorY();
     if(resultsMap.find(my) != resultsMap.end()) {
       duplicates[c] = my;
@@ -1981,11 +2179,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     assert(D > 0);
   }
 
-  bool Size1InnerBaseBuilder::nextBase(Combination &c) {
+  bool Size1InnerBaseBuilder::nextBase(Base &c) {
 #ifdef PROFILING
     Profiler::countInvocation("Size1InnerBaseBuilder::nextBase()");
 #endif
-    assert(c.bricks[0][0] == FirstBrick);
+    assert(c.bricks[0] == FirstBrick);
     while(true) {
       if(encoded == 8 && d == D)
 	return false;
@@ -2005,9 +2203,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  void Size1InnerBaseBuilder::resetCombination(Combination &c) {
-    c.bricks[0][1] = b;
-    c.history[1] = BrickIdentifier(0,1);
+  void Size1InnerBaseBuilder::resetCombination(Base &c) {
+    c.bricks[1] = b;
   }
 
   InnerBaseBuilder::InnerBaseBuilder(int16_t idx, const std::vector<int> &distances) :
@@ -2029,7 +2226,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     delete inner;
   }
 
-  bool InnerBaseBuilder::nextBase(Combination &c) {
+  bool InnerBaseBuilder::nextBase(Base &c) {
 #ifdef PROFILING
     Profiler::countInvocation("InnerBaseBuilder::nextBase()");
 #endif
@@ -2053,7 +2250,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       encoded++;
       bool ok = true;
       for(int16_t i = 0; i <= idx; i++) {
-	if(c.bricks[0][i].intersects(b)) {
+	if(c.bricks[i].intersects(b)) {
 	  ok = false;
 	  break;
 	}
@@ -2065,19 +2262,18 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  void InnerBaseBuilder::resetCombination(Combination &c) {
+  void InnerBaseBuilder::resetCombination(Base &c) {
     inner->resetCombination(c);
-    c.bricks[0][idx+1] = b;
-    c.history[idx+1] = BrickIdentifier(0,idx+1);
+    c.bricks[idx+1] = b;
   }
 
-  bool BaseBuilder::nextBaseToBuildOn(Combination &outCombination, const Combination &maxCombination) {
+  bool BaseBuilder::nextBaseToBuildOn(Base &outBase, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::nextBaseToBuildOn()");
 #endif
     uint8_t base = (uint8_t)distances.size() + 1;
-    Combination c; c.size = base; c.layerSizes[0] = base;
+    Base c; c.layerSize = base;
     while(true) {
       if(!innerBuilder->nextBase(c))
 	return false;
@@ -2093,7 +2289,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       bool belongsToAnotherTime = false;
       std::vector<int> baseCombinationDistances;
       for(uint8_t i = 1; i < base; i++) {
-	int dist = c.bricks[0][i].dist(FirstBrick);
+	int dist = c.bricks[i].dist(FirstBrick);
 	baseCombinationDistances.push_back(dist);
       }
       std::sort(baseCombinationDistances.begin(), baseCombinationDistances.end());
@@ -2119,9 +2315,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       if(!c.is180Symmetric()) { // Do not do this for symmetric bases, as counts rely on symmetry
 	int unreachableInBaseCount = c.countUnreachable(maxCombination);
 	if(unreachableInBaseCount > 0) {
-	  Combination smallerBase; smallerBase.size = base - unreachableInBaseCount; smallerBase.layerSizes[0] = smallerBase.size;
-	  for(uint8_t i = 1; i < smallerBase.size; i++)
-	    smallerBase.bricks[0][i] = c.bricks[0][i];
+	  Base smallerBase(c);
+	  smallerBase.layerSize = base - unreachableInBaseCount;
 
 	  CombinationMap::iterator it = duplicates.find(smallerBase);
 	  if(it != duplicates.end()) { // Known smaller base: Point to same original:
@@ -2142,12 +2337,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       bases.push_back(c);
       if(++noSkips % 10000 == 0)
 	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
-      outCombination = c;
+      outBase = c;
       return true;
     }
   }
 
-  void BaseBuilder::registerCounts(Combination &base, CountsMap counts) {
+  void BaseBuilder::registerCounts(Base &base, CountsMap counts) {
     std::lock_guard<std::mutex> guard(mutex);
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::registerCounts()");
@@ -2161,8 +2356,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     int base = 1 + (int)distances.size();
     int colors[MAX_LAYER_SIZE];
-    for(std::vector<Combination>::const_iterator it = bases.begin(); it != bases.end(); it++) {
-      Combination c = *it;
+    for(std::vector<Base>::const_iterator it = bases.begin(); it != bases.end(); it++) {
+      Base c = *it;
       CombinationMap::const_iterator it2 = duplicates.find(c);
       if(it2 != duplicates.end())
 	c = it2->second; // Use original instead
@@ -2176,7 +2371,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       if((base & 3) == 0)
 	writer.writeBit(baseSymmetric90);
       for(int i = 1; i < base; i++)
-	writer.writeBrick(it->bricks[0][i]);
+	writer.writeBrick(it->bricks[i]);
 
       bool any = false;
       for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
@@ -2239,30 +2434,29 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3Runner::run()");
 #endif
-    Combination c;
+    Base c;
     while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
-      if(maxCombination->size - c.size > 3)
+      if(maxCombination->size - c.layerSize > 3)
 	std::cout << threadName << " builds on " << c << std::endl;
-      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true, false);
+      CombinationBuilder builder(c, neighbours, *maxCombination);
       builder.build();
       baseBuilder->registerCounts(c, builder.counts);
     } // while baseBuilder->nextBaseToBuildOn
 
 #ifdef DEBUG
-    for(std::vector<Combination>::const_iterator it = baseBuilder->bases.begin(); it != baseBuilder->bases.end(); it++) {
-      Combination c = *it;
-      Combination original(c);
-      CombinationBuilder builder(c, 0, c.size, neighbours, *maxCombination, false, true, false);
+    for(std::vector<Base>::const_iterator it = baseBuilder->bases.begin(); it != baseBuilder->bases.end(); it++) {
+      c = *it;
+      Base original(c);
+      CombinationBuilder builder(c, neighbours, *maxCombination);
       CombinationMap::const_iterator countsIt = baseBuilder->duplicates.find(c);
       if(countsIt != baseBuilder->duplicates.end()) {
-	//std::cout << c << " is a duplicate of " << countsIt->second << std::endl;
 	original = countsIt->second;
       }
       builder.counts = baseBuilder->resultsMap[original];
 
-      uint8_t base = c.size;
+      uint8_t base = c.layerSize;
       Combination maxX1; maxX1.size = base+1; maxX1.height = 2; maxX1.layerSizes[0] = base; maxX1.layerSizes[1] = 1;
-      CombinationBuilder builderX1(original, 0, base, neighbours, maxX1, false, true, false);
+      CombinationBuilder builderX1(original, neighbours, maxX1);
 
       // Build all <1X2> combinations with this base:
       std::vector<LayerBrick> potentialBricksX1, potentialBricksX2;
@@ -2303,10 +2497,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  continue; // All OK
 	std::cerr << "Unknown base! " << c << std::endl;
 	std::cerr << "Mults:   " << countsMult << std::endl;
-	std::cerr << "CountsMap <" << base << "Y>: " << builder.counts.size() << std::endl;
+	std::cerr << "CountsMap <" << (int)base << "Y>: " << builder.counts.size() << std::endl;
 	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
 	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	std::cerr << "CountsMap <" << base << "1>: " << builderX1.counts.size() << std::endl;
+	std::cerr << "CountsMap <" << (int)base << "1>: " << builderX1.counts.size() << std::endl;
 	for(CountsMap::const_iterator it = builderX1.counts.begin(); it != builderX1.counts.end(); it++)
 	  std::cerr << " " << it->first << ": " << it->second << std::endl;
 	assert(false);
@@ -2319,10 +2513,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	std::cerr << "Base " << c << std::endl;
 	std::cerr << "Mults:   " << countsMult << std::endl;
 	std::cerr << "Counted: " << fromBuilding << std::endl;
-	std::cerr << "CountsMap <" << base << "Y>: " << builder.counts.size() << std::endl;
+	std::cerr << "CountsMap <" << (int)base << "Y>: " << builder.counts.size() << std::endl;
 	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
 	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	std::cerr << "CountsMap <" << base << "1>: " << builderX1.counts.size() << std::endl;
+	std::cerr << "CountsMap <" << (int)base << "1>: " << builderX1.counts.size() << std::endl;
 	for(CountsMap::const_iterator it = builderX1.counts.begin(); it != builderX1.counts.end(); it++)
 	  std::cerr << " " << it->first << ": " << it->second << std::endl;
 	assert(false);
@@ -2384,8 +2578,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
       std::ifstream istream(fileName.c_str());
       if(istream.good()) {
-	std::cout << "Precomputation already exists. Skipping!" << std::endl;
-	continue; // File already exists
+	std::cout << "Precomputation for d=" << d << " already exists. Skipping!" << std::endl;
+	continue;
       }
 
       BitWriter writer(fileName, base);
@@ -2412,21 +2606,24 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     BaseBuilder baseBuilder(distances, writer);
 
-    int processorCount = threadCount-1;//std::thread::hardware_concurrency() - 1;
-
-    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_BRICKS];
-    for(int i = 0; i < processorCount * MAX_BRICKS; i++)
-      neighbourCache[i].unsetAll();
-
 #ifdef DEBUG
+    BrickPlane *neighbourCache = new BrickPlane[MAX_HEIGHT];
+    for(int i = 0; i < MAX_HEIGHT; i++)
+      neighbourCache[i].unsetAll();
     Lemma3Runner runner(&baseBuilder, &maxCombination, 0, neighbourCache);
     runner.run(counts1XY);
 #else
+    int processorCount = threadCount-1;//std::thread::hardware_concurrency() - 1;
+
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
+    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
+      neighbourCache[i].unsetAll();
+
     Lemma3Runner *builders = new Lemma3Runner[processorCount];
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      builders[i] = Lemma3Runner(&baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_BRICKS]);
+      builders[i] = Lemma3Runner(&baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 

@@ -99,7 +99,7 @@ int runSumPrecomputations(int argc, char** argv) {
   BrickPlane neighbours[MAX_BRICKS];
   for(int i = 0; i < MAX_BRICKS; i++)
     neighbours[i].unsetAll();
-  CombinationBuilder builder(c, 0, 1, neighbours, maxC, true, false);
+  CombinationBuilder builder(c, 0, 1, neighbours, maxC, true, false, true);
   builder.report();
   std::cout << "Combinations built!" << std::endl;
 #endif
@@ -115,7 +115,7 @@ int runSumPrecomputations(int argc, char** argv) {
       bool ok = reader2.next(r); assert(ok);
       bool bs180, bs90, first = true;
 
-      Combination baseCombination;
+      Base baseCombination;
       Counts c, cl, cr;
       // Match all connectivities:
       for(std::vector<Report>::const_iterator it1 = l.begin(); it1 != l.end(); it1++) {

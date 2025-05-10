@@ -5,10 +5,13 @@
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
 #define ABS(a) ((a) < 0 ? -(a) : (a))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
 
-// Goal of this code base is to construct models with up to 11 bricks
+// Goal of this code base is to construct models with up to 11 bricks:
 #define MAX_BRICKS 11
-// At most 9 bricks can then be in a single layer
+// Lemma 1 can be used to compute all of height 7 and up for 11 bricks:
+#define MAX_HEIGHT 6
+// At most 9 bricks can then be in a single layer:
 #define MAX_LAYER_SIZE 9
 
 #define PLANE_MID 100
@@ -37,7 +40,7 @@ struct Profiler {
   static void reportInvocations();
 };
 #endif
-  
+
 namespace rectilinear {
 
   /**
@@ -101,22 +104,25 @@ namespace rectilinear {
     void unset(const Brick &b);
     bool contains(const Brick &b);
   };
-  
+
+  struct Base;
+
   class Combination {
   private:
     // State to check connectivity:
-    uint8_t colors[MAX_BRICKS][MAX_LAYER_SIZE];
+    uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
     uint8_t countConnected(uint8_t layer, uint8_t idx);
   public:
-    uint8_t layerSizes[MAX_BRICKS], height, size;
-    Brick bricks[MAX_BRICKS][MAX_LAYER_SIZE];
+    uint8_t layerSizes[MAX_HEIGHT], height, size;
+    Brick bricks[MAX_HEIGHT][MAX_LAYER_SIZE];
     BrickIdentifier history[MAX_BRICKS];
 
     /*
       Rectilinear models with restriction: First brick of first layer must be FirstBrick.
     */
     Combination();
+    Combination(const Base &b);
     Combination(const Combination &b);
 
     bool operator <(const Combination& b) const;
@@ -126,8 +132,6 @@ namespace rectilinear {
     void copy(const Combination &b);
     void rotate90();
     void rotate180();
-    void mirrorX();
-    void mirrorY();
 
     void getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const;
     bool isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const;
@@ -140,9 +144,6 @@ namespace rectilinear {
     int64_t encodeConnectivity(int64_t token);
     void removeLastBrick();
     int64_t getTokenFromLayerSizes() const;
-    void normalize(int &rotated);
-    void normalize();
-    int countUnreachable(const Combination &maxCombination) const;
     bool isConnected();
     static int64_t reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
@@ -152,6 +153,34 @@ namespace rectilinear {
     static bool checkCounts(uint64_t token, const Counts &c);
   };
 
+  struct Base {
+    uint8_t layerSize;
+    Brick bricks[MAX_LAYER_SIZE];
+
+    Base();
+    Base(const Base &b);
+
+    bool operator <(const Base& b) const;
+    bool operator ==(const Base& b) const;
+    friend std::ostream& operator << (std::ostream &os, const Base &b);
+
+    void copy(const Base &b);
+    void rotate90();
+    void rotate180();
+
+    void getLayerCenter(int16_t &cx, int16_t &cy) const;
+    bool isLayerSymmetric(const int16_t &cx, const int16_t &cy) const;
+    bool is180Symmetric() const;
+    bool is90Symmetric() const;
+    void sortBricks();
+    void translateMinToOrigo();
+    bool canRotate90() const;
+    void mirrorX();
+    void mirrorY();
+    void normalize();
+    int countUnreachable(const Combination &maxCombination) const;
+  };
+  
   class BrickPicker {
     const std::vector<LayerBrick> &v; // Available bricks
     int vIdx; // First index of available bricks
@@ -180,7 +209,7 @@ namespace rectilinear {
     bool next(Combination &c, int &picked, const Combination &maxCombination);
   };
 
-  typedef std::map<Combination,Counts> CombinationCountsMap;
+  typedef std::map<Base,Counts> CombinationCountsMap;
 
   class CombinationBuilder {
     Combination baseCombination;
@@ -202,6 +231,10 @@ namespace rectilinear {
 		       bool isFirstBuilder,
 		       bool encodeConnectivity,
 		       bool encodingLocked);
+
+    CombinationBuilder(const Base &c,
+		       BrickPlane *neighbours,
+		       Combination &maxCombination);
 
     CombinationBuilder(const CombinationBuilder& b);
 
@@ -282,14 +315,14 @@ namespace rectilinear {
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
 
-  typedef std::map<Combination,CountsMap> CombinationResultsMap;
-  typedef std::map<Combination,Combination> CombinationMap;
+  typedef std::map<Base,CountsMap> CombinationResultsMap;
+  typedef std::map<Base,Base> CombinationMap;
 
   struct Report {
     uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
     bool baseSymmetric180, baseSymmetric90;
     Counts counts;
-    Combination c;
+    Base c;
 
     friend std::ostream& operator <<(std::ostream &os, const Report &r);
     static bool connected(const Report &a, const Report &b);
@@ -318,8 +351,8 @@ namespace rectilinear {
 
   class IBaseProducer {
   public:
-    virtual bool nextBase(Combination &c) = 0;
-    virtual void resetCombination(Combination &c) = 0;
+    virtual bool nextBase(Base &c) = 0;
+    virtual void resetCombination(Base &c) = 0;
     virtual ~IBaseProducer() = default;
   };
 
@@ -329,8 +362,8 @@ namespace rectilinear {
     Brick b;
   public:
     Size1InnerBaseBuilder(int16_t D);
-    bool nextBase(Combination &c);
-    void resetCombination(Combination &c);
+    bool nextBase(Base &c);
+    void resetCombination(Base &c);
   };
 
   class InnerBaseBuilder final : public IBaseProducer {
@@ -342,8 +375,8 @@ namespace rectilinear {
   public:
     InnerBaseBuilder(int16_t size, const std::vector<int> &distances);
     ~InnerBaseBuilder();
-    bool nextBase(Combination &c);
-    void resetCombination(Combination &c);
+    bool nextBase(Base &c);
+    void resetCombination(Base &c);
   };
 
   class BaseBuilder {
@@ -353,15 +386,15 @@ namespace rectilinear {
   public:
     CombinationMap duplicates; // Combination -> Combination
     CombinationResultsMap resultsMap; // Combination -> Result
-    std::vector<Combination> bases;
+    std::vector<Base> bases;
     std::mutex mutex;
-    bool checkMirrorSymmetries(const Combination &c); // Return true if handled here
+    bool checkMirrorSymmetries(const Base &c); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
     BaseBuilder(const std::vector<int> distances, BitWriter &writer);
     ~BaseBuilder();
-    bool nextBaseToBuildOn(Combination &c, const Combination &maxCombination);
-    void registerCounts(Combination &base, CountsMap counts);
+    bool nextBaseToBuildOn(Base &c, const Combination &maxCombination);
+    void registerCounts(Base &base, CountsMap counts);
     void report();
   };
 
