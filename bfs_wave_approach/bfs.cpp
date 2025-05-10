@@ -276,6 +276,9 @@ namespace rectilinear {
 #endif
     // Check for colissions against placed bricks:
     uint8_t layer = v[vIdx].LAYER;
+    assert(layer <= c.height);
+    if(c.height == layer)
+      return true; // Placed on top!
     if(c.layerSizes[layer] == maxCombination.layerSizes[layer])
       return false;
     for(uint8_t i = 0; i < c.layerSizes[layer]; i++) {
@@ -416,10 +419,10 @@ namespace rectilinear {
     Profiler::countInvocation("Combination::Combination(Base &)");
 #endif
     layerSizes[0] = size;
-    for(uint8_t j = 0; j < size; j++)
-      bricks[0][j] = b.bricks[j];
-    for(uint8_t i = 0; i < size; i++)
+    for(uint8_t i = 0; i < size; i++) {
+      bricks[0][i] = b.bricks[i];
       history[i] = BrickIdentifier(0, i);
+    }
   }
 
   Base::Base() : layerSize(1) {
@@ -510,16 +513,16 @@ namespace rectilinear {
     os << "> combination:";
     for(uint8_t i = 0; i < b.height; i++) {
       for(uint8_t j = 0; j < b.layerSizes[i]; j++) {
-	os << " " << b.bricks[i][j] << " ";
+	os << " " << b.bricks[i][j];
       }
     }
     return os;
   }
 
   std::ostream& operator << (std::ostream &os, const Base &b) {
-    os << "<Base>:";
+    os << "BASE";
     for(uint8_t j = 0; j < b.layerSize; j++)
-      os << " " << b.bricks[j] << " ";
+      os << " " << b.bricks[j];
     return os;
   }
 
@@ -653,7 +656,7 @@ namespace rectilinear {
       }
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::reverse fast enough?
+    sortBricks(); // TODO: Is std::sort fast enough?
   }
 
   void Base::rotate180() {
@@ -667,7 +670,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::reverse fast enough?
+    sortBricks(); // TODO: Is std::sort fast enough?
   }
 
   void Base::mirrorX() {
@@ -679,7 +682,7 @@ namespace rectilinear {
       b.x = PLANE_MID - (b.x - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::reverse fast enough?
+    sortBricks(); // TODO: Is std::sort fast enough?
   }
 
   void Base::mirrorY() {
@@ -691,7 +694,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::reverse fast enough?
+    sortBricks(); // TODO: Is std::sort fast enough?
   }
 
   void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
@@ -730,6 +733,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::isLayerSymmetric()");
 #endif
+    assert(layer < height);
     const uint8_t layerSize = layerSizes[layer];
     if(layerSize == 2) {
       return bricks[layer][0].mirrorEq(bricks[layer][1], cx, cy);
@@ -910,17 +914,15 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::addBrick()");
 #endif
+    if(layer == height) {
+      height++;
+      layerSizes[layer] = 0;
+    }
     const int8_t layerSize = layerSizes[layer];
     history[size] = BrickIdentifier(layer, layerSize);
     bricks[layer][layerSize] = b;
-
     size++;
-    if(layer == height) {
-      height++;
-      layerSizes[layer] = 1;
-    }
-    else
-      layerSizes[layer]++;
+    layerSizes[layer]++;
   }
 
   void Combination::removeLastBrick() {
@@ -1301,7 +1303,9 @@ namespace rectilinear {
       for(int8_t layer2 = waveBrickLayer-1; layer2 <= waveBrickLayer+1; layer2+=2) {
 	if(layer2 < 0)
 	  continue; // Do not allow building below base layer
-	if(layer2 >= maxCombination.height || baseCombination.layerSizes[layer2] == maxCombination.layerSizes[layer2])
+	if(layer2 >= maxCombination.height)
+	  continue; // Out of range
+	if(layer2 < baseCombination.height && baseCombination.layerSizes[layer2] == maxCombination.layerSizes[layer2])
 	  continue; // Already at maximum allowed for layer
 
 	// Add crossing bricks (one vertical, one horizontal):
@@ -1376,7 +1380,7 @@ namespace rectilinear {
     bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
     int16_t cx0, cy0, cx1, cy1;
 
-    for(uint8_t i = 0; i < maxCombination.height; i++) {
+    for(uint8_t i = 0; i < baseCombination.height; i++) {
       int8_t diff = maxCombination.layerSizes[i] - (int8_t)baseCombination.layerSizes[i];
       if(diff == 0) {
 	// Full layer: Check if can be symmetric:
@@ -1415,7 +1419,7 @@ namespace rectilinear {
     // "non-full" layers: Layers that are not filled by v:
     int cntNonFullLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
 	cntNonFullLayers++;
     }
     bool checkedLayers[MAX_HEIGHT];
@@ -1426,7 +1430,7 @@ namespace rectilinear {
       uint8_t layer = lb.LAYER;
       if(checkedLayers[layer])
 	continue;
-      if(maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
+      if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
 	checkedLayers[layer] = true;
 	cntNonFullLayers--;
       }
@@ -1443,27 +1447,33 @@ namespace rectilinear {
 	token = baseCombination.getTokenFromLayerSizes();
 	if(encodeConnectivity)
 	  token = baseCombination.encodeConnectivity(token);
+
 	if(token != prevToken) {
 	  it = counts.find(token);
+	  if(it == counts.end()) {
+	    std::pair<CountsMap::iterator,bool> pp = counts.insert(std::pair<int64_t,Counts>(token, Counts()));
+	    assert(pp.second);
+	    it = pp.first;
+	  }
 	  prevToken = token;
 	}
       }
 
-      Counts cx(1,0,0);
+      it->second.all++;
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
-	cx.symmetric180++;
+	it->second.symmetric180++;
 	if(baseCombination.is90Symmetric())
-	  cx.symmetric90++;
+	  it->second.symmetric90++;
       }
-      if(it == counts.end()) {
-	counts[token] = cx;
-	it = counts.find(token); // TODO: Use faster insert that gives iterator
-      }
-      else
-	it->second += cx;
 
 #ifdef DEBUG
       if(maxCombination.height == 3) {
+	Counts cx(1,0,0);
+	if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
+	  cx.symmetric180++;
+	  if(baseCombination.is90Symmetric())
+	    cx.symmetric90++;
+	}
 	// Report on bases from middle layer:
 	Base base; base.layerSize = baseCombination.layerSizes[1];
 	for(uint8_t i = 0; i < base.layerSize; i++)
@@ -1538,8 +1548,11 @@ namespace rectilinear {
 
     int layersTodo = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i]) {
 	layersTodo++;
+	if(layersTodo > 1)
+	  break;
+      }
     }
     if(layersTodo <= 1) {
 #ifdef TRACE
@@ -1553,9 +1566,9 @@ namespace rectilinear {
       BrickPicker picker(v, 0, toPick);
 
       while(picker.next(baseCombination, maxCombination)) {
-	// Optimization: Skip half of constructions in first builder (unless symmetric):
-	// Is not enabled for precomputations, and base order changes on symmetries
-	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
+	// Optimization: Skip half of constructions in first builder (unless symmetric)
+	// Is not enabled for precomputations, as base order changes on symmetries.
+	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric(); // TODO RM false!
 	if(doubleCount) {
 	  Combination rotated(baseCombination);
 	  Combination baseCopy(baseCombination);
@@ -1571,7 +1584,7 @@ namespace rectilinear {
 
 	// Encoding can only take on a single value if bricks being picked belong to same base bricks.
 	// TODO: Check encoding
-	bool nextEncodingLocked = encodingLocked && toPick == 1;
+	bool nextEncodingLocked = encodingLocked || toPick == 1;
 	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity, nextEncodingLocked);
  	builder.build();
  	addCountsFrom(builder, doubleCount);
