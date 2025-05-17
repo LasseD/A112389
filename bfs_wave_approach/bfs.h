@@ -108,7 +108,6 @@ namespace rectilinear {
   struct Base;
 
   class Combination {
-  private:
     // State to check connectivity:
     uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
@@ -150,15 +149,18 @@ namespace rectilinear {
     static uint8_t sizeOfToken(int64_t token);
     static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
     static int countBricksToBridge(const Combination &maxCombination);
+    static void setupKnownCounts(CountsMap &m);
     static bool checkCounts(uint64_t token, const Counts &c);
   };
 
+  struct CBase;
   struct Base {
     uint8_t layerSize;
     Brick bricks[MAX_LAYER_SIZE];
 
     Base();
     Base(const Base &b);
+    Base(const CBase &b);
 
     bool operator <(const Base& b) const;
     bool operator ==(const Base& b) const;
@@ -178,7 +180,30 @@ namespace rectilinear {
     void mirrorX();
     void mirrorY();
     void normalize();
-    int countUnreachable(const Combination &maxCombination) const;
+    void reduceFromUnreachable(const Combination &maxCombination, CBase &baseOut) const;
+  private:
+    bool hasVerticalLayer0Brick() const;
+  };
+
+  typedef std::pair<Brick,int> CBrick; // Brick with initial position
+  struct CBase {
+    uint8_t layerSize;
+    CBrick bricks[MAX_LAYER_SIZE];
+
+    CBase();
+    CBase(const CBase &b);
+
+    bool operator <(const CBase& b) const;
+
+    void copy(const CBase &b);
+    void rotate90();
+    void rotate180();
+    void sortBricks();
+    void translateMinToOrigo();
+    bool canRotate90() const;
+    void normalize();
+  private:
+    bool hasVerticalLayer0Brick() const;
   };
   
   class BrickPicker {
@@ -385,6 +410,7 @@ namespace rectilinear {
     BitWriter &writer;
   public:
     CombinationMap duplicates; // Combination -> Combination
+    std::set<Base> mirrorSymmetricDuplicates;
     CombinationResultsMap resultsMap; // Combination -> Result
     std::vector<Base> bases;
     std::mutex mutex;
@@ -395,7 +421,7 @@ namespace rectilinear {
     ~BaseBuilder();
     bool nextBaseToBuildOn(Base &c, const Combination &maxCombination);
     void registerCounts(Base &base, CountsMap counts);
-    void report();
+    void report(const Combination &maxCombination);
   };
 
   class Lemma3Runner {
