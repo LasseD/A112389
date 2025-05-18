@@ -100,8 +100,9 @@ int runSumPrecomputations(int argc, char** argv) {
   for(int i = 0; i < MAX_BRICKS; i++)
     neighbours[i].unsetAll();
   CombinationBuilder builder(c, 0, 1, neighbours, maxC, true, false, true);
+  builder.build();
   builder.report();
-  std::cout << "Combinations built!" << std::endl;
+  std::cout << "Combinations built for " << maxC << std::endl;
 #endif
 
   Counts counts, countsLeft, countsRight;
@@ -291,6 +292,34 @@ int main(int argc, char** argv) {
   }
   else if(argc == 5) {
     return runSumPrecomputations(argc, argv);
+  }
+  else if(argc == 6) {
+    int base = get(argv[1]);
+    int size = get(argv[2]);
+    int token = Combination::reverseToken(get(argv[3]));
+    int D = get(argv[4]);
+    BitReader reader(base, size, token, D);
+
+    std::vector<Report> reports;
+    while(reader.next(reports)) {
+      bool first = true;
+      CountsMap m;
+      for(std::vector<Report>::const_iterator it = reports.begin(); it != reports.end(); it++) {
+	const Report &report = *it;
+	if(first) {
+	  std::cout << report.c << " s180: " << report.baseSymmetric180 << ", s90: " << report.baseSymmetric90 << std::endl;
+	  first = false;
+	}
+	int t = 1;
+	for(int i = 0; i < base-1; i++) {
+	  t = 10 * t + (report.colors[i]+1);
+	}
+	m[t] = report.counts;
+      }
+      for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++)
+	std::cout << it->first << ": " << it->second << std::endl;
+      reports.clear();
+    }
   }
   else {
     std::cerr << "Usage 1: REFINEMENT [MAX_DIST] THREADS. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]. THREADS-1 worker threads will be spawned" << std::endl;
