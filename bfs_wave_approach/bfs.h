@@ -194,6 +194,7 @@ namespace rectilinear {
     CBase(const CBase &b);
 
     bool operator <(const CBase& b) const;
+    friend std::ostream& operator << (std::ostream &os, const CBase &b);
 
     void copy(const CBase &b);
     void rotate90();
@@ -349,6 +350,9 @@ namespace rectilinear {
     Counts counts;
     Base c;
 
+    Report();
+    Report(const Report &r);
+
     friend std::ostream& operator <<(std::ostream &os, const Report &r);
     static bool connected(const Report &a, const Report &b);
     static Counts countUp(const Report &reportA, const Report &reportB);
@@ -410,7 +414,7 @@ namespace rectilinear {
     BitWriter &writer;
   public:
     CombinationMap duplicates; // Combination -> Combination
-    std::set<Base> mirrorSymmetricDuplicates;
+    std::set<Base> mirrorSymmetricX, mirrorSymmetricY;
     CombinationResultsMap resultsMap; // Combination -> Result
     std::vector<Base> bases;
     std::mutex mutex;

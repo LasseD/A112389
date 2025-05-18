@@ -561,6 +561,16 @@ namespace rectilinear {
     return os;
   }
 
+  std::ostream& operator << (std::ostream &os, const CBase &b) {
+    os << "CBASE";
+    for(uint8_t j = 0; j < b.layerSize; j++)
+      os << " " << b.bricks[j].first;
+    os << " from";
+    for(uint8_t j = 0; j < b.layerSize; j++)
+      os << " " << (int)b.bricks[j].second;
+    return os;
+  }
+
   void Combination::copy(const Combination &b) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::copy()");
@@ -2024,6 +2034,14 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
+  Report::Report() : base(0), baseSymmetric180(false), baseSymmetric90(false) {
+  }
+
+  Report::Report(const Report &r) : base(r.base), baseSymmetric180(r.baseSymmetric180), baseSymmetric90(r.baseSymmetric90), counts(r.counts), c(r.c) {
+    for(uint8_t i = 0; i < base; i++)
+      colors[i] = r.colors[i];
+  }
+
   std::ostream& operator << (std::ostream &os,const Report &r) {
     os << "Base ";
 #ifdef DEBUG
@@ -2213,8 +2231,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     std::string fileName = ss.str();
     istream = new std::ifstream(fileName.c_str(), std::ios::binary);
     bool firstBit = readBit();
-    assert(firstBit);
     std::cout << "  Reader set up for " << fileName << std::endl;
+    assert(firstBit);
   }
   BitReader::~BitReader() {
 #ifdef PROFILING
@@ -2279,7 +2297,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       }
       lines++;
       assert(r.counts.all > 0);
-      //std::cout << "Read report " << r << std::endl;
       v.push_back(r);
     }
   }
@@ -2310,11 +2327,13 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     mx.mirrorX();
     if(resultsMap.find(mx) != resultsMap.end()) {
       duplicates[c] = mx;
+      mirrorSymmetricX.insert(c);
       return true;
     }
     CombinationMap::iterator it = duplicates.find(mx);
     if(it != duplicates.end()) {
       duplicates[c] = it->second;
+      mirrorSymmetricX.insert(c);
       return true;
     }
 
@@ -2322,11 +2341,13 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     my.mirrorY();
     if(resultsMap.find(my) != resultsMap.end()) {
       duplicates[c] = my;
+      mirrorSymmetricY.insert(c);
       return true;
     }
     it = duplicates.find(my);
     if(it != duplicates.end()) {
       duplicates[c] = it->second;
+      mirrorSymmetricY.insert(c);
       return true;
     }
 
@@ -2468,7 +2489,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       if(checkMirrorSymmetries(c)) {
 	//std::cout << "  Mirror symmetric base " << c << std::endl;
 	bases.push_back(c);
-	mirrorSymmetricDuplicates.insert(c);
 	if(++mirrorSkips % 10000 == 0)
 	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	continue; // duplicates handled in checkMirrorSymmetries
@@ -2484,7 +2504,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  CombinationMap::iterator it = duplicates.find(cleanSmallerBase);
 	  if(it != duplicates.end()) { // Known smaller base: Point to same original:
 	    duplicates[c] = it->second;
-	    //std::cout << "  Smaller base skip " << c << std::endl;
 	    bases.push_back(c);
 	    if(++reachSkips % 50000 == 0)
 	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
@@ -2518,29 +2537,43 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Profiler::countInvocation("BaseBuilder::report()");
 #endif
     int base = 1 + (int)distances.size();
-    int colors[MAX_LAYER_SIZE], colors2[MAX_LAYER_SIZE]; // 0-indexed colors
+    int colors[MAX_LAYER_SIZE]; // 0-indexed colors
     std::map<int,int> colorToCBaseSource;
     for(std::vector<Base>::const_iterator it = bases.begin(); it != bases.end(); it++) {
       Base c = *it;
       // CBases:
       CBase cBaseIt, cBaseSource;
 
-      std::cout << "Reporting for base " << c << std::endl;
+      //std::cout << "Reporting for base " << c << std::endl;
       CombinationMap::const_iterator it2 = duplicates.find(c);
       bool usesSmallerBase = false;
       if(it2 != duplicates.end()) {
-	std::cout << "Using duplicate!" << std::endl;
-	usesSmallerBase = mirrorSymmetricDuplicates.find(c) == mirrorSymmetricDuplicates.end();
 	c = it2->second; // Use original instead
+	Base c2(*it);
+	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end())
+	  c2.mirrorX();
+	else if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end())
+	  c2.mirrorY();
 
-	if(usesSmallerBase) {
-	  it->reduceFromUnreachable(maxCombination, cBaseIt);
-	  c.reduceFromUnreachable(maxCombination, cBaseSource);
-	  for(int i = 0; i < cBaseSource.layerSize; i++) {
+	c2.reduceFromUnreachable(maxCombination, cBaseIt);
+	c.reduceFromUnreachable(maxCombination, cBaseSource);
+	if(cBaseIt.layerSize < c.layerSize) {
+	  usesSmallerBase = true;
+	  for(int i = 0; i < cBaseSource.layerSize; i++)
 	    colorToCBaseSource[cBaseSource.bricks[i].second] = i;
-	  }
-	  std::cout << "  Not mirror symmetric: Smaller base of size " << (int)cBaseIt.layerSize << std::endl;
 	}
+#ifdef TRACE
+	std::cout << "Smaller base" << std::endl;
+	std::cout << " it:     " << *it << std::endl;
+	std::cout << " source: " << c << std::endl;
+	std::cout << " cBaseIt:     " << cBaseIt << std::endl;
+	std::cout << " cBaseSource: " << cBaseSource << std::endl;
+#endif
+      }
+      else {
+#ifdef TRACE
+	std::cout << "Normal base " << c << std::endl;
+#endif
       }
       CountsMap cm = resultsMap[c];
 
@@ -2564,14 +2597,13 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  colors[base-1-i] = token % 10 - 1; // 1-indexed in token, 0 in colors
 	  token /= 10;
 	}
-	colors[0] = 0;
 
 	if(usesSmallerBase) {
-	  for(int i = 0; i < base; i++) {
-	    colors2[i] = i;
-	  }
-
-	  for(int i = 0; i < base; i++) {
+#ifdef TRACE
+	  std::cout << "  Token " << it3->first << std::endl;
+#endif
+	  std::vector<std::pair<int,int> > pairs;
+	  for(int i = 1; i < base; i++) {
 	    if(colors[i] != i) {
 	      assert(colors[i] < i);
 	      // Color of position i is not i:
@@ -2579,15 +2611,40 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	      // The connection must have been in cBaseSource, as only the bricks therein can connect.
 	      // Brick in cBaseSource with colors[i] reveals original position.
 	      // Brick in cBaseIt with same position reveals original position in it to color!
-	      int positionInSource = colorToCBaseSource[colors[i]];
-	      int positionInIt = cBaseIt.bricks[positionInSource].second;
-	      colors2[positionInIt] = positionInSource;
+	      int lowPositionInSource = colorToCBaseSource[colors[i]];
+	      int highPositionInSource = colorToCBaseSource[i];
+	      int lowPositionInIt = cBaseIt.bricks[lowPositionInSource].second;
+	      int highPositionInIt = cBaseIt.bricks[highPositionInSource].second;
+	      pairs.push_back(std::pair<int,int>(lowPositionInIt, highPositionInIt));
+#ifdef TRACE
+	      std::cout << "  Irregular color " << i << " -> " << colors[i] << " SOURCE " << lowPositionInSource << "/" << highPositionInSource << " IT " << lowPositionInIt << "/" << highPositionInIt << std::endl;
+#endif
 	    }
 	  }
-
+#ifdef TRACE
+	  std::cout << "   -> Colors 0";
+#endif
+	  // Use pairs to update colors:
 	  for(int i = 0; i < base; i++) {
-	    colors[i] = colors2[i];
+	    colors[i] = i;
 	  }
+	  bool improved = true;
+	  while(improved) {
+	    improved = false;
+	    for(int i = 0; i < (int)pairs.size(); i++) {
+	      int a = pairs[i].first;
+	      int b = pairs[i].second;
+	      if(colors[a] != colors[b]) {
+		colors[a] = colors[b] = MIN(colors[a], colors[b]);
+		improved = true;
+	      }
+	    }
+	  }
+#ifdef TRACE
+	  for(int i = 1; i < base; i++)
+	    std::cout << " " << colors[i];
+	  std::cout << std::endl;
+#endif
 	}
 
 	for(int i = 1; i < base; i++)
