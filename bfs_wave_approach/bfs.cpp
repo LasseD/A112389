@@ -2577,9 +2577,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
       // Check for mirror symemtries:
       if(checkMirrorSymmetries(c)) {
-	//std::cout << "  Mirror symmetric base " << c << std::endl;
 	bases.push_back(c);
-	if(++mirrorSkips % 10000 == 0)
+	if(++mirrorSkips % 50000 == 0)
 	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	continue; // duplicates handled in checkMirrorSymmetries
       }
