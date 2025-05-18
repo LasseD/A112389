@@ -1,3 +1,4 @@
+
 import sys
 
 S = {} # Symmetric refinements: string -> cnt
@@ -282,9 +283,26 @@ for X in range(2,to+1):
     if X == to:
         print('TOTAL', sumN+sumS, '(' + str(sumS) + ')')
 print()
-print('Number of refinements:', cntRefinements)
-print('Found using Lemma 1:', cntLemma1)
-print()
+#print('Number of refinements:', cntRefinements)
+#print('Found using Lemma 1:', cntLemma1)
+#print()
+
+# Function below computes cross check values for "Combination::setupKnownCounts()"
+def setupKnownCounts():
+    global S, N
+
+    for k in N:
+        if '1' in k[1:-1]:
+            continue
+        n = N[k]
+        if n <= 1:
+            continue
+        s = S[k]
+        a = str(n+s)
+        s90 = '122' if k == '44' else '0'
+        print(' '*4 + 'm[' + k + '] = Counts(' + a + ', ' + str(s) + ', ' + s90 + ');')
+    pass
+setupKnownCounts()
 
 # Code below recreates Table 7 from Eilers (2016):
 def prep():
@@ -318,17 +336,6 @@ def fillC(n, prefix, rem):
     for m in range(1 if prefix == '' else 2, rem+1):
         fillC(n+m, prefix + str(m), rem-m)
 
-for n in range(1, to+1):
-    fillC(0, '', n)
-
-print('n\tf(n)\tf180(n)\t' + '\t'.join(["C(n,{0})\tC180(n,{0})".format(x) for x in range(1,to+1)]))
-for n in range(0, to):
-    printList = [n+1,f[n],f180[n]]
-    for m in range(0, to):
-        printList.append(C[n][m])
-        printList.append(C180[n][m])
-    print('\t'.join([str(x) for x in printList]))
-
 def multf(remainingCount, remainingN, product, ret, go180):
     if remainingCount == 0:
         if remainingN != 0:
@@ -338,24 +345,37 @@ def multf(remainingCount, remainingN, product, ret, go180):
     for i in range(1, remainingN+1):
         multf(remainingCount-1, remainingN-i, product * (f180[i-1] if go180 else f[i-1]), ret, go180)
 
-# Compute a(n) using 2.3 from Eilers (2016):
-for n in range(1, to+1):
-    an = 0
-    # First row sum:
-    for m in range(2, n+1):
-        an = an + (C[n-1][m-1] + C180[n-1][m-1] + 2 * C90[n-1][m-1]) / (2 * m)
-    # Second row first sum:
-    suml = 0
-    for l in range(n): # l = 0...n-1
-        for m1 in range(1,n+1): # m1 = 1..n
-            for m2 in range(1,n+2-m1): # m2 = 1..
-                sums = []
-                multf(l, n+1-m1-m2, 1, sums, False)
-                for sum in sums:
-                    suml = suml + C[m1-1][0] * C[m2-1][0] * sum
-                sums180 = []
-                multf(l, n+1-m1-m2, 1, sums180, True)
-                for sum in sums180:
-                    suml = suml + C180[m1-1][0] * C180[m2-1][0] * sum
-    an = an + suml / 2
-    print('a(' + str(n) + ') =', an)
+def eilers():
+    for n in range(1, to+1):
+        fillC(0, '', n)
+
+    print('n\tf(n)\tf180(n)\t' + '\t'.join(["C(n,{0})\tC180(n,{0})".format(x) for x in range(1,to+1)]))
+    for n in range(0, to):
+        printList = [n+1,f[n],f180[n]]
+        for m in range(0, to):
+            printList.append(C[n][m])
+            printList.append(C180[n][m])
+        print('\t'.join([str(x) for x in printList]))
+
+    # Compute a(n) using 2.3 from Eilers (2016):
+    for n in range(1, to+1):
+        an = 0
+        # First row sum:
+        for m in range(2, n+1):
+            an = an + (C[n-1][m-1] + C180[n-1][m-1] + 2 * C90[n-1][m-1]) / (2 * m)
+        # Second row first sum:
+        suml = 0
+        for l in range(n): # l = 0...n-1
+            for m1 in range(1,n+1): # m1 = 1..n
+                for m2 in range(1,n+2-m1): # m2 = 1..
+                    sums = []
+                    multf(l, n+1-m1-m2, 1, sums, False)
+                    for sum in sums:
+                        suml = suml + C[m1-1][0] * C[m2-1][0] * sum
+                    sums180 = []
+                    multf(l, n+1-m1-m2, 1, sums180, True)
+                    for sum in sums180:
+                        suml = suml + C180[m1-1][0] * C180[m2-1][0] * sum
+        an = an + suml / 2
+        print('a(' + str(n) + ') =', an)
+# eilers() # Run this line to compute a(n) and table 2.3 from Eilers (2016)
