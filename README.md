@@ -19,7 +19,6 @@ The following table contains the known values of the sequence a(N). a<sup>180</s
 | 11 |                   |          |                        |
 
 
-
 # Project Overview
 
 It took "a matter of months" to compute a(9) and more than 1.5 years to compute a(10).
