@@ -1997,7 +1997,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.all /= 2 * layerSizes[0]; // Because each model is built toward two directions
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
-      //std::cout << " <" << token << "> " << countsForToken << std::endl;
       Combination::checkCounts(token, countsForToken);
     }
   }

@@ -26,18 +26,18 @@ uint64_t get(char *argv) {
 /*
   Compile by:
 
-  g++ -std=c++11 -O3 -DNDEBUG *.cpp -o build.o
+  g++ -std=c++11 -O3 -DNDEBUG *.cpp -o run.o
 
   Examples:
 
-  Build precomputations for base 2 token <21> up to max dist 16:
-  time ./build.o 21 16
+  Build precomputations for base 2 token <21> up to max dist 16 using 32 threads:
+  time ./run.o 21 16 32
 
-  Count all for token <21>
-  time ./build.o 21
+  Count all for token <21> using 8 threads
+  time ./run.o 21 8
 
   Sum up for <121> considering max dist 8:
-  ./build.o 1 2 1 8
+  ./run.o 1 2 1 8
 
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
@@ -241,6 +241,8 @@ int runSumPrecomputations(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+  std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
+
   if(argc == 3 || argc == 4) {
     uint64_t token = get(argv[1]);
     Combination maxCombination;
@@ -264,6 +266,9 @@ int main(int argc, char** argv) {
       std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
       Lemma3 lemma3(base, threads, maxCombination);
       lemma3.precompute(maxDist);
+
+      std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+      std::cout << "Total precomputation time: " << duration.count() << " seconds" << std::endl;
     }
     else { // Normal run for a refinement:
       int threads = get(argv[2]);
@@ -283,6 +288,8 @@ int main(int argc, char** argv) {
 	b.build();
       }
       b.report();
+      std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+      std::cout << "Computation time: " << duration.count() << " seconds" << std::endl;
     }
 #ifdef PROFILING
     Profiler::reportInvocations();
@@ -291,7 +298,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   else if(argc == 5) {
-    return runSumPrecomputations(argc, argv);
+    runSumPrecomputations(argc, argv);
   }
   else if(argc == 6) {
     int base = get(argv[1]);

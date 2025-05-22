@@ -1,4 +1,4 @@
-# Wave Approach to compute A112389
+# Wave Approach to Compute A112389
 
 This is a code base for computing the numbers of OEIS A112389 using out "wave" approach
 
