@@ -7,13 +7,15 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
-// Goal of this code base is to construct models with up to 11 bricks:
+// Set the MAX_ macros as tightly as possible for your computations.
+// Example:
+// Lemma 1 can be used to compute all of height 7 and up for 11 bricks,
+// so MAX_HEIGHT can be set to 6 for the computations needed here
 #define MAX_BRICKS 11
-// Lemma 1 can be used to compute all of height 7 and up for 11 bricks:
 #define MAX_HEIGHT 6
-// At most 9 bricks can then be in a single layer:
 #define MAX_LAYER_SIZE 9
 
+// These are used in bitmap lookups for checking positions of bricks:
 #define PLANE_MID 100
 #define PLANE_WIDTH 200
 
@@ -202,6 +204,8 @@ namespace rectilinear {
     void sortBricks();
     void translateMinToOrigo();
     bool canRotate90() const;
+    void mirrorX();
+    void mirrorY();
     void normalize();
   private:
     bool hasVerticalLayer0Brick() const;
@@ -373,7 +377,7 @@ namespace rectilinear {
     uint64_t readUInt64();
     void readCounts(Counts &c);
   public:
-    BitReader(uint8_t base, int n, int token, int D);
+    BitReader(uint8_t base, int n, int token, int D, std::string directorySuffix);
     ~BitReader();
     bool next(std::vector<Report> &v);
   };
@@ -409,23 +413,24 @@ namespace rectilinear {
   };
 
   class BaseBuilder {
-    const std::vector<int> distances;
+    std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter &writer;
   public:
-    CombinationMap duplicates; // Combination -> Combination
+    CombinationMap duplicates; // Base -> Base
     std::set<Base> mirrorSymmetricX, mirrorSymmetricY;
-    CombinationResultsMap resultsMap; // Combination -> Result
+    CombinationResultsMap resultsMap; // Base -> Result
     std::vector<Base> bases;
     std::mutex mutex;
     bool checkMirrorSymmetries(const Base &c); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
-    BaseBuilder(const std::vector<int> distances, BitWriter &writer);
+    BaseBuilder(BitWriter &writer);
     ~BaseBuilder();
     bool nextBaseToBuildOn(Base &c, const Combination &maxCombination);
     void registerCounts(Base &base, CountsMap counts);
     void report(const Combination &maxCombination);
+    void reset(const std::vector<int> &distances);
   };
 
   class Lemma3Runner {
@@ -459,8 +464,8 @@ namespace rectilinear {
     Lemma3(int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);
   private:
-    void precompute(std::vector<int> &distances, BitWriter &writer);
-    void precompute(std::vector<int> &distances, BitWriter &writer, int maxDist);
+    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances);
+    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist);
   };
 }
 

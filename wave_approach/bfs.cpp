@@ -785,13 +785,34 @@ namespace rectilinear {
     translateMinToOrigo();
     sortBricks(); // TODO: Is std::sort fast enough?
   }
-
   void Base::mirrorY() {
 #ifdef PROFILING
     Profiler::countInvocation("Base::mirrorY()");
 #endif
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j];
+      b.y = PLANE_MID - (b.y - PLANE_MID);
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::sort fast enough?
+  }
+  void CBase::mirrorX() {
+#ifdef PROFILING
+    Profiler::countInvocation("CBase::mirrorX()");
+#endif
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j].first;
+      b.x = PLANE_MID - (b.x - PLANE_MID);
+    }
+    translateMinToOrigo();
+    sortBricks(); // TODO: Is std::sort fast enough?
+  }
+  void CBase::mirrorY() {
+#ifdef PROFILING
+    Profiler::countInvocation("CBase::mirrorY()");
+#endif
+    for(uint8_t j = 0; j < layerSize; j++) {
+      Brick &b = bricks[j].first;
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
@@ -2310,13 +2331,14 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     c.symmetric180 = readUInt16();
     c.symmetric90 = ((base & 3) == 0) ? readUInt8() : 0;
   }
-  BitReader::BitReader(uint8_t base, int n, int token, int D) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  BitReader::BitReader(uint8_t base, int n, int token, int D, std::string directorySuffix) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::BitReader()");
 #endif
     std::stringstream ss;
     ss << "base_" << (int)base << "_size_" << (int)n;
     ss << "_refinement_" << Combination::reverseToken(token);
+    ss << directorySuffix;
     ss << "/d" << (int)D << ".bin";
     std::string fileName = ss.str();
     istream = new std::ifstream(fileName.c_str(), std::ios::binary);
@@ -2391,22 +2413,52 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  BaseBuilder::BaseBuilder(const std::vector<int> distances, BitWriter &writer) : distances(distances), writer(writer), reachSkips(0), mirrorSkips(0), noSkips(0) {
+  BaseBuilder::BaseBuilder(BitWriter &writer) : innerBuilder(NULL), writer(writer), reachSkips(0), mirrorSkips(0), noSkips(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::BaseBuilder()");
 #endif
-    int size = (int)distances.size();
-    if(size == 1)
-      innerBuilder = new Size1InnerBaseBuilder(distances[0]);
-    else
-      innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
   }
 
   BaseBuilder::~BaseBuilder() {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::~BaseBuilder()");
 #endif
-    delete innerBuilder;
+    if(innerBuilder != NULL)
+      delete innerBuilder;
+  }
+
+  void BaseBuilder::reset(const std::vector<int> &d) {
+    distances = d;
+    if(innerBuilder != NULL)
+      delete innerBuilder;
+    int size = (int)distances.size();
+    if(size == 1)
+      innerBuilder = new Size1InnerBaseBuilder(distances[0]);
+    else
+      innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
+    // Clean up:
+    bases.clear();
+
+    CombinationMap smallerBases;
+    CombinationResultsMap rm;
+    std::set<Base> mx, my;
+    for(CombinationMap::const_iterator it = duplicates.begin(); it != duplicates.end(); it++) {
+      break;// TODO! This cleanup currently causes issues! RM!
+      if(it->first.layerSize <= size) {
+	smallerBases[it->first] = it->second;
+	rm[it->second] = resultsMap[it->second];
+	if(mirrorSymmetricX.find(it->second) != mirrorSymmetricX.end())
+	  mx.insert(it->second);
+	else if(mirrorSymmetricY.find(it->second) != mirrorSymmetricY.end())
+	  my.insert(it->second);
+      }
+    }
+    duplicates = smallerBases;
+    resultsMap = rm;
+    mirrorSymmetricX = mx;
+    mirrorSymmetricY = my;
+
+    std::cout << "  Reusing " << duplicates.size() << " smaller bases" << std::endl;
   }
 
   bool BaseBuilder::checkMirrorSymmetries(const Base &c) {
@@ -2639,12 +2691,17 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       if(it2 != duplicates.end()) {
 	c = it2->second; // Use original instead
 	Base c2(*it);
-	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end())
-	  c2.mirrorX();
-	else if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end())
-	  c2.mirrorY();
 
-	c2.reduceFromUnreachable(maxCombination, cBaseIt);
+	//it->reduceFromUnreachable(maxCombination, cBaseIt);
+	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end()) {
+	  c2.mirrorY();
+	  //cBaseIt.mirrorX();
+	}
+	else if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end()) {
+	  c2.mirrorY();
+	  //cBaseIt.mirrorY();
+	}
+	c2.reduceFromUnreachable(maxCombination, cBaseIt); // TODO: Set up cBaseIt earlier and then mirror it instead
 	c.reduceFromUnreachable(maxCombination, cBaseSource);
 	if(cBaseIt.layerSize < c.layerSize) {
 	  usesSmallerBase = true;
@@ -2657,6 +2714,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	std::cout << " source: " << c << std::endl;
 	std::cout << " cBaseIt:     " << cBaseIt << std::endl;
 	std::cout << " cBaseSource: " << cBaseSource << std::endl;
+	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end())
+	  std::cout << " Mirror X" << std::endl;
+	if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end())
+	  std::cout << " Mirror Y" << std::endl;
 #endif
       }
       else {
@@ -2689,7 +2750,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
 	if(usesSmallerBase) {
 #ifdef TRACE
-	  std::cout << "  Token " << it3->first << std::endl;
+	  std::cout << "  Token " << it3->first << " from source" << std::endl;
 #endif
 	  std::vector<std::pair<int,int> > pairs;
 	  for(int i = 1; i < base; i++) {
@@ -2732,7 +2793,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef TRACE
 	  for(int i = 1; i < base; i++)
 	    std::cout << " " << colors[i];
-	  std::cout << std::endl;
+	  std::cout << ": " << it3->second << std::endl;
 #endif
 	}
 
@@ -2937,8 +2998,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
       BitWriter writer(fileName, base);
       std::vector<int> distances;
+      BaseBuilder baseBuilder(writer);
 
-      precompute(distances, writer, d);
+      precompute(&baseBuilder, distances, d);
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
@@ -2953,20 +3015,20 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
   }
 
-  void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer) {
+  void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
 #ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(vector, BitWriter)");
+    Profiler::countInvocation("Lemma3::precompute(BaseBuilder, vector)");
 #endif
-    BaseBuilder baseBuilder(distances, writer);
+    baseBuilder->reset(distances);
 
 #ifdef DEBUG
     BrickPlane *neighbourCache = new BrickPlane[MAX_HEIGHT];
     for(int i = 0; i < MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
-    Lemma3Runner runner(&baseBuilder, &maxCombination, 0, neighbourCache);
+    Lemma3Runner runner(baseBuilder, &maxCombination, 0, neighbourCache);
     runner.run(counts1XY);
 #else
-    int processorCount = threadCount-1;//std::thread::hardware_concurrency() - 1;
+    int processorCount = MAX(1, threadCount-1);//std::thread::hardware_concurrency()
 
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
     for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
@@ -2976,7 +3038,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     std::thread **threads = new std::thread*[processorCount];
 
     for(int i = 0; i < processorCount; i++) {
-      builders[i] = Lemma3Runner(&baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
+      builders[i] = Lemma3Runner(baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 
@@ -2988,12 +3050,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     delete[] builders;
     delete[] neighbourCache;
 #endif
-    baseBuilder.report(maxCombination);
+    baseBuilder->report(maxCombination);
   }
 
-  void Lemma3::precompute(std::vector<int> &distances, BitWriter &writer, int maxDist) {
+  void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist) {
 #ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(vector, BitWriter, int)");
+    Profiler::countInvocation("Lemma3::precompute(BaseBuilder, vector, int)");
 #endif
     int S = (int)distances.size();
 
@@ -3006,7 +3068,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
       distances.push_back(maxDist); // Last dist is max dist
-      precompute(distances, writer);
+      precompute(baseBuilder, distances);
       distances.pop_back();
 
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
@@ -3018,7 +3080,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     int prevD = distances.empty() ? 2 : distances[S-1];
     for(int d = prevD; d <= maxDist; d++) {
       distances.push_back(d);
-      precompute(distances, writer, maxDist);
+      precompute(baseBuilder, distances, maxDist);
       distances.pop_back();
     }
   }

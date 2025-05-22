@@ -108,8 +108,8 @@ int runSumPrecomputations(int argc, char** argv) {
   Counts counts, countsLeft, countsRight;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
-    BitReader reader1(base, leftSize + base, leftToken, D);
-    BitReader reader2(base, rightSize + base, rightToken, D);
+    BitReader reader1(base, leftSize + base, leftToken, D, "");
+    BitReader reader2(base, rightSize + base, rightToken, D, "");
 
     std::vector<Report> l, r;
     while(reader1.next(l)) {
@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
     uint8_t base = maxCombination.layerSizes[0];
     if(maxCombination.size > MAX_BRICKS || base > MAX_LAYER_SIZE) {
       std::cerr << "Unsupported refinement!" << std::endl;
-      return 3;
+      return 2;
     }
 
     if(argc == 4) { // Lemma 3:
@@ -298,27 +298,73 @@ int main(int argc, char** argv) {
     int size = get(argv[2]);
     int token = Combination::reverseToken(get(argv[3]));
     int D = get(argv[4]);
-    BitReader reader(base, size, token, D);
+    std::string suffix(argv[5]);
 
-    std::vector<Report> reports;
-    while(reader.next(reports)) {
-      bool first = true;
-      CountsMap m;
-      for(std::vector<Report>::const_iterator it = reports.begin(); it != reports.end(); it++) {
-	const Report &report = *it;
-	if(first) {
-	  std::cout << report.c << " s180: " << report.baseSymmetric180 << ", s90: " << report.baseSymmetric90 << std::endl;
-	  first = false;
+    for(int d = 2; d <= D; d++) {
+      BitReader reader1(base, size, token, d, suffix);
+      BitReader reader2(base, size, token, d, "");
+
+      std::vector<Report> r1, r2;
+      while(reader1.next(r1)) {
+	bool ok = reader2.next(r2);
+	if(!ok) {
+	  std::cerr << "Base pair mismatch for d=" << d << std::endl;
+	  return 4;
 	}
-	int t = 1;
-	for(int i = 0; i < base-1; i++) {
-	  t = 10 * t + (report.colors[i]+1);
+	if(r1.size() != r2.size()) {
+	  std::cerr << "Report size does not match!" << std::endl;
+	  return 5;
 	}
-	m[t] = report.counts;
+	bool first = true;
+	CountsMap m1, m2;
+	Base b1, b2;
+	bool s180, s90, t180, t90;
+	for(std::vector<Report>::const_iterator it = r1.begin(); it != r1.end(); it++) {
+	  const Report &report = *it;
+	  if(first) {
+	    b1 = report.c;
+	    s180 = report.baseSymmetric180;
+	    s90 = report.baseSymmetric90;
+	    first = false;
+	  }
+	  int t = 1;
+	  for(int i = 0; i < base-1; i++) {
+	    t = 10 * t + (report.colors[i]+1);
+	  }
+	  m1[t] = report.counts;
+	}
+	first = true;
+	for(std::vector<Report>::const_iterator it = r2.begin(); it != r2.end(); it++) {
+	  const Report &report = *it;
+	  if(first) {
+	    b2 = report.c;
+	    t180 = report.baseSymmetric180;
+	    t90 = report.baseSymmetric90;
+	    first = false;
+	  }
+	  int t = 1;
+	  for(int i = 0; i < base-1; i++) {
+	    t = 10 * t + (report.colors[i]+1);
+	  }
+	  m2[t] = report.counts;
+	}
+	if(!(b1 == b2) || s180 != t180 || s90 != t90) {
+	  std::cerr << "Base mismatch! " << b1 << " != " << b2 << std::endl;
+	  std::cerr << " 180?: " << s180 << "/" << t180 << " 90?: " << s90 << "/" << t90 << std::endl;
+	  return 6;
+	}
+	for(CountsMap::const_iterator it1 = m1.begin(), it2 = m2.begin(); it1 != m1.end(); it1++, it2++) {
+	  if(it1->first != it2->first || it1->second != it2->second) {
+	    std::cerr << "Counts mismatch!" << std::endl;
+	    std::cerr << " Base: " << b1 << std::endl;
+	    std::cerr << " token: " << it1->first << " / " << it2->first << std::endl;
+	    std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
+	    return 7;
+	  }
+	}
+	r1.clear();
+	r2.clear();
       }
-      for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++)
-	std::cout << it->first << ": " << it->second << std::endl;
-      reports.clear();
     }
   }
   else {
