@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <assert.h>
+#include <fstream>
 #include "rectilinear.h"
 
 using namespace rectilinear;
@@ -287,9 +288,25 @@ int main(int argc, char** argv) {
 	std::cout << "Running single threaded for <" << token << "> of size " << (int)maxCombination.size << std::endl;
 	b.build();
       }
-      b.report();
+      Counts counts = b.report(token);
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Computation time: " << duration.count() << " seconds" << std::endl;
+      // Write to file:
+      std::stringstream ss; ss << "output_" << token << ".txt";
+      std::ofstream fileStream(ss.str().c_str());
+      fileStream << "<" << token << "> " << counts << std::endl;
+      fileStream << "Computation time: " << duration.count() << " seconds" << std::endl;
+      fileStream << std::endl;
+
+      fileStream << "Code line for sums-for-token.py:" << std::endl;
+      fileStream << "    '" << token << "', " << counts.all << ", " << counts.symmetric180 << "," << std::endl;
+      fileStream << std::endl;
+
+      fileStream << "Code line for Combination::setupKnownCounts():" << std::endl;
+      fileStream << "    m[" << token << "] = Counts(" << counts.all << ", " << counts.symmetric180 << ", " << counts.symmetric90 << ");" << std::endl;
+
+      fileStream.flush();
+      fileStream.close();
     }
 #ifdef PROFILING
     Profiler::reportInvocations();

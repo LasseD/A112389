@@ -1981,9 +1981,13 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void CombinationBuilder::report() {
+    report(0);
+  }
+  Counts CombinationBuilder::report(uint64_t returnToken) {
 #ifdef PROFILING
     Profiler::countInvocation("CombinationBuilder::report()");
 #endif
+    Counts ret;
     uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
       int64_t token = it->first;
@@ -1998,7 +2002,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.symmetric180 /= layerSizes[0];
       countsForToken.symmetric90 /= layerSizes[0] / 2;
       Combination::checkCounts(token, countsForToken);
+      if(token == returnToken)
+	ret = countsForToken;
     }
+    return ret;
   }
 
   BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {

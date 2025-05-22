@@ -273,6 +273,7 @@ namespace rectilinear {
     void build();
     void buildSplit(int threadCount);
     void report();
+    Counts report(uint64_t returnToken); // Returns counts for token if present in results
     bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
 #ifndef DEBUG
