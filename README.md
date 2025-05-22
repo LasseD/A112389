@@ -63,14 +63,14 @@ Each constructed model is checked for being the first of its kind being computed
 This is a very simplistic and inefficient approach that iterates through all models, but has the advantage of being able to write all models to disk for visualization and providing a baseline of comparison for more efficient algorithms.
 
 
-## "BFS Wave" Approach
+## Wave Approach
 
 Consider the following by Abrahamsen and Eilers:
 Consider the first brick at the first layer of any model as being fixed.
 Construct all models by adding bricks to this first brick.
 Divide the final counts as outlined in 'Eilers 2016' to address symmetries.
 
-Our "BFS Wave" algorithm constructs models iteratively by following this approach.
+Our "wave" algorithm constructs models iteratively by following this approach.
 
 Consider a model M (initially the single brick on the first layer), as well as a "wave" being the set initially consisting of the single brick.
 
@@ -80,9 +80,7 @@ New models are constructed by picking a subset T from S, placing the bricks of T
 
 This is repeated for all possible subsets T while ensuring that the bricks of T do not overlap with themselves.
 
-Our implementation had the selection of T behave like how the iteration works in BFS tree traversal. Our latest implementation uses DFS traversal, but we have kept the name "BFS Wave" to refer back to the initial conception.
-
-The folder [/bfs_wave_approach](bfs_wave_approach/) contains the source code.
+The folder [/wave_approach](wave_approach/) contains the source code.
 
 
 ## Lemma 1 “Divide and Conquer” (L1)

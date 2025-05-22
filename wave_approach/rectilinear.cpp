@@ -6,7 +6,7 @@
 #include <sstream>
 #include <iostream>
 
-#include "bfs.h"
+#include "rectilinear.h"
 
 #ifdef PROFILING
 void Profiler::countInvocation(const std::string &s) {
@@ -1797,7 +1797,7 @@ namespace rectilinear {
   }
 
   /*
-    BFS construction of models:
+    Wave construction of models:
     Assume a non-empty wave:
     Pick 1..|wave| bricks from wave:
     Find next wave and recurse until model contains n bricks.

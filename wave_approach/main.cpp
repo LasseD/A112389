@@ -1,7 +1,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <assert.h>
-#include "bfs.h"
+#include "rectilinear.h"
 
 using namespace rectilinear;
 
@@ -41,7 +41,7 @@ uint64_t get(char *argv) {
 
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
-  Let the base brick be the first "BFS Wave" or "wave"
+  Let the base brick be the first "wave"
   For each wave:
     Pick 1..|wave| bricks from wave:
       Find next wave and recurse until model contains n bricks.

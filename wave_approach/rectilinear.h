@@ -1,5 +1,5 @@
-#ifndef BFS_H
-#define BFS_H
+#ifndef RECTILINEAR_H
+#define RECTILINEAR_H
 
 // DIFFLT = "Difference less than" is used to check for brick intersection
 #define DIFFLT(a,b,c) ((a) < (b) ? ((b)-(a)<(c)) : ((a)-(b)<(c)))
