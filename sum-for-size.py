@@ -175,7 +175,7 @@ setData([
     '32222', 9286460454529759, (33185404), # Old Lemma 2 algorithm counted +1 by mistake!
 
 
-    '23231', 37712858319195720, (2418614),
+    '23231', 37712858319195719, (2418614), # Old Lemma 2 algorithm counted +1 by mistake!
     '23222', 43743183773027066, (84481663), # Old Lemma 2 algorithm counted incorectly!
 
 
