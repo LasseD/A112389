@@ -105,7 +105,8 @@ int runSumPrecomputations(int argc, char** argv) {
   std::cout << "Combinations built for " << maxC << std::endl;
 #endif
 
-  const Combination maxL(leftToken), maxR(rightToken);
+  const Combination maxL(Combination::reverseToken(leftToken));
+  const Combination maxR(Combination::reverseToken(rightToken));
   Counts counts, countsLeft, countsRight;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:

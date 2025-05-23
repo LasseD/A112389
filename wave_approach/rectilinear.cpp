@@ -2404,13 +2404,14 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     sumTotal(0),
     sumSymmetric180(0),
     sumSymmetric90(0),
-    lines(0) {
+    lines(0),
+    largeCountsRequired(BitWriter::areLargeCountsRequired(maxCombination)) {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::BitReader()");
 #endif
     std::stringstream ss;
     ss << "base_" << (int)base << "_size_" << (int)maxCombination.size;
-    ss << "_refinement_" << Combination::reverseToken(maxCombination.getTokenFromLayerSizes());
+    ss << "_refinement_" << (int)maxCombination.getTokenFromLayerSizes();
     ss << directorySuffix;
     ss << "/d" << (int)D << ".bin";
     std::string fileName = ss.str();
@@ -2450,14 +2451,28 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       first = false;
       for(uint8_t i = 0; i < base-1; i++)
 	r.colors[i] = readColor();
-      r.counts.all = readUInt32();
+
+      if(largeCountsRequired) {
+	r.counts.all = readUInt64();
+	r.counts.symmetric180 = readUInt32();
+	if((base & 3) == 0)
+	  r.counts.symmetric90 = readUInt16();
+	else
+	  r.counts.symmetric90 = 0;
+      }
+      else {
+	r.counts.all = readUInt32();
+	r.counts.symmetric180 = readUInt16();
+	if((base & 3) == 0)
+	  r.counts.symmetric90 = readUInt8();
+	else
+	  r.counts.symmetric90 = 0;
+      }
+
       sumTotal += r.counts.all;
-      r.counts.symmetric180 = readUInt16();
       sumSymmetric180 += r.counts.symmetric180;
-      r.counts.symmetric90 = 0;
-      if((base & 3) == 0)
-	r.counts.symmetric90 = readUInt8();
       sumSymmetric90 += r.counts.symmetric90;
+
       if(r.counts.all == 0) {
 	// Cross checks:
 	uint64_t readBase = readUInt64();
