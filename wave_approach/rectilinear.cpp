@@ -80,6 +80,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Counts::operator /");
 #endif
+    assert(v != 0);
     assert(all % v == 0);
     assert(symmetric180 % v == 0);
     assert(symmetric90 % v == 0);
@@ -211,7 +212,7 @@ namespace rectilinear {
   }
   int Brick::dist(const Brick &b) const {
 #ifdef PROFILING
-    Profiler::countInvocation("Brick::operator /");
+    Profiler::countInvocation("Brick::dist");
 #endif
     return ABS(x-b.x) + ABS(y-b.y);
   }
@@ -831,6 +832,7 @@ namespace rectilinear {
     }
     cx *= 2;
     cy *= 2;
+    assert(layerSizes[layer] != 0);
     cx /= layerSizes[layer];
     cy /= layerSizes[layer];
   }
@@ -847,6 +849,7 @@ namespace rectilinear {
     }
     cx *= 2;
     cy *= 2;
+    assert(layerSize != 0);
     cx /= layerSize;
     cy /= layerSize;
   }
@@ -1402,15 +1405,20 @@ namespace rectilinear {
     m[721] = Counts(212267872, 2325, 0);
     m[631] = Counts(709239437077, 122742, 0);
     m[622] = Counts(10610010722, 42938, 0);
+    m[532] = Counts(10198551751032, 592088, 0);
     m[523] = Counts(110432745036, 58784, 0);
     m[433] = Counts(37566339738080, 1069641, 0);
     m[424] = Counts(241236702180, 221465, 0);
     m[361] = Counts(5711086649169, 112022, 0);
+    m[343] = Counts(262440584015903, 1688509, 0);
     m[271] = Counts(35758538164, 24913, 0);
+    m[262] = Counts(10134629875966, 1466770, 0);
     m[181] = Counts(1421072, 0, 0);
     m[5221] = Counts(1064278709384, 55376, 0);
+    m[4321] = Counts(147793134818751, 808943, 0);
     m[4231] = Counts(11653960252958, 414800, 0);
     m[4222] = Counts(13378142987817, 1629981, 0);
+    m[3331] = Counts(547495815712759, 123794, 0);
     m[3241] = Counts(26468746650129, 206075, 0);
     m[3232] = Counts(147000420605317, 1060478, 0);
     m[3223] = Counts(30853217686804, 303826, 0);
@@ -1423,14 +1431,19 @@ namespace rectilinear {
     m[13231] = Counts(518058446706002, 74915, 0);
     m[122221] = Counts(2488886491814997, 628498, 0);
     m[92] = Counts(129568, 552, 0);
+    m[83] = Counts(16200206750, 112636, 0);
+    m[74] = Counts(5357035940501, 2290271, 0);
     m[821] = Counts(75044114, 4916, 0);
     m[722] = Counts(7211055824, 80482, 0);
     m[623] = Counts(147204185237, 260083, 0);
+    m[533] = Counts(289481658870354, 632360, 0);
     m[524] = Counts(662563743656, 629320, 0);
     m[434] = Counts(541700127346014, 17080083, 0);
+    m[191] = Counts(258584, 0, 0);
     m[6221] = Counts(1464493253086, 667311, 0);
     m[5231] = Counts(32708017336078, 132016, 0);
     m[5222] = Counts(36851077736763, 3166928, 0);
+    m[4331] = Counts(7985866751161543, 2371105, 0);
     m[4241] = Counts(158892437059818, 6283476, 0);
     m[4232] = Counts(879794762964609, 17193399, 0);
     m[4223] = Counts(180217829542618, 6905133, 0);
@@ -1442,7 +1455,8 @@ namespace rectilinear {
     m[22241] = Counts(8042576327798896, 29049583, 0);
     m[14231] = Counts(6951175887318281, 519900, 0);
     m[222221] = Counts(83131865065198064, 64343390, 0);
-    m[132221] = Counts(71849872746311776, 1046044, 0);    
+    m[132221] = Counts(71849872746311776, 1046044, 0);
+    m[281] = Counts(52647227697, 118808, 0);
   }
 
   bool Combination::checkCounts(uint64_t token, const Counts &c) {
@@ -1953,8 +1967,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     if(leftToPlace <= 1)
       return;
 
-    LayerBrick bricks[MAX_BRICKS];
-
     int processorCount = MAX(2, threadCount-1);//std::thread::hardware_concurrency();
     std::cout << "Using " << processorCount << " builder threads" << std::endl;
 
@@ -1981,7 +1993,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void CombinationBuilder::report() {
-    report(0);
+    report(1);
   }
   Counts CombinationBuilder::report(uint64_t returnToken) {
 #ifdef PROFILING
@@ -1990,7 +2002,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Counts ret;
     uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
-      int64_t token = it->first;
+      uint64_t token = it->first;
+      if(token == 1)
+	continue; // Ignore token 1...
       Combination::getLayerSizesFromToken(token, layerSizes);
       Counts countsForToken(it->second);
 
@@ -1998,9 +2012,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.all += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric180;
 
+      assert(layerSizes[0] != 0);
       countsForToken.all /= 2 * layerSizes[0]; // Because each model is built toward two directions
       countsForToken.symmetric180 /= layerSizes[0];
-      countsForToken.symmetric90 /= layerSizes[0] / 2;
+      if(countsForToken.symmetric90 > 0)
+	countsForToken.symmetric90 /= layerSizes[0] / 2;
       Combination::checkCounts(token, countsForToken);
       if(token == returnToken)
 	ret = countsForToken;
