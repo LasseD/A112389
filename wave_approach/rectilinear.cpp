@@ -400,7 +400,7 @@ namespace rectilinear {
 #endif
     return bricks[b.isVertical][b.x][b.y];
   }
-  
+   
   Combination::Combination() : height(1), size(1) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::Combination()");
@@ -409,7 +409,19 @@ namespace rectilinear {
     layerSizes[0] = 1;
     history[0] = BrickIdentifier(0,0);
   }
-  Combination::Combination(const Combination &b) {
+  Combination::Combination(int token) : height(heightOfToken(token)), size(0) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::Combination(int)");
+#endif
+    getLayerSizesFromToken(token, layerSizes);
+    for(uint8_t i = 0; i < height; i++) {
+      for(uint8_t j = 0; j < layerSizes[i]; j++) {
+	bricks[i][j] = FirstBrick;
+	history[size++] = BrickIdentifier(i,j);	
+      }
+    }
+  }
+ Combination::Combination(const Combination &b) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::Combination(Combination &)");
 #endif
@@ -2024,17 +2036,25 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
 
-  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0), largeCountsRequired(false) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter()");
 #endif
   }
-  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines) {
+  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines), largeCountsRequired(w.largeCountsRequired) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter(copy)");
 #endif
   }
-  BitWriter::BitWriter(const std::string &fileName, uint8_t base) : base(base), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0)  {
+  BitWriter::BitWriter(const std::string &fileName, const Combination &maxCombination) :
+    base(maxCombination.layerSizes[0]),
+    bits(0),
+    cntBits(0),
+    sumTotal(0),
+    sumSymmetric180(0),
+    sumSymmetric90(0),
+    lines(0),
+    largeCountsRequired(areLargeCountsRequired(maxCombination)) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter(...)");
 #endif
@@ -2053,10 +2073,18 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       writeBrick(FirstBrick);
     for(uint8_t i = 0; i < base-1; i++)
       writeColor(0);
-    writeUInt32(0); // total
-    writeUInt16(0); // symmetric180
-    if((base & 3) == 0)
-      writeUInt8(0); // symmetric90
+    if(largeCountsRequired) {
+      writeUInt64(0); // total
+      writeUInt32(0); // symmetric180
+      if((base & 3) == 0)
+	writeUInt16(0); // symmetric90
+    }
+    else {
+      writeUInt32(0); // total
+      writeUInt16(0); // symmetric180
+      if((base & 3) == 0)
+	writeUInt8(0); // symmetric90
+    }
     // Totals:
     writeUInt64(base);
     writeUInt64(sumTotal);
@@ -2068,6 +2096,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     ostream->flush();
     ostream->close();
     delete ostream;
+  }
+  bool BitWriter::areLargeCountsRequired(const Combination &maxCombination) {
+    uint8_t base = maxCombination.layerSizes[0];
+    if(base == 2)
+      return maxCombination.height > 2 && maxCombination.size >= 8;
+    return false; // TODO for larger bases!
   }
   void BitWriter::writeColor(uint8_t toWrite) {
 #ifdef PROFILING
@@ -2109,15 +2143,24 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       int *a = NULL; a[10]=10; // Not so graceful
     }
 
-    writeUInt32(c.all);
     sumTotal += c.all;
-
-    writeUInt16(c.symmetric180);
     sumSymmetric180 += c.symmetric180;
 
-    if((base & 3) == 0) {
-      writeUInt8(c.symmetric90);
-      sumSymmetric90 += c.symmetric90;
+    if(largeCountsRequired) {
+      writeUInt64(c.all);
+      writeUInt32(c.symmetric180);
+      if((base & 3) == 0) {
+	writeUInt16(c.symmetric90);
+	sumSymmetric90 += c.symmetric90;
+      }
+    }
+    else {
+      writeUInt32(c.all);
+      writeUInt16(c.symmetric180);
+      if((base & 3) == 0) {
+	writeUInt8(c.symmetric90);
+	sumSymmetric90 += c.symmetric90;
+      }
     }
 
     lines++;
@@ -2353,13 +2396,20 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     c.symmetric180 = readUInt16();
     c.symmetric90 = ((base & 3) == 0) ? readUInt8() : 0;
   }
-  BitReader::BitReader(uint8_t base, int n, int token, int D, std::string directorySuffix) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  BitReader::BitReader(const Combination &maxCombination, int D, std::string directorySuffix) :
+    bits(0),
+    bitIdx(8),
+    base(maxCombination.layerSizes[0]),
+    sumTotal(0),
+    sumSymmetric180(0),
+    sumSymmetric90(0),
+    lines(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::BitReader()");
 #endif
     std::stringstream ss;
-    ss << "base_" << (int)base << "_size_" << (int)n;
-    ss << "_refinement_" << Combination::reverseToken(token);
+    ss << "base_" << (int)base << "_size_" << (int)maxCombination.size;
+    ss << "_refinement_" << Combination::reverseToken(maxCombination.getTokenFromLayerSizes());
     ss << directorySuffix;
     ss << "/d" << (int)D << ".bin";
     std::string fileName = ss.str();
@@ -3018,7 +3068,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	continue;
       }
 
-      BitWriter writer(fileName, base);
+      BitWriter writer(fileName, maxCombination);
       std::vector<int> distances;
       BaseBuilder baseBuilder(writer);
 

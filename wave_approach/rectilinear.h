@@ -123,6 +123,7 @@ namespace rectilinear {
       Rectilinear models with restriction: First brick of first layer must be FirstBrick.
     */
     Combination();
+    Combination(int token);
     Combination(const Base &b);
     Combination(const Combination &b);
 
@@ -328,11 +329,12 @@ namespace rectilinear {
     uint8_t base;
     uint8_t bits, cntBits;
     uint64_t sumTotal, sumSymmetric180, sumSymmetric90, lines;
+    bool largeCountsRequired;
 
   public:
     BitWriter();
     BitWriter(const BitWriter &w);
-    BitWriter(const std::string &fileName, uint8_t base);
+    BitWriter(const std::string &fileName, const Combination &maxCombination);
     ~BitWriter(); // Write end indicator with symmetric > total
     void writeColor(uint8_t toWrite); // 3 bits, starting from 0
     void writeBrick(const Brick &b); // isVertical, x, y
@@ -340,6 +342,7 @@ namespace rectilinear {
     void writeUInt16(uint16_t toWrite); // Used for symmetric180 and token
     void writeUInt8(uint8_t toWrite); // Used for symmetric90 - only when base = 4
     void writeCounts(const Counts &c);
+    static bool areLargeCountsRequired(const Combination &maxCombination);
   private:
     void flushBits();
     void writeUInt32(uint32_t toWrite); // Used for total
@@ -368,6 +371,7 @@ namespace rectilinear {
     std::ifstream *istream;
     uint8_t bits, bitIdx, base;
     uint64_t sumTotal, sumSymmetric180, sumSymmetric90, lines;
+    bool largeCountsRequired;
 
     bool readBit();
     uint8_t readColor();
@@ -378,7 +382,7 @@ namespace rectilinear {
     uint64_t readUInt64();
     void readCounts(Counts &c);
   public:
-    BitReader(uint8_t base, int n, int token, int D, std::string directorySuffix);
+    BitReader(const Combination &maxCombination, int D, std::string directorySuffix);
     ~BitReader();
     bool next(std::vector<Report> &v);
   };
