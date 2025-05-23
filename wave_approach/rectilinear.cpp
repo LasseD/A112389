@@ -1469,6 +1469,7 @@ namespace rectilinear {
     m[222221] = Counts(83131865065198064, 64343390, 0);
     m[132221] = Counts(71849872746311776, 1046044, 0);
     m[281] = Counts(52647227697, 118808, 0);
+    m[137] = Counts(1799186992768, 44114, 0);
   }
 
   bool Combination::checkCounts(uint64_t token, const Counts &c) {
