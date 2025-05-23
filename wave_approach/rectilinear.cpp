@@ -2138,10 +2138,19 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::writeCounts()");
 #endif
-    if(c.all >= 4294967295 || c.symmetric180 >= 65535 || c.symmetric90 >= 255) {
-      std::cerr << "Counts too large! " << c << std::endl;
-      assert(false); // Graceful
-      int *a = NULL; a[10]=10; // Not so graceful
+    if(largeCountsRequired) {
+      if(c.symmetric180 >= 4294967295 || c.symmetric90 >= 65535) {
+	std::cerr << "Counts too large! " << c << std::endl;
+	assert(false); // Graceful
+	int *a = NULL; a[10]=10; // Not so graceful
+      }
+    }
+    else {
+      if(c.all >= 4294967295 || c.symmetric180 >= 65535 || c.symmetric90 >= 255) {
+	std::cerr << "Counts too large! " << c << std::endl;
+	assert(false); // Graceful
+	int *a = NULL; a[10]=10; // Not so graceful
+      }
     }
 
     sumTotal += c.all;
