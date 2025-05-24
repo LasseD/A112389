@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <assert.h>
+#include <sstream>
 #include <fstream>
 #include "rectilinear.h"
 
@@ -76,8 +77,6 @@ int runSumPrecomputations(int argc, char** argv) {
   int rightToken = get(argv[3]);
   int maxDist = get(argv[4]);
   
-  int leftSize = Combination::sizeOfToken(leftToken);
-  int rightSize = Combination::sizeOfToken(rightToken);
   leftToken = leftToken * 10 + base;
   rightToken = Combination::reverseToken(rightToken);
   int token = leftToken;
@@ -106,11 +105,13 @@ int runSumPrecomputations(int argc, char** argv) {
   std::cout << "Combinations built for " << maxC << std::endl;
 #endif
 
+  const Combination maxL(Combination::reverseToken(leftToken));
+  const Combination maxR(Combination::reverseToken(rightToken));
   Counts counts, countsLeft, countsRight;
   for(int D = 2; D <= maxDist; D++) {
     // Read files and handle batches one by one:
-    BitReader reader1(base, leftSize + base, leftToken, D, "");
-    BitReader reader2(base, rightSize + base, rightToken, D, "");
+    BitReader reader1(maxL, D, "");
+    BitReader reader2(maxR, D, "");
 
     std::vector<Report> l, r;
     while(reader1.next(l)) {
@@ -319,14 +320,14 @@ int main(int argc, char** argv) {
   }
   else if(argc == 6) {
     int base = get(argv[1]);
-    int size = get(argv[2]);
     int token = Combination::reverseToken(get(argv[3]));
     int D = get(argv[4]);
     std::string suffix(argv[5]);
 
+    const Combination maxC(token);
     for(int d = 2; d <= D; d++) {
-      BitReader reader1(base, size, token, d, suffix);
-      BitReader reader2(base, size, token, d, "");
+      BitReader reader1(maxC, d, suffix);
+      BitReader reader2(maxC, d, "");
 
       std::vector<Report> r1, r2;
       while(reader1.next(r1)) {

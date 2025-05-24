@@ -80,6 +80,7 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Counts::operator /");
 #endif
+    assert(v != 0);
     assert(all % v == 0);
     assert(symmetric180 % v == 0);
     assert(symmetric90 % v == 0);
@@ -211,7 +212,7 @@ namespace rectilinear {
   }
   int Brick::dist(const Brick &b) const {
 #ifdef PROFILING
-    Profiler::countInvocation("Brick::operator /");
+    Profiler::countInvocation("Brick::dist");
 #endif
     return ABS(x-b.x) + ABS(y-b.y);
   }
@@ -399,7 +400,7 @@ namespace rectilinear {
 #endif
     return bricks[b.isVertical][b.x][b.y];
   }
-  
+   
   Combination::Combination() : height(1), size(1) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::Combination()");
@@ -408,7 +409,19 @@ namespace rectilinear {
     layerSizes[0] = 1;
     history[0] = BrickIdentifier(0,0);
   }
-  Combination::Combination(const Combination &b) {
+  Combination::Combination(int token) : height(heightOfToken(token)), size(0) {
+#ifdef PROFILING
+    Profiler::countInvocation("Combination::Combination(int)");
+#endif
+    getLayerSizesFromToken(token, layerSizes);
+    for(uint8_t i = 0; i < height; i++) {
+      for(uint8_t j = 0; j < layerSizes[i]; j++) {
+	bricks[i][j] = FirstBrick;
+	history[size++] = BrickIdentifier(i,j);	
+      }
+    }
+  }
+ Combination::Combination(const Combination &b) {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::Combination(Combination &)");
 #endif
@@ -831,6 +844,7 @@ namespace rectilinear {
     }
     cx *= 2;
     cy *= 2;
+    assert(layerSizes[layer] != 0);
     cx /= layerSizes[layer];
     cy /= layerSizes[layer];
   }
@@ -847,6 +861,7 @@ namespace rectilinear {
     }
     cx *= 2;
     cy *= 2;
+    assert(layerSize != 0);
     cx /= layerSize;
     cy /= layerSize;
   }
@@ -1402,15 +1417,20 @@ namespace rectilinear {
     m[721] = Counts(212267872, 2325, 0);
     m[631] = Counts(709239437077, 122742, 0);
     m[622] = Counts(10610010722, 42938, 0);
+    m[532] = Counts(10198551751032, 592088, 0);
     m[523] = Counts(110432745036, 58784, 0);
     m[433] = Counts(37566339738080, 1069641, 0);
     m[424] = Counts(241236702180, 221465, 0);
     m[361] = Counts(5711086649169, 112022, 0);
+    m[343] = Counts(262440584015903, 1688509, 0);
     m[271] = Counts(35758538164, 24913, 0);
+    m[262] = Counts(10134629875966, 1466770, 0);
     m[181] = Counts(1421072, 0, 0);
     m[5221] = Counts(1064278709384, 55376, 0);
+    m[4321] = Counts(147793134818751, 808943, 0);
     m[4231] = Counts(11653960252958, 414800, 0);
     m[4222] = Counts(13378142987817, 1629981, 0);
+    m[3331] = Counts(547495815712759, 123794, 0);
     m[3241] = Counts(26468746650129, 206075, 0);
     m[3232] = Counts(147000420605317, 1060478, 0);
     m[3223] = Counts(30853217686804, 303826, 0);
@@ -1423,26 +1443,40 @@ namespace rectilinear {
     m[13231] = Counts(518058446706002, 74915, 0);
     m[122221] = Counts(2488886491814997, 628498, 0);
     m[92] = Counts(129568, 552, 0);
+    m[83] = Counts(16200206750, 112636, 0);
+    m[74] = Counts(5357035940501, 2290271, 0);
     m[821] = Counts(75044114, 4916, 0);
     m[722] = Counts(7211055824, 80482, 0);
     m[623] = Counts(147204185237, 260083, 0);
+    m[533] = Counts(289481658870354, 632360, 0);
     m[524] = Counts(662563743656, 629320, 0);
     m[434] = Counts(541700127346014, 17080083, 0);
+    m[191] = Counts(258584, 0, 0);
     m[6221] = Counts(1464493253086, 667311, 0);
     m[5231] = Counts(32708017336078, 132016, 0);
     m[5222] = Counts(36851077736763, 3166928, 0);
+    m[4331] = Counts(7985866751161543, 2371105, 0);
     m[4241] = Counts(158892437059818, 6283476, 0);
     m[4232] = Counts(879794762964609, 17193399, 0);
     m[4223] = Counts(180217829542618, 6905133, 0);
     m[42221] = Counts(1619895602468513, 13822233, 0);
     m[32231] = Counts(8071935524995532, 730718, 0);
-    m[32222] = Counts(9286460454529760, 33185404, 0);
-    m[23231] = Counts(37712858319195720, 2418614, 0);
-    m[23222] = Counts(43743183773027064, 84481663, 0);
+    m[32222] = Counts(9286460454529759, 33185404, 0);
+    m[23231] = Counts(37712858319195719, 2418614, 0);
+    m[23222] = Counts(43743183773027066, 84481663, 0);
     m[22241] = Counts(8042576327798896, 29049583, 0);
     m[14231] = Counts(6951175887318281, 519900, 0);
-    m[222221] = Counts(83131865065198064, 64343390, 0);
-    m[132221] = Counts(71849872746311776, 1046044, 0);    
+    m[222221] = Counts(83131865065198060, 64343390, 0);
+    m[132221] = Counts(71849872746311779, 1046044, 0);
+    m[281] = Counts(52647227697, 118808, 0);
+    m[137] = Counts(1799186992768, 44114, 0);
+    m[3323] = Counts(4472233899139020, 1348484, 0);
+    m[3322] = Counts(331549223161406, 2210342, 0);
+    m[33221] = Counts(39335472994895589, 1402284, 0);
+    m[15221] = Counts(1654910007480680, 200521, 0);
+    m[3251] = Counts(183657614407425, 164712, 0);
+    m[2251] = Counts(13526583972859, 398785, 0);
+    m[2261] = Counts(52566014594439, 21527, 0);
   }
 
   bool Combination::checkCounts(uint64_t token, const Counts &c) {
@@ -1953,8 +1987,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     if(leftToPlace <= 1)
       return;
 
-    LayerBrick bricks[MAX_BRICKS];
-
     int processorCount = MAX(2, threadCount-1);//std::thread::hardware_concurrency();
     std::cout << "Using " << processorCount << " builder threads" << std::endl;
 
@@ -1981,7 +2013,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void CombinationBuilder::report() {
-    report(0);
+    report(1);
   }
   Counts CombinationBuilder::report(uint64_t returnToken) {
 #ifdef PROFILING
@@ -1990,7 +2022,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Counts ret;
     uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
-      int64_t token = it->first;
+      uint64_t token = it->first;
+      if(token == 1)
+	continue; // Ignore token 1...
       Combination::getLayerSizesFromToken(token, layerSizes);
       Counts countsForToken(it->second);
 
@@ -1998,9 +2032,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       countsForToken.all += countsForToken.symmetric90;
       countsForToken.all += countsForToken.symmetric180;
 
+      assert(layerSizes[0] != 0);
       countsForToken.all /= 2 * layerSizes[0]; // Because each model is built toward two directions
       countsForToken.symmetric180 /= layerSizes[0];
-      countsForToken.symmetric90 /= layerSizes[0] / 2;
+      if(countsForToken.symmetric90 > 0)
+	countsForToken.symmetric90 /= layerSizes[0] / 2;
       Combination::checkCounts(token, countsForToken);
       if(token == returnToken)
 	ret = countsForToken;
@@ -2008,17 +2044,25 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
 
-  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0), largeCountsRequired(false) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter()");
 #endif
   }
-  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines) {
+  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines), largeCountsRequired(w.largeCountsRequired) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter(copy)");
 #endif
   }
-  BitWriter::BitWriter(const std::string &fileName, uint8_t base) : base(base), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0)  {
+  BitWriter::BitWriter(const std::string &fileName, const Combination &maxCombination) :
+    base(maxCombination.layerSizes[0]),
+    bits(0),
+    cntBits(0),
+    sumTotal(0),
+    sumSymmetric180(0),
+    sumSymmetric90(0),
+    lines(0),
+    largeCountsRequired(areLargeCountsRequired(maxCombination)) {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::BitWriter(...)");
 #endif
@@ -2037,10 +2081,18 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       writeBrick(FirstBrick);
     for(uint8_t i = 0; i < base-1; i++)
       writeColor(0);
-    writeUInt32(0); // total
-    writeUInt16(0); // symmetric180
-    if((base & 3) == 0)
-      writeUInt8(0); // symmetric90
+    if(largeCountsRequired) {
+      writeUInt64(0); // total
+      writeUInt32(0); // symmetric180
+      if((base & 3) == 0)
+	writeUInt16(0); // symmetric90
+    }
+    else {
+      writeUInt32(0); // total
+      writeUInt16(0); // symmetric180
+      if((base & 3) == 0)
+	writeUInt8(0); // symmetric90
+    }
     // Totals:
     writeUInt64(base);
     writeUInt64(sumTotal);
@@ -2052,6 +2104,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     ostream->flush();
     ostream->close();
     delete ostream;
+  }
+  bool BitWriter::areLargeCountsRequired(const Combination &maxCombination) {
+    uint8_t base = maxCombination.layerSizes[0];
+    if(base == 2)
+      return maxCombination.height > 2 && maxCombination.size >= 8;
+    return false; // TODO for larger bases!
   }
   void BitWriter::writeColor(uint8_t toWrite) {
 #ifdef PROFILING
@@ -2087,21 +2145,39 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #ifdef PROFILING
     Profiler::countInvocation("BitWriter::writeCounts()");
 #endif
-    if(c.all >= 4294967295 || c.symmetric180 >= 65535 || c.symmetric90 >= 255) {
-      std::cerr << "Counts too large! " << c << std::endl;
-      assert(false); // Graceful
-      int *a = NULL; a[10]=10; // Not so graceful
+    if(largeCountsRequired) {
+      if(c.symmetric180 >= 4294967295 || c.symmetric90 >= 65535) {
+	std::cerr << "Counts too large! " << c << std::endl;
+	assert(false); // Graceful
+	int *a = NULL; a[10]=10; // Not so graceful
+      }
+    }
+    else {
+      if(c.all >= 4294967295 || c.symmetric180 >= 65535 || c.symmetric90 >= 255) {
+	std::cerr << "Counts too large! " << c << std::endl;
+	assert(false); // Graceful
+	int *a = NULL; a[10]=10; // Not so graceful
+      }
     }
 
-    writeUInt32(c.all);
     sumTotal += c.all;
-
-    writeUInt16(c.symmetric180);
     sumSymmetric180 += c.symmetric180;
 
-    if((base & 3) == 0) {
-      writeUInt8(c.symmetric90);
-      sumSymmetric90 += c.symmetric90;
+    if(largeCountsRequired) {
+      writeUInt64(c.all);
+      writeUInt32(c.symmetric180);
+      if((base & 3) == 0) {
+	writeUInt16(c.symmetric90);
+	sumSymmetric90 += c.symmetric90;
+      }
+    }
+    else {
+      writeUInt32(c.all);
+      writeUInt16(c.symmetric180);
+      if((base & 3) == 0) {
+	writeUInt8(c.symmetric90);
+	sumSymmetric90 += c.symmetric90;
+      }
     }
 
     lines++;
@@ -2337,13 +2413,21 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     c.symmetric180 = readUInt16();
     c.symmetric90 = ((base & 3) == 0) ? readUInt8() : 0;
   }
-  BitReader::BitReader(uint8_t base, int n, int token, int D, std::string directorySuffix) : bits(0), bitIdx(8), base(base), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0) {
+  BitReader::BitReader(const Combination &maxCombination, int D, std::string directorySuffix) :
+    bits(0),
+    bitIdx(8),
+    base(maxCombination.layerSizes[0]),
+    sumTotal(0),
+    sumSymmetric180(0),
+    sumSymmetric90(0),
+    lines(0),
+    largeCountsRequired(BitWriter::areLargeCountsRequired(maxCombination)) {
 #ifdef PROFILING
     Profiler::countInvocation("BitReader::BitReader()");
 #endif
     std::stringstream ss;
-    ss << "base_" << (int)base << "_size_" << (int)n;
-    ss << "_refinement_" << Combination::reverseToken(token);
+    ss << "base_" << (int)base << "_size_" << (int)maxCombination.size;
+    ss << "_refinement_" << (int)maxCombination.getTokenFromLayerSizes();
     ss << directorySuffix;
     ss << "/d" << (int)D << ".bin";
     std::string fileName = ss.str();
@@ -2383,14 +2467,28 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       first = false;
       for(uint8_t i = 0; i < base-1; i++)
 	r.colors[i] = readColor();
-      r.counts.all = readUInt32();
+
+      if(largeCountsRequired) {
+	r.counts.all = readUInt64();
+	r.counts.symmetric180 = readUInt32();
+	if((base & 3) == 0)
+	  r.counts.symmetric90 = readUInt16();
+	else
+	  r.counts.symmetric90 = 0;
+      }
+      else {
+	r.counts.all = readUInt32();
+	r.counts.symmetric180 = readUInt16();
+	if((base & 3) == 0)
+	  r.counts.symmetric90 = readUInt8();
+	else
+	  r.counts.symmetric90 = 0;
+      }
+
       sumTotal += r.counts.all;
-      r.counts.symmetric180 = readUInt16();
       sumSymmetric180 += r.counts.symmetric180;
-      r.counts.symmetric90 = 0;
-      if((base & 3) == 0)
-	r.counts.symmetric90 = readUInt8();
       sumSymmetric90 += r.counts.symmetric90;
+
       if(r.counts.all == 0) {
 	// Cross checks:
 	uint64_t readBase = readUInt64();
@@ -3002,7 +3100,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	continue;
       }
 
-      BitWriter writer(fileName, base);
+      BitWriter writer(fileName, maxCombination);
       std::vector<int> distances;
       BaseBuilder baseBuilder(writer);
 
