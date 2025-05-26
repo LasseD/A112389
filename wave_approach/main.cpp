@@ -90,21 +90,6 @@ int runSumPrecomputations(int argc, char** argv) {
 
   rightToken = rightToken * 10 + base;
 
-#ifdef DEBUG
-  // Cross check against counted:
-  Combination c, maxC;
-  maxC.size = Combination::sizeOfToken(token);
-  maxC.height = Combination::heightOfToken(token);
-  Combination::getLayerSizesFromToken(token, maxC.layerSizes);
-  BrickPlane neighbours[MAX_BRICKS];
-  for(int i = 0; i < MAX_BRICKS; i++)
-    neighbours[i].unsetAll();
-  CombinationBuilder builder(c, 0, 1, neighbours, maxC, true, false, true);
-  builder.build();
-  builder.report();
-  std::cout << "Combinations built for " << maxC << std::endl;
-#endif
-
   const Combination maxL(Combination::reverseToken(leftToken));
   const Combination maxR(Combination::reverseToken(rightToken));
   Counts counts, countsLeft, countsRight;
@@ -195,32 +180,6 @@ int runSumPrecomputations(int argc, char** argv) {
 	cr.all = cr.all/2 + cr.symmetric180;
       }
 
-#ifdef DEBUG
-      CombinationCountsMap::iterator bit = builder.baseCounts.find(baseCombination);
-      if(bit == builder.baseCounts.end()) {
-	if(c.all != 0) {
-	  std::cerr << "   Unknown base! " << baseCombination << std::endl;
-	  std::cerr << "File:    " << c << std::endl;
-	  assert(false);
-	}
-      }
-      else {
-	Counts fromBuilding = bit->second;
-	fromBuilding.all += fromBuilding.symmetric180;
-	fromBuilding.all /= 2 * maxC.layerSizes[0];
-	fromBuilding.symmetric180 /= maxC.layerSizes[0];
-
-	if(c != fromBuilding) {
-	  std::cerr << "Base " << baseCombination << std::endl;
-	  std::cerr << "File:    " << c << std::endl;
-	  std::cerr << "Counted: " << fromBuilding << std::endl;
-	  assert(false);
-	}
-	//std::cout << "   Handled base " << baseCombination << std::endl;
-	builder.baseCounts.erase(bit); // Ensure not counted again
-      }
-#endif
-
       countsLeft += cl;
       countsRight += cr;
 
@@ -232,12 +191,6 @@ int runSumPrecomputations(int argc, char** argv) {
   Combination::checkCounts(token, counts);
   Combination::checkCounts(leftToken, countsLeft);
   Combination::checkCounts(rightToken, countsRight);
-
-#ifdef DEBUG
-  for(CombinationCountsMap::iterator it = builder.baseCounts.begin(); it != builder.baseCounts.end(); it++) {
-    std::cerr << "Unmatched base " << it->first << ": " << it->second << std::endl;
-  }
-#endif
 
   return 0;
 }
@@ -320,24 +273,35 @@ int main(int argc, char** argv) {
   }
   else if(argc == 6) {
     int base = get(argv[1]);
-    int token = Combination::reverseToken(get(argv[3]));
+    int token = get(argv[2]);
+    int d = get(argv[3]);
     int D = get(argv[4]);
     std::string suffix(argv[5]);
 
     const Combination maxC(token);
-    for(int d = 2; d <= D; d++) {
+    for(; d <= D; d++) {
       BitReader reader1(maxC, d, suffix);
       BitReader reader2(maxC, d, "");
 
       std::vector<Report> r1, r2;
+      long cnt = 0;
       while(reader1.next(r1)) {
+#ifdef DEBUG
+	std::cout << " " << suffix << " read, now reading from other" << std::endl;
+#endif
 	bool ok = reader2.next(r2);
+#ifdef DEBUG
+	std::cout << " Other read" << std::endl;
+#endif
+	cnt++;
 	if(!ok) {
 	  std::cerr << "Base pair mismatch for d=" << d << std::endl;
 	  return 4;
 	}
 	if(r1.size() != r2.size()) {
 	  std::cerr << "Report size does not match!" << std::endl;
+	  std::cerr << "Sizes: " << r1.size() << " / " << r2.size() << std::endl;
+	  std::cerr << "Bases: " << r1[0].c << " / " << r2[0].c << std::endl;
 	  return 5;
 	}
 	bool first = true;
@@ -348,6 +312,9 @@ int main(int argc, char** argv) {
 	  const Report &report = *it;
 	  if(first) {
 	    b1 = report.c;
+#ifdef DEBUG
+	    std::cout << "b1 " << b1 << std::endl;
+#endif
 	    s180 = report.baseSymmetric180;
 	    s90 = report.baseSymmetric90;
 	    first = false;
@@ -363,6 +330,9 @@ int main(int argc, char** argv) {
 	  const Report &report = *it;
 	  if(first) {
 	    b2 = report.c;
+#ifdef DEBUG
+	    std::cout << "b2 " << b2 << std::endl;
+#endif
 	    t180 = report.baseSymmetric180;
 	    t90 = report.baseSymmetric90;
 	    first = false;
@@ -376,13 +346,14 @@ int main(int argc, char** argv) {
 	if(!(b1 == b2) || s180 != t180 || s90 != t90) {
 	  std::cerr << "Base mismatch! " << b1 << " != " << b2 << std::endl;
 	  std::cerr << " 180?: " << s180 << "/" << t180 << " 90?: " << s90 << "/" << t90 << std::endl;
+	  std::cerr << "Index " << cnt << std::endl;
 	  return 6;
 	}
 	for(CountsMap::const_iterator it1 = m1.begin(), it2 = m2.begin(); it1 != m1.end(); it1++, it2++) {
 	  if(it1->first != it2->first || it1->second != it2->second) {
 	    std::cerr << "Counts mismatch!" << std::endl;
 	    std::cerr << " Base: " << b1 << std::endl;
-	    std::cerr << " token: " << it1->first << " / " << it2->first << std::endl;
+	    std::cerr << " tokens: " << it1->first << " / " << it2->first << std::endl;
 	    std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
 	    return 7;
 	  }
