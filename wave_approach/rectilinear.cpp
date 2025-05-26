@@ -465,6 +465,13 @@ namespace rectilinear {
     bricks[0].first = FirstBrick;
     bricks[0].second = 0;
   }
+  CBase::CBase(const Base &b) : layerSize(b.layerSize) {
+#ifdef PROFILING
+    Profiler::countInvocation("CBase::CBase(Base &)");
+#endif
+    for(uint8_t i = 0; i < layerSize; i++)
+      bricks[i] = CBrick(b.bricks[i], i);
+  }
   CBase::CBase(const CBase &b) : layerSize(b.layerSize) {
 #ifdef PROFILING
     Profiler::countInvocation("CBase::CBase(CBase &)");
@@ -1770,27 +1777,6 @@ namespace rectilinear {
 	  it->second.symmetric90++;
       }
 
-#ifdef DEBUG
-      if(maxCombination.height == 3) {
-	Counts cx(1,0,0);
-	if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
-	  cx.symmetric180++;
-	  if(baseCombination.is90Symmetric())
-	    cx.symmetric90++;
-	}
-	// Report on bases from middle layer:
-	Base base; base.layerSize = baseCombination.layerSizes[1];
-	for(uint8_t i = 0; i < base.layerSize; i++)
-	  base.bricks[i] = baseCombination.bricks[1][i];
-	base.normalize();
-	CombinationCountsMap::iterator bit = baseCounts.find(base);
-	if(bit != baseCounts.end())
-	  bit->second += cx;
-	else
-	  baseCounts[base] = cx;
-      }
-#endif
-
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
@@ -1813,21 +1799,6 @@ namespace rectilinear {
       else
 	it2->second += toAdd;
     }
-
-#ifdef DEBUG
-    for(CombinationCountsMap::const_iterator bit = b.baseCounts.begin(); bit != b.baseCounts.end(); bit++) {
-      CombinationCountsMap::iterator bit2 = baseCounts.find(bit->first);
-      Counts toAdd = bit->second;
-
-      if(doubleCount)
-	toAdd += toAdd; // Since we skipped "the other time" (optimization 1)
-
-      if(bit2 != baseCounts.end())
-	bit2->second += toAdd;
-      else
-	baseCounts[bit->first] = toAdd;
-    }
-#endif
   }
 
   /*
@@ -2236,12 +2207,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   std::ostream& operator << (std::ostream &os,const Report &r) {
-    os << "Base ";
-#ifdef DEBUG
+    os << "Report ";
     os << r.c << " ";
-#else
-    os << (int)r.base;
-#endif
     os << " colors 1";
     for(uint8_t i = 0; i < r.base-1; i++)
       os << " " << (int)(1+r.colors[i]);
@@ -2540,65 +2507,51 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       innerBuilder = new Size1InnerBaseBuilder(distances[0]);
     else
       innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
-    // Clean up:
-    bases.clear();
 
-    CombinationMap smallerBases;
-    CombinationResultsMap rm;
-    std::set<Base> mx, my;
-    for(CombinationMap::const_iterator it = duplicates.begin(); it != duplicates.end(); it++) {
-      break;// TODO! This cleanup currently causes issues! RM!
-      if(it->first.layerSize <= size) {
-	smallerBases[it->first] = it->second;
-	rm[it->second] = resultsMap[it->second];
-	if(mirrorSymmetricX.find(it->second) != mirrorSymmetricX.end())
-	  mx.insert(it->second);
-	else if(mirrorSymmetricY.find(it->second) != mirrorSymmetricY.end())
-	  my.insert(it->second);
+    // Clean up:
+    std::set<Base> toRemove;
+    for(std::vector<BaseWithID>::const_iterator it = bases.begin(); it != bases.end(); it++) {
+      int type = it->second.first;
+      if(type != SMALLER_BASE) { // Keep smaller bases, as they might be relevant later:
+	Base b(it->second.second);
+	toRemove.insert(b);
       }
     }
-    duplicates = smallerBases;
+    CombinationResultsMap rm;
+    for(CombinationResultsMap::const_iterator it = resultsMap.begin(); it != resultsMap.end(); it++) {
+      if(toRemove.find(it->first) == toRemove.end())
+	rm[it->first] = it->second;
+    }
     resultsMap = rm;
-    mirrorSymmetricX = mx;
-    mirrorSymmetricY = my;
 
-    std::cout << "  Reusing " << duplicates.size() << " smaller bases" << std::endl;
+    if(!resultsMap.empty())
+      std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
+
+    bases.clear();
   }
 
-  bool BaseBuilder::checkMirrorSymmetries(const Base &c) {
+  int BaseBuilder::checkMirrorSymmetries(const Base &c, CBase &original) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::checkMirrorSymmetries()");
 #endif
     Base mx(c);
     mx.mirrorX();
     if(resultsMap.find(mx) != resultsMap.end()) {
-      duplicates[c] = mx;
-      mirrorSymmetricX.insert(c);
-      return true;
-    }
-    CombinationMap::iterator it = duplicates.find(mx);
-    if(it != duplicates.end()) {
-      duplicates[c] = it->second;
-      mirrorSymmetricX.insert(c);
-      return true;
+      original = CBase(c);
+      original.mirrorX();
+      return MIRROR_X;
     }
 
     Base my(c);
     my.mirrorY();
     if(resultsMap.find(my) != resultsMap.end()) {
-      duplicates[c] = my;
-      mirrorSymmetricY.insert(c);
-      return true;
-    }
-    it = duplicates.find(my);
-    if(it != duplicates.end()) {
-      duplicates[c] = it->second;
-      mirrorSymmetricY.insert(c);
-      return true;
+      original = CBase(c);
+      original.mirrorY();
+      return MIRROR_Y;
     }
 
     // We do not mirror in both X and Y, as that is equal to 180 degree rotation.
-    return false;
+    return NORMAL;
   }
 
   Size1InnerBaseBuilder::Size1InnerBaseBuilder(int16_t D) : encoded(0), d(0), D(D) {
@@ -2696,7 +2649,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     c.bricks[idx+1] = b;
   }
 
-  bool BaseBuilder::nextBaseToBuildOn(Base &outBase, const Combination &maxCombination) {
+  bool BaseBuilder::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::nextBaseToBuildOn()");
@@ -2711,8 +2664,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       // Check if already seen:
       if(resultsMap.find(c) != resultsMap.end())
 	continue; // Already seen!
-      if(duplicates.find(c) != duplicates.end())
-	continue; // Already seen as duplicate!
 
       // Check that baseCombination does not belong to another time:
       bool belongsToAnotherTime = false;
@@ -2729,52 +2680,80 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	}
       }
       if(belongsToAnotherTime)
-	continue; // Not an actual skip
+	continue; // Does not belong in this output
 
-      // Check for mirror symemtries:
-      if(checkMirrorSymmetries(c)) {
-	bases.push_back(c);
-	if(++mirrorSkips % 50000 == 0)
-	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
-	continue; // duplicates handled in checkMirrorSymmetries
-      }
+#ifdef TRACE
+      std::cout << " Base to output: " << c << std::endl;
+#endif
 
       // Check for smaller bases:
-      if(!c.is180Symmetric()) { // Do not do this for symmetric bases, as counts rely on symmetry
+      if(!c.is180Symmetric()) { // Do not do this for symmetric bases as we do not have separate handling for those
 	CBase smallerBase;
 	c.reduceFromUnreachable(maxCombination, smallerBase);
 
 	if(smallerBase.layerSize < c.layerSize) {
+	  bases.push_back(BaseWithID(c, BaseIdentification(SMALLER_BASE,smallerBase)));
+	  resultsMap[c] = CountsMap(); // Reserve to avoid repeats in output
+
 	  Base cleanSmallerBase(smallerBase);
-	  CombinationMap::iterator it = duplicates.find(cleanSmallerBase);
-	  if(it != duplicates.end()) { // Known smaller base: Point to same original:
-	    duplicates[c] = it->second;
-	    bases.push_back(c);
+	  if(resultsMap.find(cleanSmallerBase) != resultsMap.end()) { // Known smaller base: Point to same original:
 	    if(++reachSkips % 50000 == 0)
 	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+#ifdef TRACE
+	    std::cout << "  Smaller base skip!" << std::endl;
+#endif
 	    continue;
 	  }
-	  else // First time the smaller base is encountered: Mark it
-	    duplicates[cleanSmallerBase] = c;
+	  else { // First time the smaller base is encountered: Mark it:
+	    resultsMap[cleanSmallerBase] = CountsMap();
+	    buildBase = registrationBase = cleanSmallerBase;
+	    // Add back unreachable bricks to buildBase:
+	    int16_t unreachableDist = (maxCombination.size-1) * 3 + 1;
+	    for(int i = 0; buildBase.layerSize < c.layerSize; i++) {
+	      int16_t dx = unreachableDist * ((i & 1) == 1 ? 1 : -1);
+	      int16_t dy = unreachableDist * ((i & 2) == 2 ? 1 : -1); // Expect at most 4 unreachable!
+	      buildBase.bricks[buildBase.layerSize++] = Brick(false, buildBase.bricks[0].x + dx, buildBase.bricks[0].y + dy);
+	    }
+#ifdef TRACE
+	    std::cout << "  Build smaller base " << buildBase << " ## REGISTER: " << registrationBase << std::endl;
+#endif
+	    return true;
+	  }
 	}
       }
 
+      // Check for mirror symmetries:
+      CBase mirrored;
+      int mirrorSymmetryType = checkMirrorSymmetries(c, mirrored);
+      if(mirrorSymmetryType != NORMAL) {
+	bases.push_back(BaseWithID(c, BaseIdentification(mirrorSymmetryType,mirrored)));
+	resultsMap[c] = CountsMap(); // Reserve to avoid repeats in output
+	if(++mirrorSkips % 50000 == 0)
+	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+#ifdef TRACE
+	std::cout << "  Mirror skip!" << std::endl;
+#endif
+	continue;
+      }
+
       resultsMap[c] = CountsMap(); // Reserve the entry so that check for "seen" above works.
-      //std::cout << "  Normal base " << c << std::endl;
-      bases.push_back(c);
+      bases.push_back(BaseWithID(c, BaseIdentification(NORMAL,CBase(c))));
       if(++noSkips % 10000 == 0)
 	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
-      outBase = c;
+      buildBase = registrationBase = c;
+#ifdef TRACE
+      std::cout << "  Normal base" << std::endl;
+#endif
       return true;
     }
   }
 
-  void BaseBuilder::registerCounts(Base &base, CountsMap counts) {
+  void BaseBuilder::registerCounts(Base &registrationBase, CountsMap counts) {
     std::lock_guard<std::mutex> guard(mutex);
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::registerCounts()");
 #endif
-    resultsMap[base] = counts;
+    resultsMap[registrationBase] = counts;
   }
 
   void BaseBuilder::report(const Combination &maxCombination) {
@@ -2784,52 +2763,22 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     int base = 1 + (int)distances.size();
     int colors[MAX_LAYER_SIZE]; // 0-indexed colors
     std::map<int,int> colorToCBaseSource;
-    for(std::vector<Base>::const_iterator it = bases.begin(); it != bases.end(); it++) {
-      Base c = *it;
-      // CBases:
-      CBase cBaseIt, cBaseSource;
+    for(std::vector<BaseWithID>::const_iterator it = bases.begin(); it != bases.end(); it++) {
+      const Base c = it->first;
+      int baseType = it->second.first;
+      CBase cBaseIt = it->second.second;
 
-      //std::cout << "Reporting for base " << c << std::endl;
-      CombinationMap::const_iterator it2 = duplicates.find(c);
-      bool usesSmallerBase = false;
-      if(it2 != duplicates.end()) {
-	c = it2->second; // Use original instead
-	Base c2(*it);
-
-	//it->reduceFromUnreachable(maxCombination, cBaseIt);
-	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end()) {
-	  c2.mirrorY();
-	  //cBaseIt.mirrorX();
-	}
-	else if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end()) {
-	  c2.mirrorY();
-	  //cBaseIt.mirrorY();
-	}
-	c2.reduceFromUnreachable(maxCombination, cBaseIt); // TODO: Set up cBaseIt earlier and then mirror it instead
-	c.reduceFromUnreachable(maxCombination, cBaseSource);
-	if(cBaseIt.layerSize < c.layerSize) {
-	  usesSmallerBase = true;
-	  for(int i = 0; i < cBaseSource.layerSize; i++)
-	    colorToCBaseSource[cBaseSource.bricks[i].second] = i;
-	}
 #ifdef TRACE
-	std::cout << "Smaller base" << std::endl;
-	std::cout << " it:     " << *it << std::endl;
-	std::cout << " source: " << c << std::endl;
-	std::cout << " cBaseIt:     " << cBaseIt << std::endl;
-	std::cout << " cBaseSource: " << cBaseSource << std::endl;
-	if(mirrorSymmetricX.find(*it) != mirrorSymmetricX.end())
-	  std::cout << " Mirror X" << std::endl;
-	if(mirrorSymmetricY.find(*it) != mirrorSymmetricY.end())
-	  std::cout << " Mirror Y" << std::endl;
-#endif
+      if(baseType != NORMAL) {
+	std::cout << "Special base " << baseType << std::endl;
+	std::cout << " c:     " << c << std::endl;
+	std::cout << " source: " << cBaseIt << std::endl;
       }
-      else {
-#ifdef TRACE
+      else
 	std::cout << "Normal base " << c << std::endl;
 #endif
-      }
-      CountsMap cm = resultsMap[c];
+      CountsMap cm = resultsMap[Base(cBaseIt)];
+      CountsMap cmForOriginalBase;
 
       // Write results:
       bool baseSymmetric180 = c.is180Symmetric();
@@ -2839,7 +2788,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       if((base & 3) == 0)
 	writer.writeBit(baseSymmetric90);
       for(int i = 1; i < base; i++)
-	writer.writeBrick(it->bricks[i]);
+	writer.writeBrick(c.bricks[i]);
 
       bool any = false;
       for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
@@ -2852,36 +2801,32 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  token /= 10;
 	}
 
-	if(usesSmallerBase) {
+	if(baseType != NORMAL) {
 #ifdef TRACE
 	  std::cout << "  Token " << it3->first << " from source" << std::endl;
 #endif
-	  std::vector<std::pair<int,int> > pairs;
-	  for(int i = 1; i < base; i++) {
+
+	  std::vector<std::pair<int,int> > pairs; // Color pairs
+	  for(uint8_t i = 1; i < cBaseIt.layerSize; i++) {
 	    if(colors[i] != i) {
 	      assert(colors[i] < i);
 	      // Color of position i is not i:
 	      // It was connected to something else.
-	      // The connection must have been in cBaseSource, as only the bricks therein can connect.
-	      // Brick in cBaseSource with colors[i] reveals original position.
 	      // Brick in cBaseIt with same position reveals original position in it to color!
-	      int lowPositionInSource = colorToCBaseSource[colors[i]];
-	      int highPositionInSource = colorToCBaseSource[i];
-	      int lowPositionInIt = cBaseIt.bricks[lowPositionInSource].second;
-	      int highPositionInIt = cBaseIt.bricks[highPositionInSource].second;
-	      pairs.push_back(std::pair<int,int>(lowPositionInIt, highPositionInIt));
+	      int a = cBaseIt.bricks[colors[i]].second;
+	      int b = cBaseIt.bricks[i].second;
+	      pairs.push_back(std::pair<int,int>(a, b));
 #ifdef TRACE
-	      std::cout << "  Irregular color " << i << " -> " << colors[i] << " SOURCE " << lowPositionInSource << "/" << highPositionInSource << " IT " << lowPositionInIt << "/" << highPositionInIt << std::endl;
+	      std::cout << "  Irregular color " << i << " = " << colors[i] << " -> " << a << " = " << b << std::endl;
 #endif
 	    }
 	  }
 #ifdef TRACE
 	  std::cout << "   -> Colors 0";
 #endif
-	  // Use pairs to update colors:
-	  for(int i = 0; i < base; i++) {
+	  // Use pairs to connect colors:
+	  for(int i = 0; i < base; i++)
 	    colors[i] = i;
-	  }
 	  bool improved = true;
 	  while(improved) {
 	    improved = false;
@@ -2900,12 +2845,26 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	  std::cout << ": " << it3->second << std::endl;
 #endif
 	}
+	else { // else: baseType == NORMAL
+	  // No need to transform for normal bases:
+#ifdef TRACE
+	  for(int i = 1; i < base; i++)
+	    std::cout << " " << colors[i];
+	  std::cout << ": " << it3->second << " from token " << it3->first << std::endl;
+#endif
+	}
 
 	for(int i = 1; i < base; i++)
 	  writer.writeColor(colors[i]);
 	writer.writeCounts(it3->second);
-      }
-    }
+
+	// Write back for reuse:
+	for(int i = 0; i < base; i++)
+	  token = 10 * token + (colors[i]+1);
+	cmForOriginalBase[token] = it3->second;
+      } // for it3
+      resultsMap[c] = cmForOriginalBase;
+    } // for bases
   }
 
   Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
@@ -2944,104 +2903,18 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-#ifdef DEBUG
-  void Lemma3Runner::run(CombinationCountsMap &computed1XY) {
-#else
   void Lemma3Runner::run() {
-#endif
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3Runner::run()");
 #endif
-    Base c;
-    while(baseBuilder->nextBaseToBuildOn(c, *maxCombination)) {
-      if(maxCombination->size - c.layerSize > 3)
-	std::cout << threadName << " builds on " << c << std::endl;
-      CombinationBuilder builder(c, neighbours, *maxCombination);
+    Base buildBase, registrationBase;
+    while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
+      if(maxCombination->size - buildBase.layerSize > 3)
+	std::cout << threadName << " builds on " << buildBase << std::endl;
+      CombinationBuilder builder(buildBase, neighbours, *maxCombination);
       builder.build();
-      baseBuilder->registerCounts(c, builder.counts);
-    } // while baseBuilder->nextBaseToBuildOn
-
-#ifdef DEBUG
-    for(std::vector<Base>::const_iterator it = baseBuilder->bases.begin(); it != baseBuilder->bases.end(); it++) {
-      c = *it;
-      Base original(c);
-      CombinationBuilder builder(c, neighbours, *maxCombination);
-      CombinationMap::const_iterator countsIt = baseBuilder->duplicates.find(c);
-      if(countsIt != baseBuilder->duplicates.end()) {
-	original = countsIt->second;
-      }
-      builder.counts = baseBuilder->resultsMap[original];
-
-      uint8_t base = c.layerSize;
-      Combination maxX1; maxX1.size = base+1; maxX1.height = 2; maxX1.layerSizes[0] = base; maxX1.layerSizes[1] = 1;
-      CombinationBuilder builderX1(original, neighbours, maxX1);
-
-      // Build all <1X2> combinations with this base:
-      std::vector<LayerBrick> potentialBricksX1, potentialBricksX2;
-      builder.findPotentialBricksForNextWave(potentialBricksX2);
-      builderX1.findPotentialBricksForNextWave(potentialBricksX1);
-
-      // Compare counts:
-      builderX1.build();
-      std::vector<Report> rX2, rX1;
-      Counts countsMult;
-      bool b180 = c.is180Symmetric();
-      bool b90 = b180 && c.is90Symmetric();
-      Report::getReports(builder.counts, rX2, base, b180, b90);
-      Report::getReports(builderX1.counts, rX1, base, b180, b90);
-      for(std::vector<Report>::const_iterator it1 = rX2.begin(); it1 != rX2.end(); it1++) {
-	for(std::vector<Report>::const_iterator it2 = rX1.begin(); it2 != rX1.end(); it2++) {
-	  Counts c2 = Report::countUp(*it1, *it2);
-	  countsMult += c2;
-	}
-      }
-      if(b90) {
-	assert(countsMult.symmetric90 % 4 == 0);
-	countsMult.symmetric90 /= 4;
-	assert(countsMult.symmetric180 % 2 == 0);
-	countsMult.symmetric180 /= 2;
-	assert(countsMult.all % 4 == 0);
-	countsMult.all = countsMult.all/4 + countsMult.symmetric180 + countsMult.symmetric90;
-      }
-      else if(b180) {
-	assert(countsMult.symmetric90 == 0);
-	assert(countsMult.all % 2 == 0);
-	countsMult.all = countsMult.all/2 + countsMult.symmetric180;
-      }
-
-      CombinationCountsMap::iterator bit = computed1XY.find(c);
-      if(bit == computed1XY.end()) {
-	if(countsMult.all == 0)
-	  continue; // All OK
-	std::cerr << "Unknown base! " << c << std::endl;
-	std::cerr << "Mults:   " << countsMult << std::endl;
-	std::cerr << "CountsMap <" << (int)base << "Y>: " << builder.counts.size() << std::endl;
-	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
-	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	std::cerr << "CountsMap <" << (int)base << "1>: " << builderX1.counts.size() << std::endl;
-	for(CountsMap::const_iterator it = builderX1.counts.begin(); it != builderX1.counts.end(); it++)
-	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	assert(false);
-      }
-      Counts fromBuilding = bit->second;
-      fromBuilding.all += fromBuilding.symmetric180;
-      fromBuilding.all /= 2;
-
-      if(countsMult != fromBuilding) {
-	std::cerr << "Base " << c << std::endl;
-	std::cerr << "Mults:   " << countsMult << std::endl;
-	std::cerr << "Counted: " << fromBuilding << std::endl;
-	std::cerr << "CountsMap <" << (int)base << "Y>: " << builder.counts.size() << std::endl;
-	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
-	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	std::cerr << "CountsMap <" << (int)base << "1>: " << builderX1.counts.size() << std::endl;
-	for(CountsMap::const_iterator it = builderX1.counts.begin(); it != builderX1.counts.end(); it++)
-	  std::cerr << " " << it->first << ": " << it->second << std::endl;
-	assert(false);
-      }
-      computed1XY.erase(bit);
+      baseBuilder->registerCounts(registrationBase, builder.counts);
     }
-#endif
   }
 
   Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), maxCombination(maxCombination) {
@@ -3056,33 +2929,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   void Lemma3::precompute(int maxDist) {
 #ifdef PROFILING
     Profiler::countInvocation("Lemma3::precompute(int)");
-#endif
-
-#ifdef DEBUG
-    assert(maxCombination.height == 2);
-    std::cout << "Building all <1XY> combinations for comparison" << std::endl;
-    // Debugging <1XY>:
-    // Compare with normal construction for <1XY>:
-    Combination base1XY, max1XY; max1XY.size = 1+maxCombination.size; max1XY.height = 3;
-    max1XY.layerSizes[1] = base; max1XY.layerSizes[2] = maxCombination.layerSizes[1];
-    BrickPlane neighbours[3];
-    for(int i = 0; i < 3; i++)
-      neighbours[i].unsetAll();
-    CombinationBuilder builder1XY(base1XY, 0, 1, neighbours, max1XY, true, false, true);
-    builder1XY.buildSplit(threadCount);
-    counts1XY = builder1XY.baseCounts;
-    builder1XY.report();
-    std::cout << "Combinations built!" << std::endl;
-    // Cross check counting for bases:
-    Counts xCheck;
-    for(CombinationCountsMap::const_iterator it = counts1XY.begin(); it != counts1XY.end(); it++)
-      xCheck += it->second;
-    xCheck.all += xCheck.symmetric180;
-    xCheck.all /= 2;
-    uint64_t token1XY = maxCombination.getTokenFromLayerSizes();
-    token1XY = Combination::reverseToken(token1XY) * 10 + 1;
-    if(!Combination::checkCounts(token1XY, xCheck))
-      return;
 #endif
 
     for(int d = 2; d <= maxDist; d++) {
@@ -3109,14 +2955,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
-
-#ifdef DEBUG
-    if(!counts1XY.empty()) {
-      std::cerr << "Bases not covered:" << std::endl;
-      for(CombinationCountsMap::const_iterator it = counts1XY.begin(); it != counts1XY.end(); it++)
-	std::cout << " " << it->first << ": " << it->second << std::endl;
-    }
-#endif
   }
 
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
@@ -3125,13 +2963,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     baseBuilder->reset(distances);
 
-#ifdef DEBUG
-    BrickPlane *neighbourCache = new BrickPlane[MAX_HEIGHT];
-    for(int i = 0; i < MAX_HEIGHT; i++)
-      neighbourCache[i].unsetAll();
-    Lemma3Runner runner(baseBuilder, &maxCombination, 0, neighbourCache);
-    runner.run(counts1XY);
-#else
     int processorCount = MAX(1, threadCount-1);//std::thread::hardware_concurrency()
 
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
@@ -3153,7 +2984,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     delete[] threads;
     delete[] builders;
     delete[] neighbourCache;
-#endif
+
     baseBuilder->report(maxCombination);
   }
 

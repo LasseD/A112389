@@ -22,6 +22,12 @@
 #define BRICK first
 #define LAYER second
 
+// For reporting on bases:
+#define NORMAL 0
+#define MIRROR_X 1
+#define MIRROR_Y 2
+#define SMALLER_BASE 3
+
 #include "stdint.h"
 #include <stdarg.h>
 #include <iostream>
@@ -194,6 +200,7 @@ namespace rectilinear {
     CBrick bricks[MAX_LAYER_SIZE];
 
     CBase();
+    CBase(const Base &b);
     CBase(const CBase &b);
 
     bool operator <(const CBase& b) const;
@@ -250,9 +257,6 @@ namespace rectilinear {
     bool isFirstBuilder, encodeConnectivity, encodingLocked;
   public:
     CountsMap counts;
-#ifdef DEBUG
-    CombinationCountsMap baseCounts;
-#endif
 
     CombinationBuilder(const Combination &c,
 		       const uint8_t waveStart,
@@ -277,9 +281,7 @@ namespace rectilinear {
     Counts report(uint64_t returnToken); // Returns counts for token if present in results
     bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
-#ifndef DEBUG
   private:
-#endif
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
@@ -417,23 +419,24 @@ namespace rectilinear {
     void resetCombination(Base &c);
   };
 
+  typedef std::pair<int,CBase> BaseIdentification;
+  typedef std::pair<Base,BaseIdentification> BaseWithID; // Used to identify how base was computed
+
   class BaseBuilder {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter &writer;
   public:
-    CombinationMap duplicates; // Base -> Base
-    std::set<Base> mirrorSymmetricX, mirrorSymmetricY;
     CombinationResultsMap resultsMap; // Base -> Result
-    std::vector<Base> bases;
+    std::vector<BaseWithID> bases;
     std::mutex mutex;
-    bool checkMirrorSymmetries(const Base &c); // Return true if handled here
+    int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
     BaseBuilder(BitWriter &writer);
     ~BaseBuilder();
-    bool nextBaseToBuildOn(Base &c, const Combination &maxCombination);
-    void registerCounts(Base &base, CountsMap counts);
+    bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
+    void registerCounts(Base &registrationBase, CountsMap counts);
     void report(const Combination &maxCombination);
     void reset(const std::vector<int> &distances);
   };
@@ -450,21 +453,13 @@ namespace rectilinear {
 		 Combination *maxCombination,
 		 int threadIndex,
 		 BrickPlane *neighbours);
-
-#ifdef DEBUG
-    void run(CombinationCountsMap &counts1XY);
-#else
     void run();
-#endif
   };
 
   class Lemma3 {
     int base, threadCount;
     CountsMap counts;
     Combination maxCombination;
-#ifdef DEBUG
-    CombinationCountsMap counts1XY;
-#endif
   public:
     Lemma3(int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);
