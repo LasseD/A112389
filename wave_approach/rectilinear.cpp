@@ -2708,7 +2708,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	    resultsMap[cleanSmallerBase] = CountsMap();
 	    buildBase = registrationBase = cleanSmallerBase;
 	    // Add back unreachable bricks to buildBase:
-	    int16_t unreachableDist = (maxCombination.size-1) * 3 + 1;
+	    int16_t largestDx = ABS(buildBase.bricks[0].x - buildBase.bricks[buildBase.layerSize-1].x);
+	    int16_t largestDy = ABS(buildBase.bricks[0].y - buildBase.bricks[buildBase.layerSize-1].y);
+	    int16_t unreachableDist = largestDx + largestDy + (maxCombination.size-1) * 3 + 1;
 	    for(int i = 0; buildBase.layerSize < c.layerSize; i++) {
 	      int16_t dx = unreachableDist * ((i & 1) == 1 ? 1 : -1);
 	      int16_t dy = unreachableDist * ((i & 2) == 2 ? 1 : -1); // Expect at most 4 unreachable!
