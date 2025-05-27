@@ -16,8 +16,8 @@
 #define MAX_LAYER_SIZE 7
 
 // These are used in bitmap lookups for checking positions of bricks:
-#define PLANE_MID 64
-#define PLANE_WIDTH 128
+#define PLANE_MID 100
+#define PLANE_WIDTH 200
 
 #define BRICK first
 #define LAYER second

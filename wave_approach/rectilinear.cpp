@@ -1486,6 +1486,7 @@ namespace rectilinear {
     m[2261] = Counts(52566014594439, 21527, 0);
     m[632] = Counts(44970937227323, 4869223, 0);
     m[371] = Counts(30937971078448, 61287, 0);
+    m[22321] = Counts(1209535848675777, (2034360), 0);
   }
 
   bool Combination::checkCounts(uint64_t token, const Counts &c) {
@@ -2511,23 +2512,17 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
 
     // Clean up:
-    std::set<Base> toRemove;
-    for(std::vector<BaseWithID>::const_iterator it = bases.begin(); it != bases.end(); it++) {
-      int type = it->second.first;
-      if(type != SMALLER_BASE) { // Keep smaller bases, as they might be relevant later:
-	Base b(it->second.second);
-	toRemove.insert(b);
-      }
-    }
+    // Clean up resultsMap:
+    // Keep smaller bases, as they might be relevant later:
+    uint8_t base = d.size() + 1;
     CombinationResultsMap rm;
     for(CombinationResultsMap::const_iterator it = resultsMap.begin(); it != resultsMap.end(); it++) {
-      if(toRemove.find(it->first) == toRemove.end())
-	rm[it->first] = it->second;
+      Base b = it->first;
+      if(b.layerSize < base)
+	rm[b] = it->second;
     }
     resultsMap = rm;
-
-    if(!resultsMap.empty())
-      std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
+    std::cout << "  Reusing " << cntSmallerBases << " bases" << std::endl;
 
     bases.clear();
   }
@@ -2716,7 +2711,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	    for(int i = 0; buildBase.layerSize < c.layerSize; i++) {
 	      int16_t dx = unreachableDist * ((i & 1) == 1 ? 1 : -1);
 	      int16_t dy = unreachableDist * ((i & 2) == 2 ? 1 : -1); // Expect at most 4 unreachable!
-	      buildBase.bricks[buildBase.layerSize++] = Brick(false, buildBase.bricks[0].x + dx, buildBase.bricks[0].y + dy);
+	      buildBase.bricks[buildBase.layerSize++] = Brick(false, FirstBrick.x + dx, FirstBrick.y + dy);
 	    }
 #ifdef TRACE
 	    std::cout << "  Build smaller base " << buildBase << " ## REGISTER: " << registrationBase << std::endl;

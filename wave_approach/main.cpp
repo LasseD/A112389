@@ -344,7 +344,7 @@ int main(int argc, char** argv) {
 	  m2[t] = report.counts;
 	}
 	if(!(b1 == b2) || s180 != t180 || s90 != t90) {
-	  std::cerr << "Base mismatch! " << b1 << " != " << b2 << std::endl;
+	  std::cerr << "Base mismatch! " << b1 << "(" << suffix << ") != " << b2 << std::endl;
 	  std::cerr << " 180?: " << s180 << "/" << t180 << " 90?: " << s90 << "/" << t90 << std::endl;
 	  std::cerr << "Index " << cnt << std::endl;
 	  return 6;
