@@ -12,12 +12,12 @@
 // Lemma 1 can be used to compute all of height 7 and up for 11 bricks,
 // so MAX_HEIGHT can be set to 6 for the computations needed here
 #define MAX_BRICKS 11
-#define MAX_HEIGHT 6
-#define MAX_LAYER_SIZE 9
+#define MAX_HEIGHT 5
+#define MAX_LAYER_SIZE 7
 
 // These are used in bitmap lookups for checking positions of bricks:
-#define PLANE_MID 100
-#define PLANE_WIDTH 200
+#define PLANE_MID 64
+#define PLANE_WIDTH 128
 
 #define BRICK first
 #define LAYER second
