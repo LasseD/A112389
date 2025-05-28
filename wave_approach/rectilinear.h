@@ -425,7 +425,7 @@ namespace rectilinear {
   class BaseBuilder {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
-    BitWriter &writer;
+    BitWriter *writer;
   public:
     CombinationResultsMap resultsMap; // Base -> Result
     std::vector<BaseWithID> bases;
@@ -433,11 +433,12 @@ namespace rectilinear {
     int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
-    BaseBuilder(BitWriter &writer);
+    BaseBuilder();
     ~BaseBuilder();
     bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
     void registerCounts(Base &registrationBase, CountsMap counts);
     void report(const Combination &maxCombination);
+    void setWriter(BitWriter *writer);
     void reset(const std::vector<int> &distances);
   };
 

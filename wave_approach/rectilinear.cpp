@@ -1319,7 +1319,7 @@ namespace rectilinear {
 
   int Combination::countBricksToBridge(const Combination &maxCombination) {
     if(maxCombination.height == 2) {
-      return MIN(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
+      return MAX(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
     }
     else if(maxCombination.height == 3) {
       uint8_t L2 = maxCombination.layerSizes[1];
@@ -2487,7 +2487,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  BaseBuilder::BaseBuilder(BitWriter &writer) : innerBuilder(NULL), writer(writer), reachSkips(0), mirrorSkips(0), noSkips(0) {
+  BaseBuilder::BaseBuilder() : innerBuilder(NULL), writer(NULL), reachSkips(0), mirrorSkips(0), noSkips(0) {
 #ifdef PROFILING
     Profiler::countInvocation("BaseBuilder::BaseBuilder()");
 #endif
@@ -2499,6 +2499,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     if(innerBuilder != NULL)
       delete innerBuilder;
+  }
+
+  void BaseBuilder::setWriter(BitWriter *w) {
+    writer = w;
   }
 
   void BaseBuilder::reset(const std::vector<int> &d) {
@@ -2522,7 +2526,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	rm[b] = it->second;
     }
     resultsMap = rm;
-    std::cout << "  Reusing " << cntSmallerBases << " bases" << std::endl;
+    std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
 
     bases.clear();
   }
@@ -2694,7 +2698,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
 	  Base cleanSmallerBase(smallerBase);
 	  if(resultsMap.find(cleanSmallerBase) != resultsMap.end()) { // Known smaller base: Point to same original:
-	    if(++reachSkips % 50000 == 0)
+	    if(++reachSkips % 100000 == 0)
 	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 #ifdef TRACE
 	    std::cout << "  Smaller base skip!" << std::endl;
@@ -2782,17 +2786,17 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       // Write results:
       bool baseSymmetric180 = c.is180Symmetric();
       bool baseSymmetric90 = baseSymmetric180 && c.is90Symmetric();
-      writer.writeBit(1); // New batch
-      writer.writeBit(baseSymmetric180);
+      writer->writeBit(1); // New batch
+      writer->writeBit(baseSymmetric180);
       if((base & 3) == 0)
-	writer.writeBit(baseSymmetric90);
+	writer->writeBit(baseSymmetric90);
       for(int i = 1; i < base; i++)
-	writer.writeBrick(c.bricks[i]);
+	writer->writeBrick(c.bricks[i]);
 
       bool any = false;
       for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
 	if(any)
-	  writer.writeBit(0); // Indicate we are still in same batch
+	  writer->writeBit(0); // Indicate we are still in same batch
 	any = true;
 	int64_t token = it3->first;
 	for(int i = 0; i < base; i++) {
@@ -2854,8 +2858,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 	}
 
 	for(int i = 1; i < base; i++)
-	  writer.writeColor(colors[i]);
-	writer.writeCounts(it3->second);
+	  writer->writeColor(colors[i]);
+	writer->writeCounts(it3->second);
 
 	// Write back for reuse:
 	for(int i = 0; i < base; i++)
@@ -2930,6 +2934,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     Profiler::countInvocation("Lemma3::precompute(int)");
 #endif
 
+    BaseBuilder baseBuilder;
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
@@ -2946,8 +2951,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       }
 
       BitWriter writer(fileName, maxCombination);
+      baseBuilder.setWriter(&writer);
       std::vector<int> distances;
-      BaseBuilder baseBuilder(writer);
 
       precompute(&baseBuilder, distances, d);
 
