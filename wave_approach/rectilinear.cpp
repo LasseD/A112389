@@ -1319,7 +1319,7 @@ namespace rectilinear {
 
   int Combination::countBricksToBridge(const Combination &maxCombination) {
     if(maxCombination.height == 2) {
-      return MAX(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
+      return MIN(2, maxCombination.layerSizes[1]); // Only two bricks from second layer can be used.
     }
     else if(maxCombination.height == 3) {
       uint8_t L2 = maxCombination.layerSizes[1];
