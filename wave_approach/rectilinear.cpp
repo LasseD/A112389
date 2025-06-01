@@ -2058,8 +2058,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     writeBit(0); // baseSymmetric180
     if((base & 3) == 0)
       writeBit(0); // baseSymmetric90
-    for(int i = 1; i < base; i++)
-      writeBrick(FirstBrick);
+    if(base <= 4) {
+      for(int i = 1; i < base; i++)
+	writeBrick(FirstBrick);
+    }
     for(uint8_t i = 0; i < base-1; i++)
       writeColor(0);
     if(largeCountsRequired) {
@@ -2431,8 +2433,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     r.baseSymmetric180 = readBit();
     r.baseSymmetric90 = ((base & 3) == 0) && readBit();
     r.c.bricks[0] = FirstBrick;
-    for(uint8_t i = 1; i < base; i++)
-      readBrick(r.c.bricks[i]);
+    if(base <= 4) {
+      for(uint8_t i = 1; i < base; i++)
+	readBrick(r.c.bricks[i]);
+    }
     r.c.layerSize = base;
     bool first = true;
     while(true) {
@@ -2797,8 +2801,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
       writer->writeBit(baseSymmetric180);
       if((base & 3) == 0)
 	writer->writeBit(baseSymmetric90);
-      for(int i = 1; i < base; i++)
-	writer->writeBrick(c.bricks[i]);
+      if(base <= 4) {
+	for(int i = 1; i < base; i++)
+	  writer->writeBrick(c.bricks[i]);
+      }
 
       bool any = false;
       for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
