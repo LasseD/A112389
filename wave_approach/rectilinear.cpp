@@ -8,78 +8,27 @@
 
 #include "rectilinear.h"
 
-#ifdef PROFILING
-void Profiler::countInvocation(const std::string &s) {
-#ifdef TRACE
-  std::cout << "Calling " << s << std::endl;
-#endif
-  if(invocationCounts == NULL)
-    invocationCounts = new InvocationMap();
-  if(invocationCounts->find(s) == invocationCounts->end()) {
-    invocationCounts->insert(std::pair<std::string,uint64_t>(s, 1));
-  }
-  else {
-    (*invocationCounts)[s]++;
-  }
-}
-void Profiler::reportInvocations() {
-  std::vector<InvocationPair> v;
-  for(InvocationMap::const_iterator it = invocationCounts->begin(); it != invocationCounts->end(); it++) {
-    v.push_back(InvocationPair(it->second, it->first));
-  }
-  std::sort(v.rbegin(), v.rend());
-  std::cout << "Invocations:" << std::endl;
-  for(std::vector<InvocationPair>::const_iterator it = v.begin(); it != v.end(); it++) {
-    std::cout << " " << it->first << "\t" << it->second << std::endl;
-  }
-}
-#endif
-
 namespace rectilinear {
 
-  Counts::Counts() : all(0), symmetric180(0), symmetric90(0) {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::Counts()");
-#endif
-  }
-  Counts::Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90) : all(all), symmetric180(symmetric180), symmetric90(symmetric90) {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::Counts(uint64_t, uint64_t, uint64_t)");
-#endif
-  }
-  Counts::Counts(const Counts& c) : all(c.all), symmetric180(c.symmetric180), symmetric90(c.symmetric90) {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::Counts(Counts&)");
-#endif
-  }
+  Counts::Counts() : all(0), symmetric180(0), symmetric90(0) {}
+  Counts::Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90) : all(all), symmetric180(symmetric180), symmetric90(symmetric90) {}
+  Counts::Counts(const Counts& c) : all(c.all), symmetric180(c.symmetric180), symmetric90(c.symmetric90) {}
   Counts& Counts::operator +=(const Counts& c) {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator +=");
-#endif
     all += c.all;
     symmetric180 += c.symmetric180;
     symmetric90 += c.symmetric90;
     return *this;
   }
   Counts& Counts::operator -=(const Counts& c) {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator -=");
-#endif
     all -= c.all;
     symmetric180 -= c.symmetric180;
     symmetric90 -= c.symmetric90;
     return *this;
   }
   Counts Counts::operator -(const Counts& c) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator -");
-#endif
     return Counts(all-c.all, symmetric180-c.symmetric180, symmetric90-c.symmetric90);
   }
   Counts Counts::operator /(const int& v) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator /");
-#endif
     assert(v != 0);
     assert(all % v == 0);
     assert(symmetric180 % v == 0);
@@ -87,15 +36,9 @@ namespace rectilinear {
     return Counts(all/v, symmetric180/v, symmetric90/v);
   }
   bool Counts::operator ==(const Counts& c) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator ==");
-#endif
     return all == c.all && symmetric180 == c.symmetric180 && symmetric90 == c.symmetric90;
   }
   bool Counts::operator !=(const Counts& c) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::operator !=");
-#endif
     return all != c.all || symmetric180 != c.symmetric180 || symmetric90 != c.symmetric90;
   }
   std::ostream& operator << (std::ostream &os,const Counts &c) {
@@ -107,44 +50,26 @@ namespace rectilinear {
     return os;
   }
   void Counts::reset() {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::reset()");
-#endif
     all = 0;
     symmetric180 = 0;
     symmetric90 = 0;
   }
   bool Counts::empty() {
-#ifdef PROFILING
-    Profiler::countInvocation("Counts::empty()");
-#endif
     return all == 0 && symmetric180 == 0 && symmetric90 == 0;
   }
 
   Brick::Brick() : isVertical(true), x(PLANE_MID), y(PLANE_MID) {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::Brick()");
-#endif
   }
   Brick::Brick(bool iv, int16_t x, int16_t y) : isVertical(iv), x(x), y(y) {	
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::Brick(bool,...)");
-#endif
     assert(x >= 0);
     assert(y >= 0);
   }
   Brick::Brick(const Brick &b) : isVertical(b.isVertical), x(b.x), y(b.y) {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::Brick(Brick&)");
-#endif
     assert(x >= 0);
     assert(y >= 0);
   }
 
   bool Brick::operator <(const Brick& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::operator <");
-#endif
     int d1 = FirstBrick.dist(*this);
     int d2 = FirstBrick.dist(b);
     if(d1 != d2)
@@ -156,15 +81,9 @@ namespace rectilinear {
     return y < b.y;
   }
   bool Brick::operator ==(const Brick& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::operator ==");
-#endif
     return x == b.x && y == b.y && isVertical == b.isVertical;
   }
   bool Brick::operator !=(const Brick& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::operator !=");
-#endif
     return x != b.x || y != b.y || isVertical != b.isVertical;
   }
   std::ostream& operator << (std::ostream &os,const Brick &b) {
@@ -172,9 +91,6 @@ namespace rectilinear {
     return os;
   }
   int Brick::cmp(const Brick& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::cmp()");
-#endif
     if(isVertical != b.isVertical)
       return - isVertical + b.isVertical;
     if(x != b.x)
@@ -182,9 +98,6 @@ namespace rectilinear {
     return y - b.y;
   }
   bool Brick::intersects(const Brick &b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::intersects()");
-#endif
     if(isVertical != b.isVertical)
       return DIFFLT(b.x, x, 3) && DIFFLT(b.y, y, 3);
     if(isVertical)
@@ -193,17 +106,11 @@ namespace rectilinear {
       return DIFFLT(b.y, y, 2) && DIFFLT(b.x, x, 4);
   }
   void Brick::mirror(Brick &b, const int16_t &cx, const int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::mirror()");
-#endif
     b.isVertical = isVertical;
     b.x = cx - x; // cx/2 + (cx/2 - x) = cx - x
     b.y = cy - y;
   }
   bool Brick::mirrorEq(const Brick &b, const int16_t &cx, const int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::mirrorEq()");
-#endif
     if(b.isVertical != isVertical)
       return false;
     if(b.x != cx - x)
@@ -211,15 +118,9 @@ namespace rectilinear {
     return b.y == cy - y;
   }
   int Brick::dist(const Brick &b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::dist");
-#endif
     return ABS(x-b.x) + ABS(y-b.y);
   }
   bool Brick::canReach(const Brick &a, const Brick &b, uint8_t toAdd) {
-#ifdef PROFILING
-    Profiler::countInvocation("Brick::canReach()");
-#endif
     if(toAdd == 0)
       return false;
     if(a.intersects(b))
@@ -257,24 +158,15 @@ namespace rectilinear {
   BrickPicker::BrickPicker(const std::vector<LayerBrick> &v,
 			   const int vIdx,
 			   const int numberOfBricksToPick): v(v), vIdx(vIdx-1), numberOfBricksToPick(numberOfBricksToPick), inner(NULL) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::BrickPicker()");
-#endif
   }
 
   BrickPicker::~BrickPicker() {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::~BrickPicker()");
-#endif
     if(inner != NULL) {
       delete inner;
     }
   }
 
   bool BrickPicker::checkVIdx(const Combination &c, const Combination &maxCombination) const {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::checkVIdx()");
-#endif
     // Check for colissions against placed bricks:
     uint8_t layer = v[vIdx].LAYER;
     assert(layer <= c.height);
@@ -290,9 +182,6 @@ namespace rectilinear {
   }
 
   void BrickPicker::nextVIdx(const Combination &c, const Combination &maxCombination) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::nextVIdx()");
-#endif
     do {
       vIdx++;
       if(vIdx >= (int)v.size())
@@ -302,9 +191,6 @@ namespace rectilinear {
   }
 
   bool BrickPicker::next(Combination &c, const Combination &maxCombination) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPicker::next()");
-#endif
     if(numberOfBricksToPick == 1) {
       nextVIdx(c, maxCombination);
       bool ok = vIdx < (int)v.size();
@@ -338,18 +224,12 @@ namespace rectilinear {
   }
 
   MultiBatchSizeBrickPicker::MultiBatchSizeBrickPicker(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
-#ifdef PROFILING
-    Profiler::countInvocation("MultiBatchSizeBrickPicker::MultiBatchSizeBrickPicker()");
-#endif
     assert(maxPick >= 1);
     inner = new BrickPicker(v, 0, 1);
   }
 
   bool MultiBatchSizeBrickPicker::next(Combination &c, int &picked, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(nextMutex);
-#ifdef PROFILING
-    Profiler::countInvocation("MultiBatchSizeBrickPicker::next()");
-#endif
     if(inner == NULL)
       return false;
 
@@ -368,9 +248,6 @@ namespace rectilinear {
   }
 
   void BrickPlane::unsetAll() {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPlane::unsetAll()");
-#endif
     for(int i = 0; i < 2; i++) {
       for(int j = 0; j < PLANE_WIDTH; j++) {
 	for(int k = 0; k < PLANE_WIDTH; k++) {
@@ -381,38 +258,23 @@ namespace rectilinear {
   }
 
   void BrickPlane::set(const Brick &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPlane::set()");
-#endif
     bricks[b.isVertical][b.x][b.y] = true;
   }
 
   void BrickPlane::unset(const Brick &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPlane::unset()");
-#endif
     bricks[b.isVertical][b.x][b.y] = false;
   }
 
   bool BrickPlane::contains(const Brick &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("BrickPlane::contains()");
-#endif
     return bricks[b.isVertical][b.x][b.y];
   }
    
   Combination::Combination() : height(1), size(1) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::Combination()");
-#endif
     bricks[0][0] = FirstBrick;
     layerSizes[0] = 1;
     history[0] = BrickIdentifier(0,0);
   }
   Combination::Combination(int token) : height(heightOfToken(token)), size(0) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::Combination(int)");
-#endif
     if(height > MAX_HEIGHT) {
       assert(false);
       std::cerr << "Height of combination too large!" << std::endl; int *kil = NULL; kil[2] = 3;
@@ -426,23 +288,17 @@ namespace rectilinear {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	bricks[i][j] = FirstBrick;
 	history[size++] = BrickIdentifier(i,j);
-	if(size > MAX_SIZE) {
+	if(size > MAX_BRICKS) {
 	  assert(false);
 	  std::cerr << "Combination size too large!" << std::endl; int *kil = NULL; kil[2] = 3;
 	}
       }
     }
   }
- Combination::Combination(const Combination &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::Combination(Combination &)");
-#endif
+  Combination::Combination(const Combination &b) {
     copy(b);
   }
   Combination::Combination(const Base &b) : height(1), size(b.layerSize) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::Combination(Base &)");
-#endif
     layerSizes[0] = size;
     for(uint8_t i = 0; i < size; i++) {
       bricks[0][i] = b.bricks[i];
@@ -451,51 +307,30 @@ namespace rectilinear {
   }
 
   Base::Base() : layerSize(1) {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::Base()");
-#endif
     bricks[0] = FirstBrick;
   }
   Base::Base(const Base &b) : layerSize(b.layerSize) {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::Base(Base &)");
-#endif
     for(uint8_t i = 0; i < layerSize; i++)
       bricks[i] = b.bricks[i];
   }
   Base::Base(const CBase &b) : layerSize(b.layerSize) {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::Base(Base &)");
-#endif
     for(uint8_t i = 0; i < layerSize; i++)
       bricks[i] = b.bricks[i].first;
   }
   CBase::CBase() : layerSize(1) {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::CBase()");
-#endif
     bricks[0].first = FirstBrick;
     bricks[0].second = 0;
   }
   CBase::CBase(const Base &b) : layerSize(b.layerSize) {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::CBase(Base &)");
-#endif
     for(uint8_t i = 0; i < layerSize; i++)
       bricks[i] = CBrick(b.bricks[i], i);
   }
   CBase::CBase(const CBase &b) : layerSize(b.layerSize) {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::CBase(CBase &)");
-#endif
     for(uint8_t i = 0; i < layerSize; i++)
       bricks[i] = b.bricks[i];
   }
 
    bool Combination::operator <(const Combination& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::operator <");
-#endif
     if(height != b.height)
       return height < b.height;
 
@@ -515,9 +350,6 @@ namespace rectilinear {
   }
 
    bool Base::operator <(const Base& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::operator <");
-#endif
     if(layerSize != b.layerSize)
       return layerSize < b.layerSize;
 
@@ -529,9 +361,6 @@ namespace rectilinear {
     return false;
   }
   bool CBase::operator <(const CBase& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::operator <");
-#endif
     if(layerSize != b.layerSize)
       return layerSize < b.layerSize;
 
@@ -544,9 +373,6 @@ namespace rectilinear {
   }
 
   bool Combination::operator ==(const Combination& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::operator ==");
-#endif
     assert(height == b.height);
     for(uint8_t i = 0; i < height; i++) {
       assert(layerSizes[i] == b.layerSizes[i]);
@@ -560,9 +386,6 @@ namespace rectilinear {
   }
 
   bool Base::operator ==(const Base& b) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::operator ==");
-#endif
     if(layerSize != b.layerSize)
       return false;
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -604,9 +427,6 @@ namespace rectilinear {
   }
 
   void Combination::copy(const Combination &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::copy()");
-#endif
     height = b.height;
     size = b.size;
     for(uint8_t i = 0; i < b.height; i++)
@@ -620,26 +440,17 @@ namespace rectilinear {
   }
 
   void Base::copy(const Base &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::copy()");
-#endif
     layerSize = b.layerSize;
     for(uint8_t j = 0; j < layerSize; j++)
       bricks[j] = b.bricks[j];
   }
   void CBase::copy(const CBase &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::copy()");
-#endif
     layerSize = b.layerSize;
     for(uint8_t j = 0; j < layerSize; j++)
       bricks[j] = b.bricks[j];
   }
 
   void Combination::sortBricks() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::sortBricks()");
-#endif
     for(uint8_t layer = 0; layer < height; layer++) {
       const uint8_t &layerSize = layerSizes[layer];
       if(layerSize > 1)
@@ -647,22 +458,13 @@ namespace rectilinear {
     }
   }
   void Base::sortBricks() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::sortBricks()");
-#endif
     std::sort(bricks, &bricks[layerSize]);
   }
   void CBase::sortBricks() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::sortBricks()");
-#endif
     std::sort(bricks, &bricks[layerSize]);
   }
 
   void Combination::translateMinToOrigo() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::translateMinToOrigo()");
-#endif
     int16_t minx = 10000, miny = 10000;
 
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
@@ -684,9 +486,6 @@ namespace rectilinear {
     }
   }
   void Base::translateMinToOrigo() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::translateMinToOrigo()");
-#endif
     int16_t minx = 10000, miny = 10000;
 
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -706,9 +505,6 @@ namespace rectilinear {
     }
   }
   void CBase::translateMinToOrigo() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::translateMinToOrigo()");
-#endif
     int16_t minx = 10000, miny = 10000;
 
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -729,9 +525,6 @@ namespace rectilinear {
   }
 
   void Combination::rotate90() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::rotate90()");
-#endif
     for(uint8_t i = 0; i < height; i++) {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	const Brick &b = bricks[i][j];
@@ -742,9 +535,6 @@ namespace rectilinear {
     sortBricks();
   }
   void Base::rotate90() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::rotate90()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       const Brick &b = bricks[j];
       bricks[j] = Brick(!b.isVertical, b.y, PLANE_MID - (b.x - PLANE_MID));
@@ -753,9 +543,6 @@ namespace rectilinear {
     sortBricks();
   }
   void CBase::rotate90() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::rotate90()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       const Brick &b = bricks[j].first;
       bricks[j].first = Brick(!b.isVertical, b.y, PLANE_MID - (b.x - PLANE_MID));
@@ -765,9 +552,6 @@ namespace rectilinear {
   }
 
   void Combination::rotate180() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::rotate180()");
-#endif
     // Perform rotation:
     for(uint8_t i = 0; i < height; i++) {
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
@@ -780,9 +564,6 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::sort fast enough?
   }
   void Base::rotate180() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::rotate180()");
-#endif
     // Perform rotation:
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j];
@@ -793,9 +574,6 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::sort fast enough?
   }
   void CBase::rotate180() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::rotate180()");
-#endif
     // Perform rotation:
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j].first;
@@ -807,9 +585,6 @@ namespace rectilinear {
   }
 
   void Base::mirrorX() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::mirrorX()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j];
       b.x = PLANE_MID - (b.x - PLANE_MID);
@@ -818,9 +593,6 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::sort fast enough?
   }
   void Base::mirrorY() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::mirrorY()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j];
       b.y = PLANE_MID - (b.y - PLANE_MID);
@@ -829,9 +601,6 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::sort fast enough?
   }
   void CBase::mirrorX() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::mirrorX()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j].first;
       b.x = PLANE_MID - (b.x - PLANE_MID);
@@ -840,9 +609,6 @@ namespace rectilinear {
     sortBricks(); // TODO: Is std::sort fast enough?
   }
   void CBase::mirrorY() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::mirrorY()");
-#endif
     for(uint8_t j = 0; j < layerSize; j++) {
       Brick &b = bricks[j].first;
       b.y = PLANE_MID - (b.y - PLANE_MID);
@@ -852,9 +618,6 @@ namespace rectilinear {
   }
 
   void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::getLayerCenter()");
-#endif
     cx = 0;
     cy = 0;
     for(uint8_t i = 0; i < layerSizes[layer]; i++) {
@@ -869,9 +632,6 @@ namespace rectilinear {
   }
 
   void Base::getLayerCenter(int16_t &cx, int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::getLayerCenter()");
-#endif
     cx = 0;
     cy = 0;
     for(uint8_t i = 0; i < layerSize; i++) {
@@ -886,9 +646,6 @@ namespace rectilinear {
   }
 
   bool Combination::isLayerSymmetric(const uint8_t layer, const int16_t &cx, const int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::isLayerSymmetric()");
-#endif
     assert(layer < height);
     const uint8_t layerSize = layerSizes[layer];
     if(layerSize == 2) {
@@ -948,9 +705,6 @@ namespace rectilinear {
   }
 
   bool Base::isLayerSymmetric(const int16_t &cx, const int16_t &cy) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::isLayerSymmetric()");
-#endif
     Brick seen[MAX_LAYER_SIZE];
     int seenSize = 0;
     for(uint8_t i = 0; i < layerSize; i++) {
@@ -975,9 +729,6 @@ namespace rectilinear {
   }
 
   bool Combination::is180Symmetric() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::is180Symmetric()");
-#endif
     int16_t cx0, cy0;
     getLayerCenter(0, cx0, cy0);
 
@@ -1000,18 +751,12 @@ namespace rectilinear {
   }
 
   bool Base::is180Symmetric() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::is180Symmetric()");
-#endif
     int16_t cx0, cy0;
     getLayerCenter(cx0, cy0);
     return isLayerSymmetric(cx0, cy0);
   }
 
   bool Combination::is90Symmetric() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::is90Symmetric()");
-#endif
     if((size & 3) != 0)
       return false;
     if(!canRotate90())
@@ -1029,9 +774,6 @@ namespace rectilinear {
   }
 
   bool Base::is90Symmetric() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::is90Symmetric()");
-#endif
     if((layerSize & 3) != 0)
       return false;
     if(!canRotate90())
@@ -1045,9 +787,6 @@ namespace rectilinear {
   }
 
   bool Combination::canRotate90() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::canRotate90()");
-#endif
     for(uint8_t i = 0; i < layerSizes[0]; i++) {
       if(!bricks[0][i].isVertical)
 	return true;
@@ -1055,9 +794,6 @@ namespace rectilinear {
     return false;
   }
   bool Base::canRotate90() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::canRotate90()");
-#endif
     for(uint8_t i = 0; i < layerSize; i++) {
       if(!bricks[i].isVertical)
 	return true;
@@ -1065,9 +801,6 @@ namespace rectilinear {
     return false;
   }
   bool CBase::canRotate90() const {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::canRotate90()");
-#endif
     for(uint8_t i = 0; i < layerSize; i++) {
       if(!bricks[i].first.isVertical)
 	return true;
@@ -1076,9 +809,6 @@ namespace rectilinear {
   }
 
   void Combination::addBrick(const Brick &b, const uint8_t layer) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::addBrick()");
-#endif
     if(layer == height) {
       height++;
       layerSizes[layer] = 0;
@@ -1091,9 +821,6 @@ namespace rectilinear {
   }
 
   void Combination::removeLastBrick() {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::removeLastBrick()");
-#endif
     size--;
     const uint8_t layer = history[size].first;
 
@@ -1103,9 +830,6 @@ namespace rectilinear {
   }
 
   void Combination::colorConnected(uint8_t layer, uint8_t idx, uint8_t color) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::colorConnected()");
-#endif
     assert(layer < height);
     assert(idx < layerSizes[layer]);
     assert(color > 0);
@@ -1166,9 +890,6 @@ namespace rectilinear {
   }
 
   int64_t Combination::encodeConnectivity(int64_t token) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::encodeConnectivity()");
-#endif
     assert(height > 1);
     assert(layerSizes[0] >= 2);
 
@@ -1193,9 +914,6 @@ namespace rectilinear {
   }
   
   int64_t Combination::getTokenFromLayerSizes() const {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::getTokenFromLayerSizes()");
-#endif
     int64_t ret = 0;
     for(uint8_t i = 0; i < height; i++) {
       ret = (ret * 10) + layerSizes[i];
@@ -1225,9 +943,6 @@ namespace rectilinear {
   }
 
   void Base::normalize() {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::normalize()");
-#endif
     // Ensure FirstBrick is first and all is sorted:
     if(hasVerticalLayer0Brick()) {
       translateMinToOrigo();
@@ -1251,9 +966,6 @@ namespace rectilinear {
     }
   }
   void CBase::normalize() {
-#ifdef PROFILING
-    Profiler::countInvocation("CBase::normalize()");
-#endif
     // Ensure FirstBrick is first and all is sorted:
     if(hasVerticalLayer0Brick()) {
       translateMinToOrigo();
@@ -1278,9 +990,6 @@ namespace rectilinear {
   }
 
   int64_t Combination::reverseToken(int64_t token) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::reverseToken()");
-#endif
     int64_t ret = 0;
     while(token > 0) {
       ret = (ret * 10) + (token % 10);
@@ -1290,9 +999,6 @@ namespace rectilinear {
   }
 
   uint8_t Combination::heightOfToken(int64_t token) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::heightOfToken()");
-#endif
     uint8_t ret = 0;
     while(token > 0) {
       ret++;
@@ -1302,9 +1008,6 @@ namespace rectilinear {
   }
 
   uint8_t Combination::sizeOfToken(int64_t token) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::sizeOfToken()");
-#endif
     uint8_t ret = 0;
     while(token > 0) {
       ret += token % 10;
@@ -1314,9 +1017,6 @@ namespace rectilinear {
   }
 
   void Combination::getLayerSizesFromToken(int64_t token, uint8_t *layerSizes) {
-#ifdef PROFILING
-    Profiler::countInvocation("Combination::getLayerSizesFromToken()");
-#endif
     uint8_t layers = 0;
     while(token > 0) {
       uint8_t size_add = token % 10;
@@ -1532,9 +1232,6 @@ namespace rectilinear {
   }
 
   void Base::reduceFromUnreachable(const Combination &maxCombination, CBase &baseOut) const {
-#ifdef PROFILING
-    Profiler::countInvocation("Base::reduceFromUnreachable()");
-#endif
     int bricksBetween = Combination::countBricksToBridge(maxCombination);
     baseOut.layerSize = 0;
     for(uint8_t i = 0; i < layerSize; i++) {
@@ -1578,11 +1275,7 @@ namespace rectilinear {
 								maxCombination(maxCombination),
 								isFirstBuilder(isFirstBuilder),
 								encodeConnectivity(encodeConnectivity),
-								encodingLocked(encodingLocked) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(...)");
-#endif
-  }
+								encodingLocked(encodingLocked) {}
 
   CombinationBuilder::CombinationBuilder(const Base &c,
 					 BrickPlane *neighbours,
@@ -1593,11 +1286,7 @@ namespace rectilinear {
 									maxCombination(maxCombination),
 									isFirstBuilder(false),
 									encodeConnectivity(true),
-									encodingLocked(false) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(Base...)");
-#endif
-  }
+									encodingLocked(false) {}
 
   CombinationBuilder::CombinationBuilder(const CombinationBuilder& b) : baseCombination(b.baseCombination),
 									waveStart(b.waveStart),
@@ -1606,27 +1295,16 @@ namespace rectilinear {
 									maxCombination(b.maxCombination),
 									isFirstBuilder(b.isFirstBuilder),
 									encodeConnectivity(b.encodeConnectivity),
-									encodingLocked(b.encodingLocked) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder(CombinationBuilder&)");
-#endif
-  }
+									encodingLocked(b.encodingLocked) {}
 
   CombinationBuilder::CombinationBuilder() : waveStart(0),
 					     waveSize(0),
 					     neighbours(NULL),
 					     isFirstBuilder(false),
 					     encodeConnectivity(false),
-					     encodingLocked(false) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::CombinationBuilder()");
-#endif
-  }
+					     encodingLocked(false) {}
 
   void CombinationBuilder::findPotentialBricksForNextWave(std::vector<LayerBrick> &v) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::findPotentialBricksForNextWave()");
-#endif
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
@@ -1705,11 +1383,7 @@ namespace rectilinear {
     Check if model cannot be made symmetric when placing remaining bricks.
   */
   bool CombinationBuilder::nextCombinationCanBeSymmetric180() {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::nextCombinationCanBeSymmetric180()");
-#endif
     bool canBeSymmetric180 = true;
-
     bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
     int16_t cx0, cy0, cx1, cy1;
 
@@ -1742,9 +1416,6 @@ namespace rectilinear {
   }
 
   void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::placeAllLeftToPlace()");
-#endif
 #ifdef TRACE
     std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
@@ -1805,9 +1476,6 @@ namespace rectilinear {
   }
 
   void CombinationBuilder::addCountsFrom(const CombinationBuilder &b, bool doubleCount) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::addCountsFrom()");
-#endif
     for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
       int64_t token = it->first;
       Counts toAdd = it->second;
@@ -1830,9 +1498,6 @@ namespace rectilinear {
     Find next wave and recurse until model contains n bricks.
   */
   void CombinationBuilder::build() {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::build()");
-#endif
 #ifdef TRACE
     std::cout << "  Building on " << baseCombination << std::endl;
 #endif
@@ -1892,17 +1557,9 @@ namespace rectilinear {
     }
   }
 
-ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder()");
-#endif
-  }
+  ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {}
 
-  ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), threadName(b.threadName), b(b.b) {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(copy)");
-#endif
-  }
+  ThreadEnablingBuilder::ThreadEnablingBuilder(const ThreadEnablingBuilder &b) : picker(b.picker), threadName(b.threadName), b(b.b) {}
 
   ThreadEnablingBuilder::ThreadEnablingBuilder(Combination &c,
  					       const uint8_t waveStart,
@@ -1911,10 +1568,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
  					       MultiBatchSizeBrickPicker *picker,
 					       int threadIndex,
 					       bool encodeConnectivity) : picker(picker) {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::ThreadEnablingBuilder(...)");
-#endif
-
     b = CombinationBuilder(c, waveStart, 0, neighbours, maxCombination, true, encodeConnectivity, false);
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
@@ -1928,9 +1581,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   bool CombinationBuilder::addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName) {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::addFromPicker()");
-#endif
     bool ret = p->next(baseCombination, picked, maxCombination);
     if(ret) {
       if(maxCombination.size - baseCombination.size > 3)
@@ -1945,17 +1595,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void CombinationBuilder::removeFromPicker(int toRemove) {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::removeFromPicker()");
-#endif
     for(int i = 0; i < toRemove; i++)
       baseCombination.removeLastBrick();
   }
 
   void ThreadEnablingBuilder::build() {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::build()");
-#endif
     int picked;
     while(b.addFromPicker(picker, picked, threadName)) {
       // Behold the beautiful C++ 11 syntax for showing elapsed time...
@@ -1968,9 +1612,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void CombinationBuilder::buildSplit(int threadCount) {
-#ifdef PROFILING
-    Profiler::countInvocation("ThreadEnablingBuilder::buildSplit()");
-#endif
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
@@ -2009,9 +1650,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     report(1);
   }
   Counts CombinationBuilder::report(uint64_t returnToken) {
-#ifdef PROFILING
-    Profiler::countInvocation("CombinationBuilder::report()");
-#endif
     Counts ret;
     uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
@@ -2037,16 +1675,8 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
 
-  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0), largeCountsRequired(false) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::BitWriter()");
-#endif
-  }
-  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines), largeCountsRequired(w.largeCountsRequired) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::BitWriter(copy)");
-#endif
-  }
+  BitWriter::BitWriter() : ostream(NULL), base(0), bits(0), cntBits(0), sumTotal(0), sumSymmetric180(0), sumSymmetric90(0), lines(0), largeCountsRequired(false) {}
+  BitWriter::BitWriter(const BitWriter &w) : ostream(w.ostream), base(w.base), bits(w.bits), cntBits(w.cntBits), sumTotal(w.sumTotal), sumSymmetric180(w.sumSymmetric180), sumSymmetric90(w.sumSymmetric90), lines(w.lines), largeCountsRequired(w.largeCountsRequired) {}
   BitWriter::BitWriter(const std::string &fileName, const Combination &maxCombination) :
     base(maxCombination.layerSizes[0]),
     bits(0),
@@ -2056,15 +1686,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     sumSymmetric90(0),
     lines(0),
     largeCountsRequired(areLargeCountsRequired(maxCombination)) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::BitWriter(...)");
-#endif
     ostream = new std::ofstream(fileName.c_str(), std::ios::binary);
   }
   BitWriter::~BitWriter() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::~BitWriter()");
-#endif
     // End indicator:
     writeBit(1);
     writeBit(0); // baseSymmetric180
@@ -2107,9 +1731,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return false; // TODO for larger bases!
   }
   void BitWriter::writeColor(uint8_t toWrite) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeColor()");
-#endif
     assert(toWrite < 8);
     for(int j = 0; j < 3; j++) {
       writeBit(toWrite & 1);
@@ -2118,17 +1739,11 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     assert(toWrite == 0);
   }
   void BitWriter::writeBrick(const Brick &b) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeBrick()");
-#endif
     writeBit(b.isVertical);
     writeUInt16(b.x);
     writeUInt16(b.y);
   }
   void BitWriter::writeBit(bool bit) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeBit()");
-#endif
     bits = (bits << 1) + (bit ? 1 : 0);
     cntBits++;
     if(cntBits == 8) {
@@ -2137,9 +1752,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
   void BitWriter::writeCounts(const Counts &c) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeCounts()");
-#endif
     if(largeCountsRequired) {
       if(c.symmetric180 >= 4294967295 || c.symmetric90 >= 65535) {
 	std::cerr << "Counts too large! " << c << std::endl;
@@ -2178,52 +1790,36 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     lines++;
   }
   void BitWriter::flushBits() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::flushBits()");
-#endif
     while(cntBits > 0) {
       writeBit(0);
     }
   }
   void BitWriter::writeUInt8(uint8_t toWrite) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeUInt8()");
-#endif
     for(int j = 0; j < 8; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt16(uint16_t toWrite) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeUInt16()");
-#endif
     for(int j = 0; j < 16; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt32(uint32_t toWrite) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeUInt32()");
-#endif
     for(int j = 0; j < 32; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
   void BitWriter::writeUInt64(uint64_t toWrite) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitWriter::writeUInt64()");
-#endif
     for(int j = 0; j < 64; j++) {
       writeBit(toWrite & 1);
       toWrite >>= 1;
     }
   }
 
-  Report::Report() : base(0), baseSymmetric180(false), baseSymmetric90(false) {
-  }
+  Report::Report() : base(0), baseSymmetric180(false), baseSymmetric90(false) {}
 
   Report::Report(const Report &r) : base(r.base), baseSymmetric180(r.baseSymmetric180), baseSymmetric90(r.baseSymmetric90), counts(r.counts), c(r.c) {
     for(uint8_t i = 0; i < base; i++)
@@ -2330,9 +1926,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
   
   bool BitReader::readBit() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readBit()");
-#endif
     if(bitIdx == 8) {
       istream->read((char*)&bits, 1);
       bitIdx = 0;
@@ -2342,9 +1935,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return bit;
   }
   uint8_t BitReader::readColor() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readColor()");
-#endif
     uint8_t ret = 0;
     for(int i = 0; i < 3; i++) {
       ret = ret | (uint8_t)(readBit() << i);
@@ -2357,9 +1947,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     b.y = readUInt16();
   }
   uint8_t BitReader::readUInt8() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readUint8()");
-#endif
     uint8_t ret = 0;
     for(int i = 0; i < 8; i++) {
       ret = ret | (uint8_t)(readBit() << i);
@@ -2367,9 +1954,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
   uint16_t BitReader::readUInt16() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readUint16()");
-#endif
     uint16_t ret = 0;
     for(int i = 0; i < 16; i++) {
       ret = ret | (uint16_t)(readBit() << i);
@@ -2377,9 +1961,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
   uint32_t BitReader::readUInt32() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readUint32()");
-#endif
     uint32_t ret = 0;
     for(int i = 0; i < 32; i++) {
       ret = ret | ((uint32_t)readBit() << i);
@@ -2387,9 +1968,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
   uint64_t BitReader::readUInt64() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readUint64()");
-#endif
     uint64_t ret = 0;
     for(int i = 0; i < 64; i++) {
       ret = ret | ((uint64_t)readBit() << i);
@@ -2397,9 +1975,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     return ret;
   }
   void BitReader::readCounts(Counts &c) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::readCounts()");
-#endif
     c.all = readUInt32();
     c.symmetric180 = readUInt16();
     c.symmetric90 = ((base & 3) == 0) ? readUInt8() : 0;
@@ -2413,9 +1988,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     sumSymmetric90(0),
     lines(0),
     largeCountsRequired(BitWriter::areLargeCountsRequired(maxCombination)) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::BitReader()");
-#endif
     std::stringstream ss;
     ss << "base_" << (int)base << "_size_" << (int)maxCombination.size;
     ss << "_refinement_" << (int)maxCombination.getTokenFromLayerSizes();
@@ -2428,18 +2000,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     assert(firstBit);
   }
   BitReader::~BitReader() {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::~BitReader()");
-#endif
     if(istream != NULL) {
       istream->close();
       delete istream;
     }
   }
   bool BitReader::next(std::vector<Report> &v) {
-#ifdef PROFILING
-    Profiler::countInvocation("BitReader::next()");
-#endif
     Report r;
     r.base = base;
     r.baseSymmetric180 = readBit();
@@ -2510,16 +2076,9 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
     }
   }
 
-  BaseBuilder::BaseBuilder() : innerBuilder(NULL), writer(NULL), reachSkips(0), mirrorSkips(0), noSkips(0) {
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::BaseBuilder()");
-#endif
-  }
+  BaseBuilder::BaseBuilder() : innerBuilder(NULL), writer(NULL), reachSkips(0), mirrorSkips(0), noSkips(0) {}
 
   BaseBuilder::~BaseBuilder() {
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::~BaseBuilder()");
-#endif
     if(innerBuilder != NULL)
       delete innerBuilder;
   }
@@ -2555,9 +2114,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   int BaseBuilder::checkMirrorSymmetries(const Base &c, CBase &original) {
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::checkMirrorSymmetries()");
-#endif
     Base mx(c);
     mx.mirrorX();
     if(resultsMap.find(mx) != resultsMap.end()) {
@@ -2579,16 +2135,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   Size1InnerBaseBuilder::Size1InnerBaseBuilder(int16_t D) : encoded(0), d(0), D(D) {
-#ifdef PROFILING
-    Profiler::countInvocation("Size1InnerBaseBuilder::Size1InnerBaseBuilder()");
-#endif
     assert(D > 0);
   }
 
   bool Size1InnerBaseBuilder::nextBase(Base &c) {
-#ifdef PROFILING
-    Profiler::countInvocation("Size1InnerBaseBuilder::nextBase()");
-#endif
     assert(c.bricks[0] == FirstBrick);
     while(true) {
       if(encoded == 8 && d == D)
@@ -2615,9 +2165,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
   InnerBaseBuilder::InnerBaseBuilder(int16_t idx, const std::vector<int> &distances) :
     idx(idx), encoded(8), d(distances[idx]), D(distances[idx]) {
-#ifdef PROFILING
-    Profiler::countInvocation("InnerBaseBuilder::InnerBaseBuilder()");
-#endif
     assert(idx >= 1);
     if(idx == 1)
       inner = new Size1InnerBaseBuilder(distances[0]);
@@ -2626,16 +2173,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   InnerBaseBuilder::~InnerBaseBuilder() {
-#ifdef PROFILING
-    Profiler::countInvocation("InnerBaseBuilder::~InnerBaseBuilder()");
-#endif
     delete inner;
   }
 
   bool InnerBaseBuilder::nextBase(Base &c) {
-#ifdef PROFILING
-    Profiler::countInvocation("InnerBaseBuilder::nextBase()");
-#endif
     while(true) {
       if(encoded == 8 && d == D) {
 	bool ret = inner->nextBase(c);
@@ -2675,9 +2216,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
   bool BaseBuilder::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::nextBaseToBuildOn()");
-#endif
     uint8_t base = (uint8_t)distances.size() + 1;
     Base c; c.layerSize = base;
     while(true) {
@@ -2776,16 +2314,10 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 
   void BaseBuilder::registerCounts(Base &registrationBase, CountsMap counts) {
     std::lock_guard<std::mutex> guard(mutex);
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::registerCounts()");
-#endif
     resultsMap[registrationBase] = counts;
   }
 
   void BaseBuilder::report(const Combination &maxCombination) {
-#ifdef PROFILING
-    Profiler::countInvocation("BaseBuilder::report()");
-#endif
     int base = 1 + (int)distances.size();
     int colors[MAX_LAYER_SIZE]; // 0-indexed colors
     std::map<int,int> colorToCBaseSource;
@@ -2898,28 +2430,17 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
 				 maxCombination(NULL),
 				 neighbours(NULL),
-				 threadName("") {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3Runner::Lemma3Runner()");
-#endif
-  }
+				 threadName("") {}
   Lemma3Runner::Lemma3Runner(const Lemma3Runner &b) : baseBuilder(b.baseBuilder),
 						      maxCombination(b.maxCombination),
 						      neighbours(b.neighbours),
-						      threadName(b.threadName) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3Runner::Lemma3Runner(copy)");
-#endif
-  }
+						      threadName(b.threadName) {}
   Lemma3Runner::Lemma3Runner(BaseBuilder *b,
 			     Combination *maxCombination,
 			     int threadIndex,
 			     BrickPlane *neighbours) : baseBuilder(b),
 						       maxCombination(maxCombination),
 						       neighbours(neighbours) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3Runner::Lemma3Runner(...)");
-#endif
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -2932,9 +2453,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void Lemma3Runner::run() {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3Runner::run()");
-#endif
     Base buildBase, registrationBase;
     while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
       if(maxCombination->size - buildBase.layerSize > 3)
@@ -2946,19 +2464,12 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), maxCombination(maxCombination) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::Lemma3()");
-#endif
     assert(base >= 2);
     assert(base < maxCombination.size);
     assert(maxCombination.size <= MAX_BRICKS);
   }
 
   void Lemma3::precompute(int maxDist) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(int)");
-#endif
-
     BaseBuilder baseBuilder;
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
@@ -2987,9 +2498,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(BaseBuilder, vector)");
-#endif
     baseBuilder->reset(distances);
 
     int processorCount = MAX(1, threadCount-1);
@@ -3018,9 +2526,6 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
   }
 
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist) {
-#ifdef PROFILING
-    Profiler::countInvocation("Lemma3::precompute(BaseBuilder, vector, int)");
-#endif
     int S = (int)distances.size();
 
     if(S == base-2) {

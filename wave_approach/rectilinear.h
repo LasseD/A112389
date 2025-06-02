@@ -39,16 +39,6 @@
 #include <thread>
 #include <chrono>
 
-#ifdef PROFILING
-typedef std::pair<uint64_t,std::string> InvocationPair;
-typedef std::map<std::string,uint64_t> InvocationMap;
-extern InvocationMap *invocationCounts;
-struct Profiler {
-  static void countInvocation(const std::string &s);
-  static void reportInvocations();
-};
-#endif
-
 namespace rectilinear {
 
   /**

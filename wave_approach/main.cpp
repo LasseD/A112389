@@ -205,7 +205,7 @@ int runRefinement(int argc, char** argv) {
 
   uint8_t base = maxCombination.layerSizes[0];
 
-  int threads = argc > 3 ? get(argv[3]) : std::thread::hardware_concurrency() - 1;
+  int threads = argc > 3 ? get(argv[3]) : std::thread::hardware_concurrency();
 
   BrickPlane neighbours[MAX_BRICKS];
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
@@ -261,9 +261,9 @@ int runPrecomputations(int argc, char** argv) {
     return 2;
   }
   int maxDist = get(argv[3]);
-  int threads = argc > 4 ? get(argv[4]) : std::thread::hardware_concurrency() - 1;
+  int threads = argc > 4 ? get(argv[4]) : std::thread::hardware_concurrency();
 
-  std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << " using " << threads << " worker threads" << std::endl;
+  std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << " using " << threads << " threads" << std::endl;
   Lemma3 lemma3(base, threads, maxCombination);
   lemma3.precompute(maxDist);
 
