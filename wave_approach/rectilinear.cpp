@@ -413,11 +413,23 @@ namespace rectilinear {
 #ifdef PROFILING
     Profiler::countInvocation("Combination::Combination(int)");
 #endif
+    if(height > MAX_HEIGHT) {
+      assert(false);
+      std::cerr << "Height of combination too large!" << std::endl; int *kil = NULL; kil[2] = 3;
+    }
     getLayerSizesFromToken(token, layerSizes);
     for(uint8_t i = 0; i < height; i++) {
+      if(layerSizes[i] > MAX_LAYER_SIZE) {
+	assert(false);
+	std::cerr << "Layer in combination too large!" << std::endl; int *kil = NULL; kil[2] = 3;
+      }
       for(uint8_t j = 0; j < layerSizes[i]; j++) {
 	bricks[i][j] = FirstBrick;
-	history[size++] = BrickIdentifier(i,j);	
+	history[size++] = BrickIdentifier(i,j);
+	if(size > MAX_SIZE) {
+	  assert(false);
+	  std::cerr << "Combination size too large!" << std::endl; int *kil = NULL; kil[2] = 3;
+	}
       }
     }
   }
@@ -2980,7 +2992,7 @@ ThreadEnablingBuilder::ThreadEnablingBuilder() : picker(NULL), threadName("") {
 #endif
     baseBuilder->reset(distances);
 
-    int processorCount = MAX(1, threadCount-1);//std::thread::hardware_concurrency()
+    int processorCount = MAX(1, threadCount-1);
 
     BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
     for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
