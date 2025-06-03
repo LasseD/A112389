@@ -257,6 +257,10 @@ namespace rectilinear {
     }
   }
 
+  void BrickPlane::set(const Brick &b, bool value) {
+    bricks[b.isVertical][b.x][b.y] = value;
+  }
+
   void BrickPlane::set(const Brick &b) {
     bricks[b.isVertical][b.x][b.y] = true;
   }
@@ -1304,7 +1308,40 @@ namespace rectilinear {
 					     encodeConnectivity(false),
 					     encodingLocked(false) {}
 
+  void CombinationBuilder::setNeighbours(bool value) {
+    for(uint8_t i = 0; i < waveStart; i++) {
+      const BrickIdentifier &bi = baseCombination.history[i];
+      const int8_t layer = bi.first; // Convert to signed
+      const Brick &brick = baseCombination.bricks[layer][bi.second];
+
+      for(int8_t layer2 = MAX(0, layer-1); layer2 <= layer+1 && layer2 < maxCombination.height; layer2++) {
+	// Add crossing bricks (one vertical, one horizontal):
+	for(int16_t x = -2; x <= 2; x++) {
+	  for(int16_t y = -2; y <= 2; y++) {
+	    const Brick b(!brick.isVertical, brick.x+x, brick.y+y);
+	    neighbours[layer2].set(b, value);
+	  }
+	}
+
+	// Add parallel bricks:
+	int16_t w = 4, h = 2;
+	if(brick.isVertical) {
+	  w = 2;
+	  h = 4;
+	}
+	for(int16_t y = -h+1; y < h; y++) {
+	  for(int16_t x = -w+1; x < w; x++) {
+	    const Brick b(brick.isVertical, brick.x+x, brick.y+y);
+	    neighbours[layer2].set(b, value);
+	  } // for x
+	} // for y
+      }
+    }
+  }
+
   void CombinationBuilder::findPotentialBricksForNextWave(std::vector<LayerBrick> &v) {
+    setNeighbours(true);
+
     // Find all potential neighbours above and below all in wave:
     for(uint8_t i = 0; i < waveSize; i++) {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
@@ -1323,20 +1360,7 @@ namespace rectilinear {
 	for(int16_t x = -2; x < 3; x++) {
 	  for(int16_t y = -2; y < 3; y++) {
 	    const Brick b(!brick.isVertical, brick.x+x, brick.y+y);
-	    bool ok = true;
-	    // If b connects to or overlaps a brick before the wave, then disregard:
-	    for(uint8_t j = 0; j < waveStart; j++) {
-	      const BrickIdentifier &bi3 = baseCombination.history[j];
-	      const uint8_t layer3 = bi3.first;
-	      if(layer3 == layer2 || layer3 == layer2+1 || layer3+1 == layer2) {
-		const Brick &b2 = baseCombination.bricks[layer3][bi3.second];
-		if(b.intersects(b2)) {
-		  ok = false;
-		  break;
-		}
-	      }
-	    }
-	    if(ok && !neighbours[layer2].contains(b)) {
+	    if(!neighbours[layer2].contains(b)) {
 	      neighbours[layer2].set(b);
 	      v.push_back(LayerBrick(b, layer2));
 	    }
@@ -1352,20 +1376,7 @@ namespace rectilinear {
 	for(int16_t y = -h+1; y < h; y++) {
 	  for(int16_t x = -w+1; x < w; x++) {
 	    const Brick b(brick.isVertical, brick.x+x, brick.y+y);
-	    bool ok = true;
-	    // If b connects to or overlaps a brick before the wave, then disregard:
-	    for(uint8_t j = 0; j < waveStart; j++) {
-	      const BrickIdentifier &bi3 = baseCombination.history[j];
-	      const uint8_t layer3 = bi3.first;
-	      if(layer3 == layer2 || layer3 == layer2+1 || layer3+1 == layer2) {
-		const Brick &b2 = baseCombination.bricks[layer3][bi3.second];
-		if(b.intersects(b2)) {
-		  ok = false;
-		  break;
-		}
-	      }
-	    }
-	    if(ok && !neighbours[layer2].contains(b)) {
+	    if(!neighbours[layer2].contains(b)) {
 	      neighbours[layer2].set(b);
 	      v.push_back(LayerBrick(b, layer2));
 	    }
@@ -1375,6 +1386,7 @@ namespace rectilinear {
     }
 
     // Cleanup, so that neighbours can be shared by all:
+    setNeighbours(false);
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++)
       neighbours[it->LAYER].unset(it->BRICK);
   }

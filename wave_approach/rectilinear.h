@@ -98,6 +98,7 @@ namespace rectilinear {
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
     void unsetAll();
+    void set(const Brick &b, bool value);
     void set(const Brick &b);
     void unset(const Brick &b);
     bool contains(const Brick &b);
@@ -272,6 +273,7 @@ namespace rectilinear {
     bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
   private:
+    void setNeighbours(bool value);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
