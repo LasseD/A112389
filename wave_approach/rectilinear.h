@@ -98,10 +98,9 @@ namespace rectilinear {
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
     void unsetAll();
-    void set(const Brick &b, bool value);
-    void set(const Brick &b);
+    void set(const bool v, const int16_t x, const int16_t y, bool value);
     void unset(const Brick &b);
-    bool contains(const Brick &b);
+    bool contains(const bool v, const int16_t x, const int16_t y);
   };
 
   struct Base;

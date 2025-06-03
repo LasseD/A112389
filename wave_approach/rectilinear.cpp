@@ -257,20 +257,16 @@ namespace rectilinear {
     }
   }
 
-  void BrickPlane::set(const Brick &b, bool value) {
-    bricks[b.isVertical][b.x][b.y] = value;
-  }
-
-  void BrickPlane::set(const Brick &b) {
-    bricks[b.isVertical][b.x][b.y] = true;
+  void BrickPlane::set(const bool v, const int16_t x, const int16_t y, bool value) {
+    bricks[v][x][y] = value;
   }
 
   void BrickPlane::unset(const Brick &b) {
     bricks[b.isVertical][b.x][b.y] = false;
   }
 
-  bool BrickPlane::contains(const Brick &b) {
-    return bricks[b.isVertical][b.x][b.y];
+  bool BrickPlane::contains(const bool v, const int16_t x, const int16_t y) {
+    return bricks[v][x][y];
   }
    
   Combination::Combination() : height(1), size(1) {
@@ -1317,9 +1313,10 @@ namespace rectilinear {
       for(int8_t layer2 = MAX(0, layer-1); layer2 <= layer+1 && layer2 < maxCombination.height; layer2++) {
 	// Add crossing bricks (one vertical, one horizontal):
 	for(int16_t x = -2; x <= 2; x++) {
+	  int16_t xx = brick.x+x;
 	  for(int16_t y = -2; y <= 2; y++) {
-	    const Brick b(!brick.isVertical, brick.x+x, brick.y+y);
-	    neighbours[layer2].set(b, value);
+	    int16_t yy = brick.y+y;
+	    neighbours[layer2].set(!brick.isVertical, xx, yy, value);
 	  }
 	}
 
@@ -1330,9 +1327,10 @@ namespace rectilinear {
 	  h = 4;
 	}
 	for(int16_t y = -h+1; y < h; y++) {
+	  int16_t yy = brick.y+y;
 	  for(int16_t x = -w+1; x < w; x++) {
-	    const Brick b(brick.isVertical, brick.x+x, brick.y+y);
-	    neighbours[layer2].set(b, value);
+	    int16_t xx = brick.x+x;
+	    neighbours[layer2].set(brick.isVertical, xx, yy, value);
 	  } // for x
 	} // for y
       }
@@ -1358,11 +1356,12 @@ namespace rectilinear {
 
 	// Add crossing bricks (one vertical, one horizontal):
 	for(int16_t x = -2; x < 3; x++) {
+	  int16_t xx = brick.x+x;
 	  for(int16_t y = -2; y < 3; y++) {
-	    const Brick b(!brick.isVertical, brick.x+x, brick.y+y);
-	    if(!neighbours[layer2].contains(b)) {
-	      neighbours[layer2].set(b);
-	      v.push_back(LayerBrick(b, layer2));
+	    int16_t yy = brick.y+y;
+	    if(!neighbours[layer2].contains(!brick.isVertical, xx, yy)) {
+	      neighbours[layer2].set(!brick.isVertical, xx, yy, true);
+	      v.push_back(LayerBrick(Brick(!brick.isVertical, xx, yy), layer2));
 	    }
 	  }
 	}
@@ -1374,14 +1373,15 @@ namespace rectilinear {
 	  h = 4;
 	}
 	for(int16_t y = -h+1; y < h; y++) {
+	  int16_t yy = brick.y+y;
 	  for(int16_t x = -w+1; x < w; x++) {
-	    const Brick b(brick.isVertical, brick.x+x, brick.y+y);
-	    if(!neighbours[layer2].contains(b)) {
-	      neighbours[layer2].set(b);
-	      v.push_back(LayerBrick(b, layer2));
+	    int16_t xx = brick.x+x;
+	    if(!neighbours[layer2].contains(brick.isVertical, xx, yy)) {
+	      neighbours[layer2].set(brick.isVertical, xx, yy, true);
+	      v.push_back(LayerBrick(Brick(brick.isVertical, xx, yy), layer2));
 	    }
-	  } // for x
-	} // for y
+	  }
+	}
       } // for layer2
     }
 
