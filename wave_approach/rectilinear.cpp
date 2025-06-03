@@ -1305,12 +1305,15 @@ namespace rectilinear {
 					     encodingLocked(false) {}
 
   void CombinationBuilder::setNeighbours(bool value) {
+    bool nextWaveOnOddLayers = baseCombination.history[waveStart].first & 1;
     for(uint8_t i = 0; i < waveStart; i++) {
       const BrickIdentifier &bi = baseCombination.history[i];
       const int8_t layer = bi.first; // Convert to signed
       const Brick &brick = baseCombination.bricks[layer][bi.second];
 
       for(int8_t layer2 = MAX(0, layer-1); layer2 <= layer+1 && layer2 < maxCombination.height; layer2++) {
+	if((layer2 & 1) == nextWaveOnOddLayers)
+	  continue;
 	// Add crossing bricks (one vertical, one horizontal):
 	for(int16_t x = -2; x <= 2; x++) {
 	  int16_t xx = brick.x+x;
