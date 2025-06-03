@@ -39,16 +39,6 @@
 #include <thread>
 #include <chrono>
 
-#ifdef PROFILING
-typedef std::pair<uint64_t,std::string> InvocationPair;
-typedef std::map<std::string,uint64_t> InvocationMap;
-extern InvocationMap *invocationCounts;
-struct Profiler {
-  static void countInvocation(const std::string &s);
-  static void reportInvocations();
-};
-#endif
-
 namespace rectilinear {
 
   /**
@@ -108,9 +98,9 @@ namespace rectilinear {
   struct BrickPlane {
     bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
     void unsetAll();
-    void set(const Brick &b);
+    void set(const bool v, const int16_t x, const int16_t y, bool value);
     void unset(const Brick &b);
-    bool contains(const Brick &b);
+    bool contains(const bool v, const int16_t x, const int16_t y);
   };
 
   struct Base;
@@ -282,6 +272,7 @@ namespace rectilinear {
     bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
     void removeFromPicker(int toRemove);
   private:
+    void setNeighbours(bool value);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);

@@ -7,10 +7,7 @@
 
 using namespace rectilinear;
 
-#ifdef PROFILING
-  InvocationMap *invocationCounts;
-#endif
-
+// Parse input parameter as unsigned integer:
 uint64_t get(char *argv) {
   char c;
   uint64_t ret = 0;
@@ -29,17 +26,6 @@ uint64_t get(char *argv) {
   Compile by:
 
   g++ -std=c++11 -O3 -DNDEBUG *.cpp -o run.o
-
-  Examples:
-
-  Build precomputations for base 2 token <21> up to max dist 16 using 32 threads:
-  time ./run.o 21 16 32
-
-  Count all for token <21> using 8 threads
-  time ./run.o 21 8
-
-  Sum up for <121> considering max dist 8:
-  ./run.o 1 2 1 8
 
   This code base uses an approach inspired by Eilers (2016) to compute all LEGO models of n 2x4 bricks:
   For a given brick in the first (base) layer:
@@ -71,11 +57,23 @@ uint64_t get(char *argv) {
    Let A' = A(X,Y,Z1,...,Zk,...,ZY) where Zk = 3 be a refinement where layer k has 3 bricks.
    Consider all placement of bricks in layer k and compute |A'| based the models that can be built on the two sides of the layer.
 */
+void printUsage() {
+  std::cout << "Usage: [RPST] [parameters...]" << std::endl;
+  std::cout << "R: Compute a single refinement. Parameters: REFINEMENT [THREADS]" << std::endl;
+  std::cout << "P: Compute precomputations. Parameters: REFINEMENT MAX_DIST [THREADS]. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>_refinement_REFINEMENT. THREADS-1 worker threads will be spawned" << std::endl;
+  std::cout << "S: Sum precomputations for a refinement. Parameters: LEFT BASE RIGHT MAX_DIST" << std::endl;
+  std::cout << "T: Test precomputations against previous results. Parameters: BASE REFINEMENT MIN_DIST MAX_DIST FOLDER_SUFFIX" << std::endl;
+}
+
 int runSumPrecomputations(int argc, char** argv) {
-  int leftToken = get(argv[1]);
-  int base = get(argv[2]);
-  int rightToken = get(argv[3]);
-  int maxDist = get(argv[4]);
+  if(argc < 6) {
+    printUsage();
+    return 1;
+  }
+  int leftToken = get(argv[2]);
+  int base = get(argv[3]);
+  int rightToken = get(argv[4]);
+  int maxDist = get(argv[5]);
   
   leftToken = leftToken * 10 + base;
   rightToken = Combination::reverseToken(rightToken);
@@ -195,177 +193,201 @@ int runSumPrecomputations(int argc, char** argv) {
   return 0;
 }
 
-int main(int argc, char** argv) {
+int runRefinement(int argc, char** argv) {
+  if(argc < 3) {
+    printUsage();
+    return 1;
+  }
   std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
-  if(argc == 3 || argc == 4) {
-    uint64_t token = get(argv[1]);
-    Combination maxCombination;
-    Combination::getLayerSizesFromToken(token, maxCombination.layerSizes);
-    maxCombination.size = Combination::sizeOfToken(token);
-    maxCombination.height = Combination::heightOfToken(token);
+  uint64_t token = get(argv[2]);
+  Combination maxCombination(token);
 
-    uint8_t base = maxCombination.layerSizes[0];
-    if(maxCombination.size > MAX_BRICKS || base > MAX_LAYER_SIZE) {
-      std::cerr << "Unsupported refinement!" << std::endl;
-      return 2;
-    }
+  uint8_t base = maxCombination.layerSizes[0];
 
-    if(argc == 4) { // Lemma 3:
-      if(base < 2) {
-	std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
-	return 3;
-      }
-      int maxDist = get(argv[2]);
-      int threads = get(argv[3]);
-      std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << std::endl;
-      Lemma3 lemma3(base, threads, maxCombination);
-      lemma3.precompute(maxDist);
+  int threads = argc > 3 ? get(argv[3]) : std::thread::hardware_concurrency();
 
-      std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
-      std::cout << "Total precomputation time: " << duration.count() << " seconds" << std::endl;
-    }
-    else { // Normal run for a refinement:
-      int threads = get(argv[2]);
+  BrickPlane neighbours[MAX_BRICKS];
+  for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].unsetAll();
 
-      BrickPlane neighbours[MAX_BRICKS];
-      for(uint8_t i = 0; i < MAX_BRICKS; i++)
-	neighbours[i].unsetAll();
-
-      Combination combination;
-      CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
-      if(threads > 2) {
-	std::cout << "Running with " << threads << " threads for <" << token << "> of size " << (int)maxCombination.size << std::endl;
-	b.buildSplit(threads);
-      }
-      else {
-	std::cout << "Running single threaded for <" << token << "> of size " << (int)maxCombination.size << std::endl;
-	b.build();
-      }
-      Counts counts = b.report(token);
-      std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
-      std::cout << "Computation time: " << duration.count() << " seconds" << std::endl;
-      // Write to file:
-      std::stringstream ss; ss << "output_" << token << ".txt";
-      std::ofstream fileStream(ss.str().c_str());
-      fileStream << "<" << token << "> " << counts << std::endl;
-      fileStream << "Computation time: " << duration.count() << " seconds" << std::endl;
-      fileStream << std::endl;
-
-      fileStream << "Code line for sums-for-token.py:" << std::endl;
-      fileStream << "    '" << token << "', " << counts.all << ", " << counts.symmetric180 << "," << std::endl;
-      fileStream << std::endl;
-
-      fileStream << "Code line for Combination::setupKnownCounts():" << std::endl;
-      fileStream << "    m[" << token << "] = Counts(" << counts.all << ", " << counts.symmetric180 << ", " << counts.symmetric90 << ");" << std::endl;
-
-      fileStream.flush();
-      fileStream.close();
-    }
-#ifdef PROFILING
-    Profiler::reportInvocations();
-#endif
-
-    return 0;
-  }
-  else if(argc == 5) {
-    runSumPrecomputations(argc, argv);
-  }
-  else if(argc == 6) {
-    int base = get(argv[1]);
-    int token = get(argv[2]);
-    int d = get(argv[3]);
-    int D = get(argv[4]);
-    std::string suffix(argv[5]);
-
-    const Combination maxC(token);
-    for(; d <= D; d++) {
-      BitReader reader1(maxC, d, suffix);
-      BitReader reader2(maxC, d, "");
-
-      std::vector<Report> r1, r2;
-      long cnt = 0;
-      while(reader1.next(r1)) {
-#ifdef DEBUG
-	std::cout << " " << suffix << " read, now reading from other" << std::endl;
-#endif
-	bool ok = reader2.next(r2);
-#ifdef DEBUG
-	std::cout << " Other read" << std::endl;
-#endif
-	cnt++;
-	if(!ok) {
-	  std::cerr << "Base pair mismatch for d=" << d << std::endl;
-	  return 4;
-	}
-	if(r1.size() != r2.size()) {
-	  std::cerr << "Report size does not match!" << std::endl;
-	  std::cerr << "Sizes: " << r1.size() << " / " << r2.size() << std::endl;
-	  std::cerr << "Bases: " << r1[0].c << " / " << r2[0].c << std::endl;
-	  return 5;
-	}
-	bool first = true;
-	CountsMap m1, m2;
-	Base b1, b2;
-	bool s180, s90, t180, t90;
-	for(std::vector<Report>::const_iterator it = r1.begin(); it != r1.end(); it++) {
-	  const Report &report = *it;
-	  if(first) {
-	    b1 = report.c;
-#ifdef DEBUG
-	    std::cout << "b1 " << b1 << std::endl;
-#endif
-	    s180 = report.baseSymmetric180;
-	    s90 = report.baseSymmetric90;
-	    first = false;
-	  }
-	  int t = 1;
-	  for(int i = 0; i < base-1; i++) {
-	    t = 10 * t + (report.colors[i]+1);
-	  }
-	  m1[t] = report.counts;
-	}
-	first = true;
-	for(std::vector<Report>::const_iterator it = r2.begin(); it != r2.end(); it++) {
-	  const Report &report = *it;
-	  if(first) {
-	    b2 = report.c;
-#ifdef DEBUG
-	    std::cout << "b2 " << b2 << std::endl;
-#endif
-	    t180 = report.baseSymmetric180;
-	    t90 = report.baseSymmetric90;
-	    first = false;
-	  }
-	  int t = 1;
-	  for(int i = 0; i < base-1; i++) {
-	    t = 10 * t + (report.colors[i]+1);
-	  }
-	  m2[t] = report.counts;
-	}
-	if(!(b1 == b2) || s180 != t180 || s90 != t90) {
-	  std::cerr << "Base mismatch! " << b1 << "(" << suffix << ") != " << b2 << std::endl;
-	  std::cerr << " 180?: " << s180 << "/" << t180 << " 90?: " << s90 << "/" << t90 << std::endl;
-	  std::cerr << "Index " << cnt << std::endl;
-	  return 6;
-	}
-	for(CountsMap::const_iterator it1 = m1.begin(), it2 = m2.begin(); it1 != m1.end(); it1++, it2++) {
-	  if(it1->first != it2->first || it1->second != it2->second) {
-	    std::cerr << "Counts mismatch!" << std::endl;
-	    std::cerr << " Base: " << b1 << std::endl;
-	    std::cerr << " tokens: " << it1->first << " / " << it2->first << std::endl;
-	    std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
-	    return 7;
-	  }
-	}
-	r1.clear();
-	r2.clear();
-      }
-    }
+  Combination combination;
+  CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
+  if(threads > 2) {
+    std::cout << "Running with " << threads << " threads for <" << token << "> of size " << (int)maxCombination.size << std::endl;
+    b.buildSplit(threads);
   }
   else {
-    std::cerr << "Usage 1: REFINEMENT [MAX_DIST] THREADS. Include MAX_DIST to compute precomputations. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>[_refinement_REFINEMENT]. THREADS-1 worker threads will be spawned" << std::endl;
-    std::cerr << "Usage 2: LEFT BASE RIGHT MAX_DIST. This is for handling the precomputations" << std::endl;
+    std::cout << "Running single threaded for <" << token << "> of size " << (int)maxCombination.size << std::endl;
+    b.build();
+  }
+
+  Counts counts = b.report(token);
+  std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+  std::cout << "Computation time: " << duration.count() << " seconds" << std::endl;
+
+  // Write to file:
+  std::stringstream ss; ss << "output_" << token << ".txt";
+  std::ofstream fileStream(ss.str().c_str());
+  fileStream << "<" << token << "> " << counts << std::endl;
+  fileStream << "Computation time: " << duration.count() << " seconds" << std::endl;
+  fileStream << std::endl;
+
+  fileStream << "Code line for sums-for-token.py:" << std::endl;
+  fileStream << "    '" << token << "', " << counts.all << ", " << counts.symmetric180 << "," << std::endl;
+  fileStream << std::endl;
+
+  fileStream << "Code line for Combination::setupKnownCounts():" << std::endl;
+  fileStream << "    m[" << token << "] = Counts(" << counts.all << ", " << counts.symmetric180 << ", " << counts.symmetric90 << ");" << std::endl;
+
+  fileStream.flush();
+  fileStream.close();
+  return 0;
+}
+
+int runPrecomputations(int argc, char** argv) {
+  if(argc < 4) {
+    printUsage();
+    return 1;
+  }
+  std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
+
+  uint64_t token = get(argv[2]);
+  Combination maxCombination(token);
+
+  uint8_t base = maxCombination.layerSizes[0];
+  if(base < 2) {
+    std::cerr << "Unsupported base of refinement: " << (int)base << std::endl;
+    return 2;
+  }
+  int maxDist = get(argv[3]);
+  int threads = argc > 4 ? get(argv[4]) : std::thread::hardware_concurrency();
+
+  std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << " using " << threads << " threads" << std::endl;
+  Lemma3 lemma3(base, threads, maxCombination);
+  lemma3.precompute(maxDist);
+
+  std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+  std::cout << "Total precomputation time: " << duration.count() << " seconds" << std::endl;
+  return 0;
+}
+
+int runPrecomputationComparison(int argc, char** argv) {
+  if(argc < 7) {
+    printUsage();
+    return 1;
+  }
+  int base = get(argv[2]);
+  int token = get(argv[3]);
+  int d = get(argv[4]);
+  int D = get(argv[5]);
+  std::string suffix(argv[6]);
+
+  const Combination maxC(token);
+  for(; d <= D; d++) {
+    BitReader reader1(maxC, d, suffix);
+    BitReader reader2(maxC, d, "");
+
+    std::vector<Report> r1, r2;
+    long cnt = 0;
+    while(reader1.next(r1)) {
+#ifdef DEBUG
+      std::cout << " " << suffix << " read, now reading from other" << std::endl;
+#endif
+      bool ok = reader2.next(r2);
+#ifdef DEBUG
+      std::cout << " Other read" << std::endl;
+#endif
+      cnt++;
+      if(!ok) {
+	std::cerr << "Base pair mismatch for d=" << d << std::endl;
+	return 4;
+      }
+      if(r1.size() != r2.size()) {
+	std::cerr << "Report size does not match!" << std::endl;
+	std::cerr << "Sizes: " << r1.size() << " / " << r2.size() << std::endl;
+	std::cerr << "Bases: " << r1[0].c << " / " << r2[0].c << std::endl;
+	return 5;
+      }
+      bool first = true;
+      CountsMap m1, m2;
+      Base b1, b2;
+      bool s180, s90, t180, t90;
+      for(std::vector<Report>::const_iterator it = r1.begin(); it != r1.end(); it++) {
+	const Report &report = *it;
+	if(first) {
+	  b1 = report.c;
+#ifdef DEBUG
+	  std::cout << "b1 " << b1 << std::endl;
+#endif
+	  s180 = report.baseSymmetric180;
+	  s90 = report.baseSymmetric90;
+	  first = false;
+	}
+	int t = 1;
+	for(int i = 0; i < base-1; i++) {
+	  t = 10 * t + (report.colors[i]+1);
+	}
+	m1[t] = report.counts;
+      }
+      first = true;
+      for(std::vector<Report>::const_iterator it = r2.begin(); it != r2.end(); it++) {
+	const Report &report = *it;
+	if(first) {
+	  b2 = report.c;
+#ifdef DEBUG
+	  std::cout << "b2 " << b2 << std::endl;
+#endif
+	  t180 = report.baseSymmetric180;
+	  t90 = report.baseSymmetric90;
+	  first = false;
+	}
+	int t = 1;
+	for(int i = 0; i < base-1; i++) {
+	  t = 10 * t + (report.colors[i]+1);
+	}
+	m2[t] = report.counts;
+      }
+      if(!(b1 == b2) || s180 != t180 || s90 != t90) {
+	std::cerr << "Base mismatch! " << b1 << "(" << suffix << ") != " << b2 << std::endl;
+	std::cerr << " 180?: " << s180 << "/" << t180 << " 90?: " << s90 << "/" << t90 << std::endl;
+	std::cerr << "Index " << cnt << std::endl;
+	return 6;
+      }
+      for(CountsMap::const_iterator it1 = m1.begin(), it2 = m2.begin(); it1 != m1.end(); it1++, it2++) {
+	if(it1->first != it2->first || it1->second != it2->second) {
+	  std::cerr << "Counts mismatch!" << std::endl;
+	  std::cerr << " Base: " << b1 << std::endl;
+	  std::cerr << " tokens: " << it1->first << " / " << it2->first << std::endl;
+	  std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
+	  return 7;
+	}
+      }
+      r1.clear();
+      r2.clear();
+    }
+  }
+  return 0;
+}
+
+int main(int argc, char** argv) {
+  if(argc < 2) {
+    printUsage();
+    return 1;
+  }
+  char function = argv[1][0];
+
+  switch(function) {
+  case 'R':
+    return runRefinement(argc, argv);
+  case 'P':
+    return runPrecomputations(argc, argv);
+  case 'S':
+    return runSumPrecomputations(argc, argv);
+  case 'T':
+    return runPrecomputationComparison(argc, argv);
+  default:
+    printUsage();
     return 1;
   }
 }
