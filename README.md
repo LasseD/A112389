@@ -1,22 +1,40 @@
-# Algorithms for OEIS A112389
+# Algorithms for counting models of 2 x 4 LEGO bricks
 
-[OEIS A112389](https://oeis.org/A112389) is the number of ways, counted up to symmetry, to build a contiguous model with n LEGO bricks of size 2 X 4.
+## Results
 
-The following table contains the known values of the sequence a(N). a<sup>180</sup>(N) are those of a(N) that are symmetric at 180 degrees of rotation. This sequence is also known as [OEIS A123829](https://oeis.org/A123829).
+### OEIS A112389
 
-| n  | a(N)              | a<sup>180</sup>(N)| Author(s)     |
-|:--:|------------------:|---------:|:-----------------------|
-|  1 |                 1 |        1 |                        |
-|  2 |                24 |        2 | Kristiansen 1974       |
-|  3 |              1560 |       44 | Anonymous 2002         |
-|  4 |            119580 |      185 | Eilers 2004            |
-|  5 |          10166403 |     3276 | Eilers 2004            |
-|  6 |         915103765 |    15682 | Eilers 2004            |
-|  7 |       85747377755 |   282377 | Abrahamsen-Eilers 2006 |
-|  8 |     8274075616387 |  1480410 | Abrahamsen-Eilers 2006 |
-|  9 |   816630819554486 | 26264942 | Nilsson 2014           |
-| 10 | 82052796578652749 |          | Simon 2018             |
-| 11 |                   |          |                        |
+[OEIS A112389](https://oeis.org/A112389) is the number of ways, counted up to symmetry, to build a contiguous model with n LEGO bricks of size 2 X 4. The following table contains the known values of this sequence, which we denote a(N).
+
+| N  | a(N)              | Author(s)     |
+|:--:|------------------:|:-----------------------|
+|  1 |                 1 |                        |
+|  2 |                24 | Kristiansen 1974       |
+|  3 |              1560 | Anonymous 2002         |
+|  4 |            119580 | Eilers 2004            |
+|  5 |          10166403 | Eilers 2004            |
+|  6 |         915103765 | Eilers 2004            |
+|  7 |       85747377755 | Abrahamsen-Eilers 2006 |
+|  8 |     8274075616387 | Abrahamsen-Eilers 2006 |
+|  9 |   816630819554486 | Nilsson 2014           |
+| 10 | 82052796578652749 | Simon 2018             |
+
+
+### OEIS A123829
+
+[OEIS A123829](https://oeis.org/A123829) is the number of ways to build a **symmetric** contiguous model with n LEGO bricks of size 2 X 4. The symmmetry considered is rotation of 180 degrees in the plane. The following table contains the known values of this sequence, which we denote a<sup>180</sup>(N).
+
+| N  | a<sup>180</sup>(N)| Author(s)     |
+|:--:|---------:|:-----------------------|
+|  1 |        1 |                        |
+|  2 |        2 | Kristiansen 1974       |
+|  3 |       44 | Anonymous 2002         |
+|  4 |      185 | Eilers 2004            |
+|  5 |     3276 | Eilers 2004            |
+|  6 |    15682 | Eilers 2004            |
+|  7 |   282377 | Abrahamsen-Eilers 2006 |
+|  8 |  1480410 | Abrahamsen-Eilers 2006 |
+|  9 | 26264942 | Nilsson 2014           |
 
 
 # Project Overview
@@ -27,27 +45,19 @@ As 150 years of computing resources is a high price to pay for a(11), we seek to
 
 ## Definitions
 
-
 - A "brick" refers to a 2 x 4 LEGO brick with 8 stod on top. A brick has a position, and since we only concerns ourselves with bricks that are connected to each other using the studs, and only at rectillinear ("right") angles, the position of a brick is identified by its coordinate pair (x,y) and its orientation (horizontal or vertical). A brick also has a height. A "base brick" is located at (0,0) at height 0 and a brick connected to another from above has the height 1 larger than the other.
-
 
 - A "model" consists of one or more bricks connected by the studs. All connections are rectilinear. [Another project](https://github.com/LasseD/BrickCounting) concerns bricks connected at all possible angles. We consider two models to be the same if they are rotationally symmetric. The code base uses "combination" and "model" interchangeably.
 
-
 - A(N) is the set of all models with exactly N bricks.
-
 
 - a(N) is the size of A(N).
 
-
 - A<sup>180</sup>(N) is the subset of A(N) where the models are symmetric after 180 degrees of rotation. a<sup>180</sup>(N) is the size of A<sup>180</sup>(N). Similarly A<sup>90</sup>(N) is the subset of A(N) where the models are symmetric after 90 degrees of rotation, and a<sup>90</sup>(N) is the size of A<sup>90</sup>(N).
-
 
 - A "layer" of a model is the subset of bricks of the model whose height is the same. The "base layer" or "first layer" refers to the lower-most layer of a model (at height 0).
 
-
 - The "height" of a model is the number of layers of it.
-
 
 - A "refinement" A(N,M,Z1,Z2,...,ZM) is the subset of a(N) where the models have height M and the sized of the layers from base layer and up are Z1, Z2, ..., ZM. We use the shorthand <Z1Z2...ZM> to denote the refinement A(N,M,Z1,Z2,...,ZM). a(N,M,Z1,Z2,...,ZM) is the size of refinement A(N,M,Z1,Z2,...,ZM).
 
