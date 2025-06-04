@@ -66,16 +66,8 @@ void printUsage() {
   std::cout << "X: Run a test suite with regression tests. No parameters needed." << std::endl;
 }
 
-int runSumPrecomputations(int argc, char** argv) {
-  if(argc < 6) {
-    printUsage();
-    return 1;
-  }
-  int leftToken = get(argv[2]);
-  int base = get(argv[3]);
-  int rightToken = get(argv[4]);
-  int maxDist = get(argv[5]);
-  
+int runSumPrecomputations(int leftToken, int base, int rightToken, int maxDist) {
+  std::cout << "Summing precomputations, leftToken=" << leftToken << ", base=" << base << ", rightToken=" << rightToken << ", maxDist=" << maxDist << std::endl;
   leftToken = leftToken * 10 + base;
   rightToken = Combination::reverseToken(rightToken);
   int token = leftToken;
@@ -187,11 +179,26 @@ int runSumPrecomputations(int argc, char** argv) {
     } // while(reader1.next(rm) && reader2.next(rm))
   } // for d = 2 .. maxDist
 
-  Combination::checkCounts(token, counts);
-  Combination::checkCounts(leftToken, countsLeft);
-  Combination::checkCounts(rightToken, countsRight);
+  if(!Combination::checkCounts(token, counts))
+    return 1;
+  if(!Combination::checkCounts(leftToken, countsLeft))
+    return 2;
+  if(!Combination::checkCounts(rightToken, countsRight))
+    return 3;
 
   return 0;
+}
+
+int runSumPrecomputations(int argc, char** argv) {
+  if(argc < 6) {
+    printUsage();
+    return 1;
+  }
+  int leftToken = get(argv[2]);
+  int base = get(argv[3]);
+  int rightToken = get(argv[4]);
+  int maxDist = get(argv[5]);
+  return runSumPrecomputations(leftToken, base, rightToken, maxDist);
 }
 
 int runRefinement(int argc, char** argv) {
@@ -203,8 +210,6 @@ int runRefinement(int argc, char** argv) {
 
   uint64_t token = get(argv[2]);
   Combination maxCombination(token);
-
-  uint8_t base = maxCombination.layerSizes[0];
 
   int threads = argc > 3 ? get(argv[3]) : std::thread::hardware_concurrency();
 
@@ -380,6 +385,7 @@ int runRegressionTests() {
 
   std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
+  // Build refinements:
   uint8_t layerSizes[MAX_HEIGHT];
   BrickPlane neighbours[MAX_BRICKS];
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
@@ -408,11 +414,37 @@ int runRegressionTests() {
       b.buildSplit(3); // 2 worker threads
     else
       b.build();
-    b.report(token);
+    Counts xCheck = b.report(token);
+    if(xCheck != it->second) {
+      std::cerr << "Exiting due to cross check error" << std::endl;
+      return 2;
+    }
   }
 
   std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
   std::cout << "Test suite completed in " << duration.count() << " seconds" << std::endl;
+
+  // Build precomputations max dist 24 (<41> to 8):
+  int tokens[6] = {21, 22, 23, 221, 31, 41};
+  for(int i = 0; i < 6; i++) {
+    // Run precomputations
+    uint64_t token = tokens[i];
+    int maxDist = i > 2 ? 16 : 8;
+    Combination maxCombination(token);
+    uint8_t base = maxCombination.layerSizes[0];
+    Lemma3 lemma3(base, 3, maxCombination);
+    lemma3.precompute(maxDist, true);
+
+    // Sum together to check results
+    token = Combination::reverseToken(token);
+    int right = token / 10;
+    int left = Combination::reverseToken(right);
+    int exitCode = runSumPrecomputations(left, base, right, maxDist);
+    if(exitCode != 0) {
+      std::cerr << "Error during sums from precomputations" << std::endl;
+      return exitCode;
+    }
+  }
 
   return 0;
 }

@@ -1636,21 +1636,21 @@ namespace rectilinear {
     if(leftToPlace <= 1)
       return;
 
-    int workerCount = MAX(2, threadCount-1);
+    int processorCount = MAX(2, threadCount-1);
 
     MultiBatchSizeBrickPicker picker(v, leftToPlace-1); // Shared picker
-    BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
-    for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
+    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
-    ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[workerCount];
-    std::thread **threads = new std::thread*[workerCount];
+    ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
+    std::thread **threads = new std::thread*[processorCount];
 
-    for(int i = 0; i < workerCount; i++) {
+    for(int i = 0; i < processorCount; i++) {
       threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, &neighbourCache[i*MAX_HEIGHT], maxCombination, &picker, i, encodeConnectivity);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
-    for(int i = 0; i < workerCount; i++) {
+    for(int i = 0; i < processorCount; i++) {
       threads[i]->join();
       addCountsFrom(threadBuilders[i].b, false);
       delete threads[i];
@@ -2477,13 +2477,17 @@ namespace rectilinear {
     }
   }
 
-  Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), maxCombination(maxCombination) {
+  Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), token(maxCombination.getTokenFromLayerSizes()), maxCombination(maxCombination) {
     assert(base >= 2);
     assert(base < maxCombination.size);
     assert(maxCombination.size <= MAX_BRICKS);
   }
 
   void Lemma3::precompute(int maxDist) {
+    precompute(maxDist, false);
+  }
+
+  void Lemma3::precompute(int maxDist, bool overwriteFiles) {
     BaseBuilder baseBuilder;
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
@@ -2494,10 +2498,12 @@ namespace rectilinear {
       ss << "/d" << d << ".bin";
       std::string fileName = ss.str();
 
-      std::ifstream istream(fileName.c_str());
-      if(istream.good()) {
-	std::cout << "Precomputation for d=" << d << " already exists. Skipping!" << std::endl;
-	continue;
+      if(!overwriteFiles) {
+	std::ifstream istream(fileName.c_str());
+	if(istream.good()) {
+	  std::cout << "Precomputation for d=" << d << " already exists. Skipping!" << std::endl;
+	  continue;
+	}
       }
 
       BitWriter writer(fileName, maxCombination);
@@ -2514,21 +2520,21 @@ namespace rectilinear {
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
     baseBuilder->reset(distances);
 
-    int workerCount = MAX(1, threadCount-1);
+    int processorCount = MAX(1, threadCount-1);
 
-    BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
-    for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
+    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
+    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
 
-    Lemma3Runner *builders = new Lemma3Runner[workerCount];
-    std::thread **threads = new std::thread*[workerCount];
+    Lemma3Runner *builders = new Lemma3Runner[processorCount];
+    std::thread **threads = new std::thread*[processorCount];
 
-    for(int i = 0; i < workerCount; i++) {
+    for(int i = 0; i < processorCount; i++) {
       builders[i] = Lemma3Runner(baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 
-    for(int i = 0; i < workerCount; i++) {
+    for(int i = 0; i < processorCount; i++) {
       threads[i]->join();
       delete threads[i];
     }
@@ -2543,7 +2549,7 @@ namespace rectilinear {
     int S = (int)distances.size();
 
     if(S == base-2) {
-      std::cout << " Precomputing for distances";
+      std::cout << " Precomputing for <" << token << "> distances";
       for(int i = 0; i < S; i++)
 	std::cout << " " << distances[i];
       std::cout << " " << maxDist << std::endl;

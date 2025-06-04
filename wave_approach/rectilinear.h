@@ -449,12 +449,13 @@ namespace rectilinear {
   };
 
   class Lemma3 {
-    int base, threadCount;
+    int base, threadCount, token;
     CountsMap counts;
     Combination maxCombination;
   public:
     Lemma3(int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);
+    void precompute(int maxDist, bool overwriteFiles);
   private:
     void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances);
     void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist);
