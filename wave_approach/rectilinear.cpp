@@ -1598,7 +1598,7 @@ namespace rectilinear {
   bool CombinationBuilder::addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName) {
     bool ret = p->next(baseCombination, picked, maxCombination);
     if(ret) {
-      if(maxCombination.size - baseCombination.size > 3)
+      if(maxCombination.size > 6 && maxCombination.size - baseCombination.size > 3)
 	std::cout << " " << threadName << " builds on " << baseCombination << std::endl;
       waveSize = picked; // Update wave size based on pick
     }
@@ -1636,22 +1636,21 @@ namespace rectilinear {
     if(leftToPlace <= 1)
       return;
 
-    int processorCount = MAX(2, threadCount-1);//std::thread::hardware_concurrency();
-    std::cout << "Using " << processorCount << " builder threads" << std::endl;
+    int workerCount = MAX(2, threadCount-1);
 
     MultiBatchSizeBrickPicker picker(v, leftToPlace-1); // Shared picker
-    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
-    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
+    BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
+    for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
-    ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[processorCount];
-    std::thread **threads = new std::thread*[processorCount];
+    ThreadEnablingBuilder *threadBuilders = new ThreadEnablingBuilder[workerCount];
+    std::thread **threads = new std::thread*[workerCount];
 
-    for(int i = 0; i < processorCount; i++) {
+    for(int i = 0; i < workerCount; i++) {
       threadBuilders[i] = ThreadEnablingBuilder(baseCombination, waveStart+waveSize, &neighbourCache[i*MAX_HEIGHT], maxCombination, &picker, i, encodeConnectivity);
       threads[i] = new std::thread(&ThreadEnablingBuilder::build, std::ref(threadBuilders[i]));
     }
 
-    for(int i = 0; i < processorCount; i++) {
+    for(int i = 0; i < workerCount; i++) {
       threads[i]->join();
       addCountsFrom(threadBuilders[i].b, false);
       delete threads[i];
@@ -2470,7 +2469,7 @@ namespace rectilinear {
   void Lemma3Runner::run() {
     Base buildBase, registrationBase;
     while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
-      if(maxCombination->size - buildBase.layerSize > 3)
+      if(maxCombination->size > 6 && maxCombination->size - buildBase.layerSize > 3)
 	std::cout << threadName << " builds on " << buildBase << std::endl;
       CombinationBuilder builder(buildBase, neighbours, *maxCombination);
       builder.build();
@@ -2515,21 +2514,21 @@ namespace rectilinear {
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
     baseBuilder->reset(distances);
 
-    int processorCount = MAX(1, threadCount-1);
+    int workerCount = MAX(1, threadCount-1);
 
-    BrickPlane *neighbourCache = new BrickPlane[processorCount * MAX_HEIGHT];
-    for(int i = 0; i < processorCount * MAX_HEIGHT; i++)
+    BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
+    for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
       neighbourCache[i].unsetAll();
 
-    Lemma3Runner *builders = new Lemma3Runner[processorCount];
-    std::thread **threads = new std::thread*[processorCount];
+    Lemma3Runner *builders = new Lemma3Runner[workerCount];
+    std::thread **threads = new std::thread*[workerCount];
 
-    for(int i = 0; i < processorCount; i++) {
+    for(int i = 0; i < workerCount; i++) {
       builders[i] = Lemma3Runner(baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 
-    for(int i = 0; i < processorCount; i++) {
+    for(int i = 0; i < workerCount; i++) {
       threads[i]->join();
       delete threads[i];
     }

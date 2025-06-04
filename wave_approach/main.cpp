@@ -63,6 +63,7 @@ void printUsage() {
   std::cout << "P: Compute precomputations. Parameters: REFINEMENT MAX_DIST [THREADS]. Results of precomputations are saved to files in folder /base_<BASE>_size_<SIZE_TOTAL>_refinement_REFINEMENT. THREADS-1 worker threads will be spawned" << std::endl;
   std::cout << "S: Sum precomputations for a refinement. Parameters: LEFT BASE RIGHT MAX_DIST" << std::endl;
   std::cout << "T: Test precomputations against previous results. Parameters: BASE REFINEMENT MIN_DIST MAX_DIST FOLDER_SUFFIX" << std::endl;
+  std::cout << "X: Run a test suite with regression tests. No parameters needed." << std::endl;
 }
 
 int runSumPrecomputations(int argc, char** argv) {
@@ -370,6 +371,52 @@ int runPrecomputationComparison(int argc, char** argv) {
   return 0;
 }
 
+int runRegressionTests() {
+#ifndef DEBUG
+  std::cerr << "Please compile with -DDEBUG for test suite to test properly!" << std::endl;
+#endif
+  CountsMap m;
+  Combination::setupKnownCounts(m);
+
+  std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
+
+  uint8_t layerSizes[MAX_HEIGHT];
+  BrickPlane neighbours[MAX_BRICKS];
+  for(uint8_t i = 0; i < MAX_BRICKS; i++)
+    neighbours[i].unsetAll();
+
+  for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
+    uint64_t token = Combination::reverseToken(it->first);
+    uint8_t size = Combination::sizeOfToken(token);
+    if(size > 6)
+      continue; // Only perform tests on refinements up to size 6
+    Combination::getLayerSizesFromToken(token, layerSizes);
+    uint8_t height = Combination::heightOfToken(token);
+    bool ok = true;
+    for(int i = 1; i < height-1; i++)
+      if(layerSizes[i] == 1) {
+	ok = false;
+	break;
+      }
+    if(!ok)
+      continue; // Single brick layer in refinement: Not supported.
+
+    Combination maxCombination(token);
+    Combination combination;
+    CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
+    if(layerSizes[0] > 1)
+      b.buildSplit(3); // 2 worker threads
+    else
+      b.build();
+    b.report(token);
+  }
+
+  std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+  std::cout << "Test suite completed in " << duration.count() << " seconds" << std::endl;
+
+  return 0;
+}
+
 int main(int argc, char** argv) {
   if(argc < 2) {
     printUsage();
@@ -386,6 +433,8 @@ int main(int argc, char** argv) {
     return runSumPrecomputations(argc, argv);
   case 'T':
     return runPrecomputationComparison(argc, argv);
+  case 'X':
+    return runRegressionTests();
   default:
     printUsage();
     return 1;
