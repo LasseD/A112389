@@ -421,9 +421,6 @@ int runRegressionTests() {
     }
   }
 
-  std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
-  std::cout << "Test suite completed in " << duration.count() << " seconds" << std::endl;
-
   // Build precomputations max dist 24 (<41> to 8):
   int tokens[6] = {21, 22, 23, 221, 31, 41};
   for(int i = 0; i < 6; i++) {
@@ -445,6 +442,9 @@ int runRegressionTests() {
       return exitCode;
     }
   }
+
+  std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
+  std::cout << "Test suite completed in " << duration.count() << " seconds" << std::endl;
 
   return 0;
 }
