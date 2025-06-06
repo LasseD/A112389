@@ -215,7 +215,7 @@ int runRefinement(int argc, char** argv) {
 
   BrickPlane neighbours[MAX_BRICKS];
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
-      neighbours[i].unsetAll();
+      neighbours[i].reset();
 
   Combination combination;
   CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
@@ -379,6 +379,7 @@ int runPrecomputationComparison(int argc, char** argv) {
 int runRegressionTests() {
 #ifndef DEBUG
   std::cerr << "Please compile with -DDEBUG for test suite to test properly!" << std::endl;
+  return 1;
 #endif
   CountsMap m;
   Combination::setupKnownCounts(m);
@@ -389,7 +390,7 @@ int runRegressionTests() {
   uint8_t layerSizes[MAX_HEIGHT];
   BrickPlane neighbours[MAX_BRICKS];
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
-    neighbours[i].unsetAll();
+    neighbours[i].reset();
 
   for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
     uint64_t token = Combination::reverseToken(it->first);
@@ -407,6 +408,7 @@ int runRegressionTests() {
     if(!ok)
       continue; // Single brick layer in refinement: Not supported.
 
+    std::cout << "Testing computation of refinement " << token << std::endl;
     Combination maxCombination(token);
     Combination combination;
     CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
@@ -434,8 +436,8 @@ int runRegressionTests() {
 
     // Sum together to check results
     token = Combination::reverseToken(token);
-    int right = token / 10;
-    int left = Combination::reverseToken(right);
+    int left = token / 10;
+    int right = Combination::reverseToken(left);
     int exitCode = runSumPrecomputations(left, base, right, maxDist);
     if(exitCode != 0) {
       std::cerr << "Error during sums from precomputations" << std::endl;

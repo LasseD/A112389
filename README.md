@@ -1,10 +1,10 @@
-# Algorithms for counting models of 2 x 4 LEGO bricks
+# Counting all models of 2 x 4 LEGO bricks
 
 ## Results
 
 ### OEIS A112389
 
-[OEIS A112389](https://oeis.org/A112389) is the number of ways, counted up to symmetry, to build a contiguous model with n LEGO bricks of size 2 X 4. The following table contains the known values of this sequence, which we denote a(N).
+[OEIS A112389](https://oeis.org/A112389) is the number of ways, counted up to symmetry, to build a contiguous model with N LEGO bricks of size 2 X 4. The following table contains the known values of this sequence, which we denote a(N).
 
 | N  | a(N)              | Author(s)     |
 |:--:|------------------:|:-----------------------|
@@ -22,7 +22,7 @@
 
 ### OEIS A123829
 
-[OEIS A123829](https://oeis.org/A123829) is the number of ways, counted up to symmetry, to build a contiguous model with n LEGO bricks of size 2 X 4 which is **symmetric** after a rotation by 180 degrees. The following table contains the known values of this sequence, which we denote a<sup>180</sup>(N).
+[OEIS A123829](https://oeis.org/A123829) is the number of ways, counted up to symmetry, to build a contiguous model with N LEGO bricks of size 2 X 4 which is **symmetric** after a rotation by 180 degrees. The following table contains the known values of this sequence, which we denote a<sup>180</sup>(N).
 
 | N  | a<sup>180</sup>(N)| Author(s)     |
 |:--:|---------:|:-----------------------|

@@ -96,9 +96,12 @@ namespace rectilinear {
   typedef std::map<int64_t,Counts> CountsMap; // token -> counts
 
   struct BrickPlane {
-    bool bricks[2][PLANE_WIDTH][PLANE_WIDTH];
-    void unsetAll();
-    void set(const bool v, const int16_t x, const int16_t y, bool value);
+    uint8_t bricks[2][PLANE_WIDTH][PLANE_WIDTH];
+#ifdef DEBUG
+    int sum;
+#endif
+    void reset();
+    void set(const bool v, const int16_t x, const int16_t y, int8_t toAdd);
     void unset(const Brick &b);
     bool contains(const bool v, const int16_t x, const int16_t y);
   };
@@ -234,7 +237,7 @@ namespace rectilinear {
     std::mutex nextMutex;
   public:
     MultiBatchSizeBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
-    bool next(Combination &c, int &picked, const Combination &maxCombination);
+    void next(Combination &c, uint8_t &picked, const Combination &maxCombination);
   };
 
   typedef std::map<Base,Counts> CombinationCountsMap;
@@ -269,34 +272,33 @@ namespace rectilinear {
     void buildSplit(int threadCount);
     void report();
     Counts report(uint64_t returnToken); // Returns counts for token if present in results
-    bool addFromPicker(MultiBatchSizeBrickPicker *p, int &picked, const std::string &threadName);
+    int addFromPicker(MultiBatchSizeBrickPicker *p, const std::string &threadName);
     void removeFromPicker(int toRemove);
+    void addWaveToNeighbours(uint8_t toAdd);
   private:
-    void setNeighbours(bool value);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
-    void addCountsFrom(const CombinationBuilder &b, bool doubleCount);
+    void addCountsFrom(const CountsMap &counts, bool doubleCount);
   };
 
   class ThreadEnablingBuilder {
+    BrickPlane *neighbours;
+    Combination *maxCombination;
     MultiBatchSizeBrickPicker *picker;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
     std::string threadName;
   public:
-    CombinationBuilder b;
+    CountsMap cm;
 
     ThreadEnablingBuilder();
 
     ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
 
-    ThreadEnablingBuilder(Combination &c,
- 			  const uint8_t waveStart,
-			  BrickPlane *neighbours,
-			  Combination &maxCombination,
+    ThreadEnablingBuilder(BrickPlane *neighbours,
+			  Combination *maxCombination,
  			  MultiBatchSizeBrickPicker *picker,
-			  int threadIndex,
-			  bool encodeConnectivity);
+			  int threadIndex);
 
     void build();
   };
