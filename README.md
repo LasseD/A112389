@@ -1,4 +1,4 @@
-# Counting all models of 2 x 4 LEGO bricks
+# Counting models of 2 x 4 LEGO bricks
 
 ## Results
 
@@ -127,7 +127,7 @@ L1 thus provides us with an efficient method of computing the size of all refine
 
 ### Applying L1 to compute A112389
 
-The method from L1 is used in the python script "sum-for-size.py" where results for refinements without bottlenecks are being typed in, thus allowing you to compute the numbers a(N) and a<sup>180</sup>(N). As an example, compute the numbers for six bricks by typing:
+The method from L1 is used in the python script "sum-for-size.py" where results for refinements without bottlenecks are being typed in, thus allowing you to compute the numbers a(N) and a<sup>180</sup>(N). As an example, compute the numbers for six bricks by running:
 
 ```
 python sum-for-size.py 6

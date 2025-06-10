@@ -10,10 +10,16 @@
 // Set the MAX_ macros as tightly as possible for your computations.
 // Example:
 // Lemma 1 can be used to compute all of height 7 and up for 11 bricks,
-// so MAX_HEIGHT can be set to 6 for the computations needed here
+// so MAX_HEIGHT can be set to 5 for the computations needed here
+#ifdef DEBUG
+#define MAX_BRICKS 11
+#define MAX_HEIGHT 7
+#define MAX_LAYER_SIZE 9
+#else
 #define MAX_BRICKS 11
 #define MAX_HEIGHT 5
-#define MAX_LAYER_SIZE 7
+#define MAX_LAYER_SIZE 6
+#endif
 
 // These are used in bitmap lookups for checking positions of bricks:
 #define PLANE_MID 100
@@ -96,12 +102,14 @@ namespace rectilinear {
   typedef std::map<int64_t,Counts> CountsMap; // token -> counts
 
   struct BrickPlane {
-    uint8_t bricks[2][PLANE_WIDTH][PLANE_WIDTH];
+    int8_t bricks[2][PLANE_WIDTH][PLANE_WIDTH];
 #ifdef DEBUG
     int sum;
 #endif
     void reset();
-    void set(const bool v, const int16_t x, const int16_t y, int8_t toAdd);
+    void set(const bool v, const int16_t x, const int16_t y);
+    void set(const bool v, const int16_t x, const int16_t y, const int8_t add);
+    void unset(const bool v, const int16_t x, const int16_t y);
     void unset(const Brick &b);
     bool contains(const bool v, const int16_t x, const int16_t y);
   };
@@ -141,6 +149,8 @@ namespace rectilinear {
     void sortBricks();
     void translateMinToOrigo();
     bool canRotate90() const;
+    void mirrorX();
+    void mirrorY();
     void addBrick(const Brick &b, const uint8_t layer);
     int64_t encodeConnectivity(int64_t token);
     void removeLastBrick();
@@ -228,19 +238,26 @@ namespace rectilinear {
     bool next(Combination &c, const Combination &maxCombination);
   };
 
-  class MultiBatchSizeBrickPicker {
+  typedef std::map<Base,CountsMap> BaseResultsMap;
+  typedef std::map<Base,Base> CombinationMap;
+  typedef std::map<Combination,Counts> CombinationCountsMap;
+  typedef std::pair<bool,Combination> CombinationIdentification; // True if self
+
+  class SplitBuildingManager {
     const std::vector<LayerBrick> &v;
     const int maxPick;
     int toPick;
     LayerBrick bricks[MAX_BRICKS];
     BrickPicker *inner;
-    std::mutex nextMutex;
+    CombinationCountsMap countsMap; // Combination -> Counts
+    std::vector<Combination> combinations;
+    std::mutex mutex;
   public:
-    MultiBatchSizeBrickPicker(const std::vector<LayerBrick> &v, const int maxPick);
-    void next(Combination &c, uint8_t &picked, const Combination &maxCombination);
+    SplitBuildingManager(const std::vector<LayerBrick> &v, const int maxPick);
+    uint8_t next(Combination &c, const Combination &maxCombination);
+    void add(const Combination &c, const Counts &counts);
+    Counts getCounts() const;
   };
-
-  typedef std::map<Base,Counts> CombinationCountsMap;
 
   class CombinationBuilder {
     Combination baseCombination;
@@ -269,12 +286,9 @@ namespace rectilinear {
     CombinationBuilder();
 
     void build();
-    void buildSplit(int threadCount);
     void report();
     Counts report(uint64_t returnToken); // Returns counts for token if present in results
-    int addFromPicker(MultiBatchSizeBrickPicker *p, const std::string &threadName);
-    void removeFromPicker(int toRemove);
-    void addWaveToNeighbours(uint8_t toAdd);
+    void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
@@ -282,24 +296,44 @@ namespace rectilinear {
     void addCountsFrom(const CountsMap &counts, bool doubleCount);
   };
 
-  class ThreadEnablingBuilder {
+  class NonEncodingCombinationBuilder {
+    Combination baseCombination;
+    uint8_t waveStart, waveSize;
+    BrickPlane *neighbours;
+    Combination maxCombination;
+  public:
+    NonEncodingCombinationBuilder(const Combination &c,
+				  const uint8_t waveStart,
+				  const uint8_t waveSize,
+				  BrickPlane *neighbours,
+				  Combination &maxCombination);
+    NonEncodingCombinationBuilder(const NonEncodingCombinationBuilder& b);
+    NonEncodingCombinationBuilder();
+
+    Counts build();
+    Counts buildSplit(int threadCount);
+    int addFrom(SplitBuildingManager *manager, const std::string &threadName);
+    void countAndRemoveFrom(SplitBuildingManager *manager, const Counts &counts, int toRemove);
+    void addWaveToNeighbours(int8_t add);
+  private:
+    void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
+    bool nextCombinationCanBeSymmetric180();
+    Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
+  };
+
+  class SplitBuildingBuilder {
     BrickPlane *neighbours;
     Combination *maxCombination;
-    MultiBatchSizeBrickPicker *picker;
+    SplitBuildingManager *manager;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
     std::string threadName;
   public:
-    CountsMap cm;
-
-    ThreadEnablingBuilder();
-
-    ThreadEnablingBuilder(const ThreadEnablingBuilder &b);
-
-    ThreadEnablingBuilder(BrickPlane *neighbours,
+    SplitBuildingBuilder();
+    SplitBuildingBuilder(const SplitBuildingBuilder &b);
+    SplitBuildingBuilder(BrickPlane *neighbours,
 			  Combination *maxCombination,
- 			  MultiBatchSizeBrickPicker *picker,
+ 			  SplitBuildingManager *manager,
 			  int threadIndex);
-
     void build();
   };
 
@@ -343,9 +377,6 @@ namespace rectilinear {
     void writeUInt32(uint32_t toWrite); // Used for total
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
-
-  typedef std::map<Base,CountsMap> CombinationResultsMap;
-  typedef std::map<Base,Base> CombinationMap;
 
   struct Report {
     uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
@@ -420,7 +451,7 @@ namespace rectilinear {
     IBaseProducer *innerBuilder;
     BitWriter *writer;
   public:
-    CombinationResultsMap resultsMap; // Base -> Result
+    BaseResultsMap resultsMap; // Base -> Result
     std::vector<BaseWithID> bases;
     std::mutex mutex;
     int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here

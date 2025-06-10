@@ -217,18 +217,14 @@ int runRefinement(int argc, char** argv) {
   for(uint8_t i = 0; i < MAX_BRICKS; i++)
       neighbours[i].reset();
 
-  Combination combination;
-  CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
-  if(threads > 2) {
-    std::cout << "Running with " << threads << " threads for <" << token << "> of size " << (int)maxCombination.size << std::endl;
-    b.buildSplit(threads);
-  }
-  else {
-    std::cout << "Running single threaded for <" << token << "> of size " << (int)maxCombination.size << std::endl;
-    b.build();
-  }
+  Counts counts;
 
-  Counts counts = b.report(token);
+  Combination combination;
+  NonEncodingCombinationBuilder b(combination, 0, 1, neighbours, maxCombination);
+  std::cout << "Counting for <" << token << "> of size " << (int)maxCombination.size << std::endl;
+  counts = b.buildSplit(threads);
+  Combination::checkCounts(token, counts);
+
   std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
   std::cout << "Computation time: " << duration.count() << " seconds" << std::endl;
 
@@ -395,8 +391,8 @@ int runRegressionTests() {
   for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
     uint64_t token = Combination::reverseToken(it->first);
     uint8_t size = Combination::sizeOfToken(token);
-    if(size > 6)
-      continue; // Only perform tests on refinements up to size 6
+    if(size >= 9 || it->second.all > 100000000)
+      continue;
     Combination::getLayerSizesFromToken(token, layerSizes);
     uint8_t height = Combination::heightOfToken(token);
     bool ok = true;
@@ -411,14 +407,10 @@ int runRegressionTests() {
     std::cout << "Testing computation of refinement " << token << std::endl;
     Combination maxCombination(token);
     Combination combination;
-    CombinationBuilder b(combination, 0, 1, neighbours, maxCombination, true, false, true);
-    if(layerSizes[0] > 1)
-      b.buildSplit(3); // 2 worker threads
-    else
-      b.build();
-    Counts xCheck = b.report(token);
+    NonEncodingCombinationBuilder b(combination, 0, 1, neighbours, maxCombination);
+    Counts xCheck = b.buildSplit(3); // 2 worker threads
     if(xCheck != it->second) {
-      std::cerr << "Exiting due to cross check error" << std::endl;
+      std::cerr << "Exiting due to cross check error: " << xCheck << " != " << it->second << std::endl;
       return 2;
     }
   }
