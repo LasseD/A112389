@@ -1402,7 +1402,10 @@ namespace rectilinear {
     waveStart(waveStart),
     waveSize(waveSize),
     neighbours(neighbours),
-    maxCombination(maxCombination) {
+    maxCombination(maxCombination),
+    noSkip(0),
+    skipSimon(0),
+    skipPlaceAll(0) {
   }
 
   CombinationBuilder::CombinationBuilder(const Base &c,
@@ -1434,7 +1437,10 @@ namespace rectilinear {
     waveStart(b.waveStart),
     waveSize(b.waveSize),
     neighbours(b.neighbours),
-    maxCombination(b.maxCombination) {
+    maxCombination(b.maxCombination),
+    noSkip(b.noSkip),
+    skipSimon(b.skipSimon),
+    skipPlaceAll(b.skipPlaceAll) {
   }
 
   CombinationBuilder::CombinationBuilder() : waveStart(0),
@@ -1446,7 +1452,10 @@ namespace rectilinear {
 
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
 								   waveSize(0),
-								   neighbours(NULL) {}
+								   neighbours(NULL),
+								   noSkip(0),
+								   skipSimon(0),
+								   skipPlaceAll(0) {}
 
   void CombinationBuilder::addWaveToNeighbours(int8_t add) {
     for(uint8_t i = 0; i < waveSize; i++) {
@@ -1771,6 +1780,47 @@ namespace rectilinear {
     }
   }
 
+  /*
+    The last time A112389 was improved, it was by Simon (2018) who used the
+    following approach:
+    a(N) = all(N) - overlap(N)
+    where:
+    - all(N) counts all models, ignoring colissions between bricks
+    - overlap(N) counts all models with colissions between bricks
+
+    Algorithm from Simon runs in O(N+V^2)
+    Algorithm from placeAllLeftToPlace runs in O(V^N)
+   */
+  uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) {
+    // all(N)
+    uint64_t all = 1;
+    for(uint64_t i = 0; i < N; i++)
+      all *= N-i;
+
+    // overlap(N)
+    uint64_t overlap = 0;
+    int V = (int)v.size();
+    for(int i = 0; i < V; i++) {
+      bool ok = true;
+      for(int j = 0; j < i; j++) {
+	if(v[i].intersects(v[j])) {
+	  ok = false;
+	  break;
+	}
+      }
+      if(!ok)
+	continue; // Intersects with previous brick, so already counted;
+      int cntIntersecting = 0;
+      for(int j = i+1; j < V; j++)
+	if(v[i].intersects(v[j]))
+	  cntIntersecting++;
+      uint64_t toAdd = 1;
+      
+    }
+
+    return all-overlap;
+  }
+
   Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
     // Optimization: Check if all layers can be filled:
     // "non-full" layers: Layers that are not filled by v:
@@ -1796,6 +1846,17 @@ namespace rectilinear {
       return Counts(); // Can't possibly fill!
     // End of optimization
 
+    // Optimization: Check if algorithm by Simon (2018) can be used:
+    if(!canBeSymmetric180) {
+      uint64_t nonSymmetric = simon(leftToPlace, v);
+      if(nonSymmetric > 0) {
+	skipSimon++;
+	return Counts(nonSymmetric, 0, 0);
+      }
+    }
+    skipPlaceAll++;
+
+    // Try all combinations:
     Counts ret;
     BrickPicker picker(v, 0, leftToPlace);
     while(picker.next(baseCombination, maxCombination)) {
@@ -1996,9 +2057,6 @@ namespace rectilinear {
 
   /*
     Split building only from base <1>
-    Optimizations TODO:
-    - Maintain mirror and rotation symmetry
-    - Simon optimization
    */
   Counts NonEncodingCombinationBuilder::buildSplit(int threadCount) {
     assert(waveStart == 0);
@@ -2012,8 +2070,9 @@ namespace rectilinear {
 
     Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
-    if(leftToPlace > 1) {
-      int workerCount = MAX(2, threadCount-1); // Split run with at least 2 threads
+    if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
+      noSkip++;
+      int workerCount = MAX(1, threadCount-1); // Run with at least 1 thread
       if(maxCombination.size >= 7)
 	std::cout << " Using " << workerCount << " worker threads" << std::endl;
       SplitBuildingManager manager(v, leftToPlace-1); // Shared picker
@@ -2052,6 +2111,9 @@ namespace rectilinear {
     if(ret.symmetric90 > 0)
       ret.symmetric90 /= ls0 / 2;
 
+    // Report:
+    std::cout << "Skips: Simon=" << skipSimon << ", PlaceAll=" << skipPlaceAll << ", No skip=" << noSkip << std::endl;
+    
     return ret;
   }
 

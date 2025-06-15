@@ -301,6 +301,7 @@ namespace rectilinear {
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
+    uint64_t noSkip, skipSimon, skipPlaceAll;
   public:
     NonEncodingCombinationBuilder(const Combination &c,
 				  const uint8_t waveStart,
@@ -318,6 +319,7 @@ namespace rectilinear {
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
+    uint64_t simon(const uint8_t &N, const std::vector<LayerBrick> &v);
     Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
   };
 
