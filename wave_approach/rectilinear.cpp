@@ -167,7 +167,7 @@ namespace rectilinear {
   }
 
   bool BrickPicker::checkVIdx(const Combination &c, const Combination &maxCombination) const {
-    // Check for colissions against placed bricks:
+    // Check for collisions against placed bricks:
     uint8_t layer = v[vIdx].LAYER;
     assert(layer <= c.height);
     if(c.height == layer)
@@ -1812,11 +1812,15 @@ namespace rectilinear {
 
   /*
     The last time A112389 was improved, it was by Simon (2018) who used the
-    following approach:
+    following formula:
     a(N) = all(N) - overlap(N)
     where:
-    - all(N) counts all models, ignoring colissions between bricks
-    - overlap(N) counts all models with colissions between bricks
+    - all(N) counts all models, ignoring collisions between bricks
+    - overlap(N) counts all models with collisions between bricks
+    This computation is faster than iterating through a(N) since:
+    - all(N) is the binomial coefficient, which can be computed quickly.
+    - overlap(N) has to iterate through all combinations with intersections, but
+      iteration stops when the first overlap is encountered.
    */
   uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) const {
     // all(N) is just the binomial coefficient:
