@@ -1402,10 +1402,7 @@ namespace rectilinear {
     waveStart(waveStart),
     waveSize(waveSize),
     neighbours(neighbours),
-    maxCombination(maxCombination),
-    noSkip(0),
-    skipSimon(0),
-    skipPlaceAll(0) {
+    maxCombination(maxCombination) {
   }
 
   CombinationBuilder::CombinationBuilder(const Base &c,
@@ -1437,10 +1434,7 @@ namespace rectilinear {
     waveStart(b.waveStart),
     waveSize(b.waveSize),
     neighbours(b.neighbours),
-    maxCombination(b.maxCombination),
-    noSkip(b.noSkip),
-    skipSimon(b.skipSimon),
-    skipPlaceAll(b.skipPlaceAll) {
+    maxCombination(b.maxCombination) {
   }
 
   CombinationBuilder::CombinationBuilder() : waveStart(0),
@@ -1452,10 +1446,7 @@ namespace rectilinear {
 
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
 								   waveSize(0),
-								   neighbours(NULL),
-								   noSkip(0),
-								   skipSimon(0),
-								   skipPlaceAll(0) {}
+								   neighbours(NULL) {}
 
   void CombinationBuilder::addWaveToNeighbours(int8_t add) {
     for(uint8_t i = 0; i < waveSize; i++) {
@@ -1781,54 +1772,103 @@ namespace rectilinear {
   }
 
   /*
+    Number of ways to place N bricks from v with intersections
+   */
+  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<LayerBrick> &v, int vIndex) const {
+#ifdef TRACE
+    std::cout << "  countInvalid";
+    for(int i = 0; i < combinationSize; i++)
+      std::cout << " " << combination[i];
+    std::cout << ", N=" << N << std::endl;
+#endif
+    if(vIndex == (int)v.size() || N == 0)
+      return 0;
+
+    uint64_t ret = 0;
+    int vSize = (int)v.size();
+
+    for(; vIndex < vSize-N+1; vIndex++) {
+      const Brick &b = v[vIndex].first;
+
+      bool hasIntersection = false;
+      for(int i = 0; i < combinationSize; i++) {
+	if(combination[i].intersects(b)) {
+	  hasIntersection = true;
+	  break;
+	}
+      }
+
+      if(hasIntersection) {
+	uint64_t toAdd = 1;
+	uint64_t vSizeRemaining = vSize - vIndex - 1;
+	for(int i = 0; i < N-1; i++)
+	  toAdd *= vSizeRemaining - i;
+	for(int i = 2; i < N; i++)
+	  toAdd /= i;
+	ret += toAdd;
+#ifdef TRACE
+	std::cout << "   " << b << " intersects => " << toAdd << " to add from " << vSizeRemaining << std::endl;
+#endif
+      }
+      else {
+	combination[combinationSize] = b;
+#ifdef TRACE
+	std::cout << "   " << b << " clean =>" << std::endl;
+#endif
+	ret += countInvalid(combination, combinationSize+1, N-1, v, vIndex+1);
+      }
+    }
+
+    return ret;
+  }
+
+  /*
     The last time A112389 was improved, it was by Simon (2018) who used the
     following approach:
     a(N) = all(N) - overlap(N)
     where:
     - all(N) counts all models, ignoring colissions between bricks
     - overlap(N) counts all models with colissions between bricks
-
-    Algorithm from Simon runs in O(N+V^2)
-    Algorithm from placeAllLeftToPlace runs in O(V^N)
    */
-  uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) {
-    // all(N)
+  uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) const {
+    // all(N) is binomial coefficient:
     uint64_t all = 1;
     for(uint64_t i = 0; i < N; i++)
-      all *= N-i;
+      all *= ((int)v.size()) - i;
+    for(uint64_t i = 2; i <= N; i++)
+      all /= i;
 
     // overlap(N)
-    uint64_t overlap = 0;
-    int V = (int)v.size();
-    for(int i = 0; i < V; i++) {
-      bool ok = true;
-      for(int j = 0; j < i; j++) {
-	if(v[i].intersects(v[j])) {
-	  ok = false;
-	  break;
-	}
-      }
-      if(!ok)
-	continue; // Intersects with previous brick, so already counted;
-      int cntIntersecting = 0;
-      for(int j = i+1; j < V; j++)
-	if(v[i].intersects(v[j]))
-	  cntIntersecting++;
-      uint64_t toAdd = 1;
-      
-    }
+    Brick *c = new Brick[N];
+    uint64_t overlap = countInvalid(c, 0, N, v, 0);
+    delete[] c;
+
+#ifdef TRACE
+    std::cout << " Simon: N=" << (int)N << ", all=" << all << ", overlap=" << overlap << ", |v|=" << v.size() << std::endl << " ";
+    for(int i = 0; i < (int)v.size(); i++)
+      std::cout << " " << v[i].first;
+    std::cout << std::endl;
+    std::cout << "Base: " << baseCombination << std::endl;
+#endif
+    assert(all >= overlap);
 
     return all-overlap;
   }
 
   Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+
+    // Special case: 1 left to place, and can not be symmetric:
+    if(!canBeSymmetric180 && leftToPlace == 1)
+      return Counts(v.size(), 0, 0);
+
     // Optimization: Check if all layers can be filled:
     // "non-full" layers: Layers that are not filled by v:
-    int cntNonFillableLayers = 0;
+    int cntNonFullLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
-	cntNonFillableLayers++;
+	cntNonFullLayers++;
     }
+    int cntNonFillableLayers = cntNonFullLayers;
     bool checkedLayers[MAX_HEIGHT];
     for(uint8_t i = 0; i < maxCombination.height; i++)
       checkedLayers[i] = false;
@@ -1847,14 +1887,15 @@ namespace rectilinear {
     // End of optimization
 
     // Optimization: Check if algorithm by Simon (2018) can be used:
-    if(!canBeSymmetric180) {
-      uint64_t nonSymmetric = simon(leftToPlace, v);
+    uint64_t nonSymmetric = 0;
+    if(!canBeSymmetric180 && cntNonFullLayers == 1) {
+      nonSymmetric = simon(leftToPlace, v);
+#ifndef DEBUG
       if(nonSymmetric > 0) {
-	skipSimon++;
 	return Counts(nonSymmetric, 0, 0);
       }
+#endif
     }
-    skipPlaceAll++;
 
     // Try all combinations:
     Counts ret;
@@ -1869,6 +1910,13 @@ namespace rectilinear {
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
+#ifdef DEBUG
+    if(nonSymmetric > 0 && ret.all != nonSymmetric) {
+      std::cerr << "Miscount! Simon=" << nonSymmetric << ", old=" << ret << std::endl;
+      std::cerr << "Base: " << baseCombination << std::endl;
+      assert(false);
+    }
+#endif
     return ret;
   }
 
@@ -2071,7 +2119,6 @@ namespace rectilinear {
     Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
     if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
-      noSkip++;
       int workerCount = MAX(1, threadCount-1); // Run with at least 1 thread
       if(maxCombination.size >= 7)
 	std::cout << " Using " << workerCount << " worker threads" << std::endl;
@@ -2111,9 +2158,6 @@ namespace rectilinear {
     if(ret.symmetric90 > 0)
       ret.symmetric90 /= ls0 / 2;
 
-    // Report:
-    std::cout << "Skips: Simon=" << skipSimon << ", PlaceAll=" << skipPlaceAll << ", No skip=" << noSkip << std::endl;
-    
     return ret;
   }
 
