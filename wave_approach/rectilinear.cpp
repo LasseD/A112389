@@ -167,7 +167,7 @@ namespace rectilinear {
   }
 
   bool BrickPicker::checkVIdx(const Combination &c, const Combination &maxCombination) const {
-    // Check for colissions against placed bricks:
+    // Check for collisions against placed bricks:
     uint8_t layer = v[vIdx].LAYER;
     assert(layer <= c.height);
     if(c.height == layer)
@@ -1771,14 +1771,88 @@ namespace rectilinear {
     }
   }
 
+  /*
+    Number of ways to place N bricks from v with intersections
+   */
+  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<LayerBrick> &v, int vIndex) const {
+    if(vIndex == (int)v.size() || N == 0)
+      return 0;
+
+    uint64_t ret = 0;
+    int vSize = (int)v.size();
+
+    for(; vIndex < vSize-N+1; vIndex++) {
+      const Brick &b = v[vIndex].first;
+
+      bool hasIntersection = false;
+      for(int i = 0; i < combinationSize; i++) {
+	if(combination[i].intersects(b)) {
+	  hasIntersection = true;
+	  break;
+	}
+      }
+
+      if(hasIntersection) {
+	uint64_t toAdd = 1;
+	uint64_t vSizeRemaining = vSize - vIndex - 1;
+	for(int i = 0; i < N-1; i++)
+	  toAdd *= vSizeRemaining - i;
+	for(int i = 2; i < N; i++)
+	  toAdd /= i;
+	ret += toAdd;
+      }
+      else {
+	combination[combinationSize] = b;
+	ret += countInvalid(combination, combinationSize+1, N-1, v, vIndex+1);
+      }
+    }
+
+    return ret;
+  }
+
+  /*
+    The last time A112389 was improved, it was by Simon (2018) who used the
+    following formula:
+    a(N) = all(N) - overlap(N)
+    where:
+    - all(N) counts all models, ignoring collisions between bricks
+    - overlap(N) counts all models with collisions between bricks
+    This computation is faster than iterating through a(N) since:
+    - all(N) is the binomial coefficient, which can be computed quickly.
+    - overlap(N) has to iterate through all combinations with intersections, but
+      iteration stops when the first overlap is encountered.
+   */
+  uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) const {
+    // all(N) is just the binomial coefficient:
+    uint64_t all = 1;
+    for(uint64_t i = 0; i < N; i++)
+      all *= ((int)v.size()) - i;
+    for(uint64_t i = 2; i <= N; i++)
+      all /= i;
+
+    // overlap(N)
+    Brick *c = new Brick[N];
+    uint64_t overlap = countInvalid(c, 0, N, v, 0);
+    delete[] c;
+
+    assert(all >= overlap);
+    return all-overlap;
+  }
+
   Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+
+    // Special case: 1 left to place, and can not be symmetric:
+    if(!canBeSymmetric180 && leftToPlace == 1)
+      return Counts(v.size(), 0, 0);
+
     // Optimization: Check if all layers can be filled:
     // "non-full" layers: Layers that are not filled by v:
-    int cntNonFillableLayers = 0;
+    int cntNonFullLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
-	cntNonFillableLayers++;
+	cntNonFullLayers++;
     }
+    int cntNonFillableLayers = cntNonFullLayers;
     bool checkedLayers[MAX_HEIGHT];
     for(uint8_t i = 0; i < maxCombination.height; i++)
       checkedLayers[i] = false;
@@ -1796,6 +1870,15 @@ namespace rectilinear {
       return Counts(); // Can't possibly fill!
     // End of optimization
 
+    // Optimization: Check if algorithm by Simon (2018) can be used:
+    if(!canBeSymmetric180 && cntNonFullLayers == 1) {
+      uint64_t nonSymmetric = simon(leftToPlace, v);
+      if(nonSymmetric > 0) {
+	return Counts(nonSymmetric, 0, 0);
+      }
+    }
+
+    // Try all combinations:
     Counts ret;
     BrickPicker picker(v, 0, leftToPlace);
     while(picker.next(baseCombination, maxCombination)) {
@@ -1808,6 +1891,7 @@ namespace rectilinear {
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
+
     return ret;
   }
 
@@ -1996,9 +2080,6 @@ namespace rectilinear {
 
   /*
     Split building only from base <1>
-    Optimizations TODO:
-    - Maintain mirror and rotation symmetry
-    - Simon optimization
    */
   Counts NonEncodingCombinationBuilder::buildSplit(int threadCount) {
     assert(waveStart == 0);
@@ -2012,8 +2093,8 @@ namespace rectilinear {
 
     Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
-    if(leftToPlace > 1) {
-      int workerCount = MAX(2, threadCount-1); // Split run with at least 2 threads
+    if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
+      int workerCount = MAX(1, threadCount-1); // Run with at least 1 thread
       if(maxCombination.size >= 7)
 	std::cout << " Using " << workerCount << " worker threads" << std::endl;
       SplitBuildingManager manager(v, leftToPlace-1); // Shared picker
