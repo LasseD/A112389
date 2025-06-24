@@ -1775,12 +1775,6 @@ namespace rectilinear {
     Number of ways to place N bricks from v with intersections
    */
   uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<LayerBrick> &v, int vIndex) const {
-#ifdef TRACE
-    std::cout << "  countInvalid";
-    for(int i = 0; i < combinationSize; i++)
-      std::cout << " " << combination[i];
-    std::cout << ", N=" << N << std::endl;
-#endif
     if(vIndex == (int)v.size() || N == 0)
       return 0;
 
@@ -1806,15 +1800,9 @@ namespace rectilinear {
 	for(int i = 2; i < N; i++)
 	  toAdd /= i;
 	ret += toAdd;
-#ifdef TRACE
-	std::cout << "   " << b << " intersects => " << toAdd << " to add from " << vSizeRemaining << std::endl;
-#endif
       }
       else {
 	combination[combinationSize] = b;
-#ifdef TRACE
-	std::cout << "   " << b << " clean =>" << std::endl;
-#endif
 	ret += countInvalid(combination, combinationSize+1, N-1, v, vIndex+1);
       }
     }
@@ -1831,7 +1819,7 @@ namespace rectilinear {
     - overlap(N) counts all models with colissions between bricks
    */
   uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) const {
-    // all(N) is binomial coefficient:
+    // all(N) is just the binomial coefficient:
     uint64_t all = 1;
     for(uint64_t i = 0; i < N; i++)
       all *= ((int)v.size()) - i;
@@ -1843,15 +1831,7 @@ namespace rectilinear {
     uint64_t overlap = countInvalid(c, 0, N, v, 0);
     delete[] c;
 
-#ifdef TRACE
-    std::cout << " Simon: N=" << (int)N << ", all=" << all << ", overlap=" << overlap << ", |v|=" << v.size() << std::endl << " ";
-    for(int i = 0; i < (int)v.size(); i++)
-      std::cout << " " << v[i].first;
-    std::cout << std::endl;
-    std::cout << "Base: " << baseCombination << std::endl;
-#endif
     assert(all >= overlap);
-
     return all-overlap;
   }
 
@@ -1887,14 +1867,11 @@ namespace rectilinear {
     // End of optimization
 
     // Optimization: Check if algorithm by Simon (2018) can be used:
-    uint64_t nonSymmetric = 0;
     if(!canBeSymmetric180 && cntNonFullLayers == 1) {
-      nonSymmetric = simon(leftToPlace, v);
-#ifndef DEBUG
+      uint64_t nonSymmetric = simon(leftToPlace, v);
       if(nonSymmetric > 0) {
 	return Counts(nonSymmetric, 0, 0);
       }
-#endif
     }
 
     // Try all combinations:
@@ -1910,13 +1887,7 @@ namespace rectilinear {
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
-#ifdef DEBUG
-    if(nonSymmetric > 0 && ret.all != nonSymmetric) {
-      std::cerr << "Miscount! Simon=" << nonSymmetric << ", old=" << ret << std::endl;
-      std::cerr << "Base: " << baseCombination << std::endl;
-      assert(false);
-    }
-#endif
+
     return ret;
   }
 
