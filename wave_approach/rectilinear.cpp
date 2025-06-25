@@ -1774,15 +1774,15 @@ namespace rectilinear {
   /*
     Number of ways to place N bricks from v with intersections
    */
-  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<LayerBrick> &v, int vIndex) const {
+  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<Brick> &v, int vIndex) const {
     if(vIndex == (int)v.size() || N == 0)
       return 0;
 
     uint64_t ret = 0;
-    int vSize = (int)v.size();
+    int vSize = v.size();
 
     for(; vIndex < vSize-N+1; vIndex++) {
-      const Brick &b = v[vIndex].first;
+      const Brick &b = v[vIndex];
 
       bool hasIntersection = false;
       for(int i = 0; i < combinationSize; i++) {
@@ -1823,23 +1823,41 @@ namespace rectilinear {
       iteration stops when the first overlap is encountered.
    */
   uint64_t NonEncodingCombinationBuilder::simon(const uint8_t &N, const std::vector<LayerBrick> &v) const {
-    // all(N) is just the binomial coefficient:
-    uint64_t all = 1;
-    for(uint64_t i = 0; i < N; i++)
-      all *= ((int)v.size()) - i;
-    for(uint64_t i = 2; i <= N; i++)
-      all /= i;
+    uint64_t ret = 1;
 
-    // overlap(N)
-    Brick *c = new Brick[N];
-    uint64_t overlap = countInvalid(c, 0, N, v, 0);
-    delete[] c;
+    // Handle all layers to be filled:
+    for(uint8_t layer = 0; layer < maxCombination.height; layer++) {
+      uint64_t N2 = layer >= baseCombination.height ? maxCombination.layerSizes[layer] : maxCombination.layerSizes[layer] - baseCombination.layerSizes[layer];
+      if(N2 == 0)
+	continue; // Skip full layer
 
-    assert(all >= overlap);
-    return all-overlap;
+      std::vector<Brick> v2;
+      for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+	if(it->LAYER == layer)
+	  v2.push_back(it->BRICK);
+      }
+
+      // all(N) is just the binomial coefficient:
+      uint64_t all = 1;
+      for(uint64_t i = 0; i < N2; i++)
+	all *= ((uint64_t)v2.size()) - i;
+      for(uint64_t i = 2; i <= N2; i++)
+	all /= i;
+
+      // overlap(N)
+      Brick *c = new Brick[N2];
+      uint64_t overlap = countInvalid(c, 0, N2, v2, 0);
+      delete[] c;
+
+      assert(all >= overlap);
+      ret *= all-overlap;
+    }
+
+    return ret;
   }
 
   Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+    assert(leftToPlace > 0);
 
     // Special case: 1 left to place, and can not be symmetric:
     if(!canBeSymmetric180 && leftToPlace == 1)
@@ -1871,11 +1889,10 @@ namespace rectilinear {
     // End of optimization
 
     // Optimization: Check if algorithm by Simon (2018) can be used:
-    if(!canBeSymmetric180 && cntNonFullLayers == 1) {
+    if(!canBeSymmetric180) {
       uint64_t nonSymmetric = simon(leftToPlace, v);
-      if(nonSymmetric > 0) {
+      if(nonSymmetric > 0)
 	return Counts(nonSymmetric, 0, 0);
-      }
     }
 
     // Try all combinations:
