@@ -318,7 +318,7 @@ namespace rectilinear {
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     bool nextCombinationCanBeSymmetric180();
-    uint64_t countInvalid(Brick *combination, int combinationSize, int N, const std::vector<Brick> &v, const int vIndex) const;
+    uint64_t countInvalid(Brick *combination, int combinationSize, int N, Brick const * const v, const int sizeV, const int vIndex) const;
     uint64_t simon(const uint8_t &N, const std::vector<LayerBrick> &v) const;
     Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
   };

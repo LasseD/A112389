@@ -250,6 +250,31 @@ namespace rectilinear {
       Combination c2(c);
       //c.translateMinToOrigo(); Not needed, as FirstBrick is only brick at base layer
       c2.sortBricks();
+
+      // Check mirrored:
+      Combination mx(c2);
+      mx.mirrorX();
+      if(countsMap.find(mx) != countsMap.end()) {
+	combinations.push_back(mx);
+#ifdef TRACE
+	std::cout << " SKIP Mirror x " << mx << std::endl;
+#endif
+	for(uint8_t i = 0; i < toPick; i++)
+	  c.removeLastBrick();
+	continue; // Point to mirrored. Next!
+      }
+      Combination my(c2);
+      my.mirrorY();
+      if(countsMap.find(my) != countsMap.end()) {
+	combinations.push_back(my);
+#ifdef TRACE
+	std::cout << " SKIP Mirror y " << my << std::endl;
+#endif
+	for(uint8_t i = 0; i < toPick; i++)
+	  c.removeLastBrick();
+	continue; // Point to mirrored. Next!
+      }
+
       if(!c2.is180Symmetric()) {
 	// Check rotated:
 	Combination rotated(c2);
@@ -262,30 +287,6 @@ namespace rectilinear {
 	  for(uint8_t i = 0; i < toPick; i++)
 	    c.removeLastBrick();
 	  continue; // Point to rotated. Next!
-	}
-
-	// Check mirrored:
-	Combination mx(c2);
-	mx.mirrorX();
-	if(countsMap.find(mx) != countsMap.end()) {
-	  combinations.push_back(mx);
-#ifdef TRACE
-	  std::cout << " SKIP Mirror x " << mx << std::endl;
-#endif
-	  for(uint8_t i = 0; i < toPick; i++)
-	    c.removeLastBrick();
-	  continue; // Point to mirrored. Next!
-	}
-	Combination my(c2);
-	my.mirrorY();
-	if(countsMap.find(my) != countsMap.end()) {
-	  combinations.push_back(my);
-#ifdef TRACE
-	  std::cout << " SKIP Mirror y " << my << std::endl;
-#endif
-	  for(uint8_t i = 0; i < toPick; i++)
-	    c.removeLastBrick();
-	  continue; // Point to mirrored. Next!
 	}
       }
       combinations.push_back(c2);
@@ -1774,14 +1775,13 @@ namespace rectilinear {
   /*
     Number of ways to place N bricks from v with intersections
    */
-  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, const std::vector<Brick> &v, int vIndex) const {
-    if(vIndex == (int)v.size() || N == 0)
+  uint64_t NonEncodingCombinationBuilder::countInvalid(Brick *combination, int combinationSize, int N, Brick const * const v, const int sizeV, int vIndex) const {
+    if(vIndex == sizeV || N == 0)
       return 0;
 
     uint64_t ret = 0;
-    int vSize = v.size();
 
-    for(; vIndex < vSize-N+1; vIndex++) {
+    for(; vIndex < sizeV-N+1; vIndex++) {
       const Brick &b = v[vIndex];
 
       bool hasIntersection = false;
@@ -1794,16 +1794,16 @@ namespace rectilinear {
 
       if(hasIntersection) {
 	uint64_t toAdd = 1;
-	uint64_t vSizeRemaining = vSize - vIndex - 1;
+	uint64_t sizeVRemaining = sizeV - vIndex - 1;
 	for(int i = 0; i < N-1; i++)
-	  toAdd *= vSizeRemaining - i;
+	  toAdd *= sizeVRemaining - i;
 	for(int i = 2; i < N; i++)
 	  toAdd /= i;
 	ret += toAdd;
       }
       else {
 	combination[combinationSize] = b;
-	ret += countInvalid(combination, combinationSize+1, N-1, v, vIndex+1);
+	ret += countInvalid(combination, combinationSize+1, N-1, v, sizeV, vIndex+1);
       }
     }
 
@@ -1826,32 +1826,33 @@ namespace rectilinear {
     uint64_t ret = 1;
 
     // Handle all layers to be filled:
+    Brick *c = new Brick[N], *v2 = new Brick[v.size()];
     for(uint8_t layer = 0; layer < maxCombination.height; layer++) {
       uint64_t N2 = layer >= baseCombination.height ? maxCombination.layerSizes[layer] : maxCombination.layerSizes[layer] - baseCombination.layerSizes[layer];
       if(N2 == 0)
 	continue; // Skip full layer
 
-      std::vector<Brick> v2;
+      int v2Size = 0;
       for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
 	if(it->LAYER == layer)
-	  v2.push_back(it->BRICK);
+	  v2[v2Size++] = it->BRICK;
       }
 
       // all(N) is just the binomial coefficient:
       uint64_t all = 1;
       for(uint64_t i = 0; i < N2; i++)
-	all *= ((uint64_t)v2.size()) - i;
+	all *= v2Size - i;
       for(uint64_t i = 2; i <= N2; i++)
 	all /= i;
 
-      // overlap(N)
-      Brick *c = new Brick[N2];
-      uint64_t overlap = countInvalid(c, 0, N2, v2, 0);
-      delete[] c;
+      // overlap(N):
+      uint64_t overlap = countInvalid(c, 0, N2, v2, v2Size, 0);
 
       assert(all >= overlap);
       ret *= all-overlap;
     }
+    delete[] c;
+    delete[] v2;
 
     return ret;
   }
