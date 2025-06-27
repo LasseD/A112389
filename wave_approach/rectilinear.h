@@ -156,6 +156,7 @@ namespace rectilinear {
     void removeLastBrick();
     int64_t getTokenFromLayerSizes() const;
     bool isConnected();
+    bool canBecomeSymmetric(const Combination &maxCombination) const; 
     static int64_t reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);
@@ -291,7 +292,6 @@ namespace rectilinear {
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
-    bool nextCombinationCanBeSymmetric180();
     void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
     void addCountsFrom(const CountsMap &counts, bool doubleCount);
   };
@@ -317,7 +317,6 @@ namespace rectilinear {
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
-    bool nextCombinationCanBeSymmetric180();
     uint64_t countInvalid(Brick *combination, int combinationSize, int N, Brick const * const v, const int sizeV, const int vIndex) const;
     uint64_t simon(const uint8_t &N, const std::vector<LayerBrick> &v) const;
     Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);

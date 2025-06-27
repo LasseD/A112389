@@ -1557,29 +1557,30 @@ namespace rectilinear {
   /*
     Check if model cannot be made symmetric when placing remaining bricks.
   */
-  bool CombinationBuilder::nextCombinationCanBeSymmetric180() {
+  bool Combination::canBecomeSymmetric(const Combination &maxCombination) const {
     bool canBeSymmetric180 = true;
     bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
     int16_t cx0, cy0, cx1, cy1;
 
-    for(uint8_t i = 0; i < baseCombination.height; i++) {
-      int8_t diff = maxCombination.layerSizes[i] - (int8_t)baseCombination.layerSizes[i];
+    for(uint8_t i = 0; i < height; i++) {
+      assert(maxCombination.layerSizes[i] >= layerSizes[i]);
+      uint8_t diff = maxCombination.layerSizes[i] - layerSizes[i];
       if(diff == 0) {
 	// Full layer: Check if can be symmetric:
 	if(!hasFullLayers) {
-	  baseCombination.getLayerCenter(i, cx0, cy0);
-	  if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	  getLayerCenter(i, cx0, cy0);
+	  if(!isLayerSymmetric(i, cx0, cy0)) {
 	    canBeSymmetric180 = false;
 	    break;
 	  }
 	}
 	else {
-	  baseCombination.getLayerCenter(i, cx1, cy1);
+	  getLayerCenter(i, cx1, cy1);
 	  if(cx0 != cx1 || cy0 != cy1) {
 	    canBeSymmetric180 = false;
 	    break;
 	  }
-	  if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
+	  if(!isLayerSymmetric(i, cx0, cy0)) {
 	    canBeSymmetric180 = false;
 	    break;
 	  }
@@ -1669,39 +1670,6 @@ namespace rectilinear {
 
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++)
       neighbours[it->LAYER].unset(it->BRICK);
-  }
-
-  bool NonEncodingCombinationBuilder::nextCombinationCanBeSymmetric180() {
-    bool canBeSymmetric180 = true;
-    bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
-    int16_t cx0, cy0, cx1, cy1;
-
-    for(uint8_t i = 0; i < baseCombination.height; i++) {
-      int8_t diff = maxCombination.layerSizes[i] - (int8_t)baseCombination.layerSizes[i];
-      if(diff == 0) {
-	// Full layer: Check if can be symmetric:
-	if(!hasFullLayers) {
-	  baseCombination.getLayerCenter(i, cx0, cy0);
-	  if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
-	}
-	else {
-	  baseCombination.getLayerCenter(i, cx1, cy1);
-	  if(cx0 != cx1 || cy0 != cy1) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
-	  if(!baseCombination.isLayerSymmetric(i, cx0, cy0)) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
-	}
-	hasFullLayers = true; // Because diff is 0
-      }
-    }
-    return canBeSymmetric180;
   }
 
   void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
@@ -1940,7 +1908,7 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
     Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
     int layersTodo = 0;
@@ -1978,7 +1946,7 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
     placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
     int layersTodo = 0;
@@ -2107,7 +2075,7 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint16_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = nextCombinationCanBeSymmetric180();
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
 
     Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
 
