@@ -735,7 +735,7 @@ namespace rectilinear {
       cx += bricks[layer][i].x;
       cy += bricks[layer][i].y;
     }
-    cx *= 2;
+    cx *= 2; // Ensure no truncation of odd centers
     cy *= 2;
     assert(layerSizes[layer] != 0);
     cx /= layerSizes[layer];
@@ -1556,39 +1556,106 @@ namespace rectilinear {
 
   /*
     Check if model cannot be made symmetric when placing remaining bricks.
+    Check 1:
+    For every "full" layer (layer with the size indicated by maxCombination):
+    - If non-symmetric, return false as this can never become symmetric.
+    - If center does not match another full layer, then also return false.
   */
   bool Combination::canBecomeSymmetric(const Combination &maxCombination) const {
-    bool canBeSymmetric180 = true;
-    bool hasFullLayers = false; // Layers where all bricks are already placed: If they are non-symmetric or have misalignment of centers, then the resulting models cannot be symmetric
-    int16_t cx0, cy0, cx1, cy1;
+    bool hasFullLayers = false;
+    int16_t cx0, cy0, cx1, cy1; // Center-coordinates
 
+    // Full layer checks:
     for(uint8_t i = 0; i < height; i++) {
       assert(maxCombination.layerSizes[i] >= layerSizes[i]);
-      uint8_t diff = maxCombination.layerSizes[i] - layerSizes[i];
-      if(diff == 0) {
+      if(maxCombination.layerSizes[i] == layerSizes[i]) {
 	// Full layer: Check if can be symmetric:
 	if(!hasFullLayers) {
 	  getLayerCenter(i, cx0, cy0);
-	  if(!isLayerSymmetric(i, cx0, cy0)) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
+	  if(!isLayerSymmetric(i, cx0, cy0))
+	    return false; // Full layer is not symmetric
 	}
 	else {
 	  getLayerCenter(i, cx1, cy1);
-	  if(cx0 != cx1 || cy0 != cy1) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
-	  if(!isLayerSymmetric(i, cx0, cy0)) {
-	    canBeSymmetric180 = false;
-	    break;
-	  }
+	  if(cx0 != cx1 || cy0 != cy1)
+	    return false; // Disagreement on center
+	  if(!isLayerSymmetric(i, cx0, cy0))
+	    return false; // Full layer is not symmetric
 	}
 	hasFullLayers = true; // Because diff is 0
       }
     }
-    return canBeSymmetric180;
+
+    /* The optimization below decreases overall performance:
+    // Check layers with 1 brick missing:
+    if(hasFullLayers) {
+      for(uint8_t layer = 0; layer < height; layer++) {
+	uint8_t layerSize = layerSizes[layer];
+	uint8_t diff = maxCombination.layerSizes[layer] - layerSize;
+	if(diff == 0)
+	  continue; // Ignore full layers this time
+
+	if((maxCombination.layerSizes[layer] & 1) == 1) {
+	  // Odd layer: A brick must be in center
+	  bool hasCenterBrick = false;
+	  for(uint8_t j = 0; j < layerSize; j++) {
+	    const Brick &b = bricks[layer][j];
+	    if(b.x*2 == cx0 && b.y*2 == cy0) {
+	      hasCenterBrick = true;
+	      break;
+	    }
+	  }
+	  if(!hasCenterBrick) {
+	    // Try to place center brick:
+	    Brick o1(true, cx0/2, cy0/2), o2(false, cx0/2, cy0/2);
+	    bool o1OK = true, o2OK = true;
+	    for(uint8_t j = 0; j < layerSize; j++) {
+	      const Brick &b = bricks[layer][j];
+	      o1OK = o1OK && !b.intersects(o1);
+	      o2OK = o2OK && !b.intersects(o2);
+	    }
+	    if(!o1OK && !o2OK) {
+	      //std::cout << "-" << std::flush;
+	      return false;
+	    }
+	  }
+	}
+
+	// Check if layer can be made symmetric:
+	Brick seen[MAX_LAYER_SIZE];
+	int seenSize = 0;
+	for(uint8_t i = 0; i < layerSize; i++) {
+	  const Brick &b = bricks[layer][i];
+	  if(b.x*2 == cx0 && b.y*2 == cy0)
+	    continue; // Skip brick in center
+	  bool found = false;
+	  for(int i = 0; i < seenSize; i++) {
+	    if(b.mirrorEq(seen[i], cx0, cy0)) {
+	      found = true;
+	      // RM:
+	      seenSize--;
+	      for(int j = i; j < seenSize; j++)
+		seen[j] = seen[j+1];
+	      break;
+	    }
+	  }
+	  if(!found)
+	    seen[seenSize++] = b;
+	}
+	// Seen contains all bricks that need mirroring:
+	for(int i = 0; i < seenSize; i++) {
+	  Brick mirrored(seen[i].isVertical, cx0 - seen[i].x, cy0 - seen[i].y);
+	  for(uint8_t j = 0; j < layerSizes[layer]; j++) {
+	    if(mirrored.intersects(bricks[layer][j])) {
+	      //std::cout << "|" << std::flush;
+	      return false;
+	    }
+	  }
+	}
+      }
+      }*/
+
+    return true;
   }
 
   void NonEncodingCombinationBuilder::addWaveToNeighbours(int8_t add) {
@@ -1672,7 +1739,7 @@ namespace rectilinear {
       neighbours[it->LAYER].unset(it->BRICK);
   }
 
-  void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+  void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
 #ifdef TRACE
     std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
@@ -1704,6 +1771,7 @@ namespace rectilinear {
     }
     // End of optimization
 
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
     BrickPicker picker(v, 0, leftToPlace);
     int64_t token = -1, prevToken = -1;
     CountsMap::iterator it;
@@ -1825,8 +1893,9 @@ namespace rectilinear {
     return ret;
   }
 
-  Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v) {
+  Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
     assert(leftToPlace > 0);
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
 
     // Special case: 1 left to place, and can not be symmetric:
     if(!canBeSymmetric180 && leftToPlace == 1)
@@ -1908,18 +1977,17 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
-    Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
+    Counts ret = placeAllLeftToPlace(leftToPlace, v);
 
-    int layersTodo = 0;
+    int incompleteLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i]) {
-	layersTodo++;
-	if(layersTodo > 1)
+	incompleteLayers++;
+	if(incompleteLayers > 1)
 	  break;
       }
     }
-    if(layersTodo <= 1)
+    if(incompleteLayers <= 1)
       return ret; // All done in placeAllLeftToPlace()
 
     addWaveToNeighbours(1);
@@ -1946,20 +2014,19 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
-    placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
+    placeAllLeftToPlace(leftToPlace, v);
 
-    int layersTodo = 0;
+    int incompleteLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
       if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i]) {
-	layersTodo++;
-	if(layersTodo > 1)
+	incompleteLayers++;
+	if(incompleteLayers > 1)
 	  break;
       }
     }
-    if(layersTodo <= 1) {
+    if(incompleteLayers <= 1) {
 #ifdef TRACE
-      std::cout << "   Early exit of build due to only " << layersTodo << " layers not done" << std::endl;
+      std::cout << "   Early exit of build due to only " << incompleteLayers << " layers not done" << std::endl;
 #endif
       return; // All done in placeAllLeftToPlace()
     }
@@ -2075,9 +2142,7 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint16_t leftToPlace = maxCombination.size - baseCombination.size;
-    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
-
-    Counts ret = placeAllLeftToPlace(leftToPlace, canBeSymmetric180, v);
+    Counts ret = placeAllLeftToPlace(leftToPlace, v);
 
     if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
       int workerCount = MAX(1, threadCount-1); // Run with at least 1 thread
@@ -2934,7 +2999,7 @@ namespace rectilinear {
   void Lemma3Runner::run() {
     Base buildBase, registrationBase;
     while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
-      if(maxCombination->size > 6 && maxCombination->size - buildBase.layerSize > 3)
+      if(maxCombination->size > 6 && maxCombination->height > 2 && maxCombination->size - buildBase.layerSize > 3)
 	std::cout << threadName << " builds on " << buildBase << std::endl;
       CombinationBuilder builder(buildBase, neighbours, *maxCombination);
       builder.build();

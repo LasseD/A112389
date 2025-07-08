@@ -292,7 +292,7 @@ namespace rectilinear {
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
-    void placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
+    void placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v);
     void addCountsFrom(const CountsMap &counts, bool doubleCount);
   };
 
@@ -319,7 +319,7 @@ namespace rectilinear {
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     uint64_t countInvalid(Brick *combination, int combinationSize, int N, Brick const * const v, const int sizeV, const int vIndex) const;
     uint64_t simon(const uint8_t &N, const std::vector<LayerBrick> &v) const;
-    Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const bool &canBeSymmetric180, const std::vector<LayerBrick> &v);
+    Counts placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v);
   };
 
   class SplitBuildingBuilder {
