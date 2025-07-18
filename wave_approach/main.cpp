@@ -127,8 +127,7 @@ int runSumPrecomputations(int leftToken, int base, int rightToken, int maxDist) 
 	  cr += report2.counts;
       }
       if(bs90) {
-	assert(c.symmetric90 % 4 == 0);
-	c.symmetric90 /= 4;
+	c.symmetric90 *= 2;
 	assert(c.symmetric180 % 2 == 0);
 	c.symmetric180 /= 2;
 	assert(c.all % 4 == 0);
@@ -143,22 +142,25 @@ int runSumPrecomputations(int leftToken, int base, int rightToken, int maxDist) 
 
       // Cross check:
       if(bs90) {
-	// The non-rotational symmetric are overcounted:
-	cl.all -= cl.symmetric180 + cl.symmetric90;
-	assert(cl.symmetric90 % 4 == 0);
-	cl.symmetric90 /= 4;
+	// Base is symmetric for 90 degrees of symmetry:
+	// non-symmetric are counted 4 times
+	// 180-degree Symmetric are counted 2 times
+	// Numbers are adjusted while keeping symmetric counts in check
+	cl.all -= cl.symmetric180;
+	cl.symmetric180 -= cl.symmetric90;
 	assert(cl.symmetric180 % 2 == 0);
 	cl.symmetric180 /= 2;
 	assert(cl.all % 4 == 0);
 	cl.all = cl.all/4 + cl.symmetric180 + cl.symmetric90;
+	cl.symmetric180 += cl.symmetric90;
 
-	cr.all -= cr.symmetric180 + cr.symmetric90;
-	assert(cr.symmetric90 % 4 == 0);
-	cr.symmetric90 /= 4;
+	cr.all -= cr.symmetric180;
+	cr.symmetric180 -= cr.symmetric90;
 	assert(cr.symmetric180 % 2 == 0);
 	cr.symmetric180 /= 2;
 	assert(cr.all % 4 == 0);
 	cr.all = cr.all/4 + cr.symmetric180 + cr.symmetric90;
+	cr.symmetric180 += cr.symmetric90;
       }
       else if(bs180) {
 	// The non-symmetric are counted twice:
@@ -391,7 +393,7 @@ int runRegressionTests() {
   for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
     uint64_t token = Combination::reverseToken(it->first);
     uint8_t size = Combination::sizeOfToken(token);
-    if(size >= 9 || it->second.all > 100000000)
+    if(size >= 9 || it->second.all > 3100000000)
       continue;
     Combination::getLayerSizesFromToken(token, layerSizes);
     uint8_t height = Combination::heightOfToken(token);
@@ -414,7 +416,7 @@ int runRegressionTests() {
       return 2;
     }
   }
-
+  //return 0;
   // Build precomputations max dist 24 (<41> to 8):
   int tokens[6] = {21, 22, 23, 221, 31, 41};
   for(int i = 0; i < 6; i++) {
