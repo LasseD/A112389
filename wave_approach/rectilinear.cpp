@@ -2200,7 +2200,7 @@ namespace rectilinear {
 
 	// Check if partial already exists:
 	std::stringstream ss;
-	ss << "partials/" << token;
+	ss << "partials/" << token << "_" << (int)baseCombination.getTokenFromLayerSizes();
 	for(uint8_t i = 0; i < baseCombination.height; i++) {
 	  for(uint8_t j = 0; j < baseCombination.layerSizes[i]; j++) {
 	    const Brick &b = baseCombination.bricks[i][j];
