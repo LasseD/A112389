@@ -2178,6 +2178,7 @@ namespace rectilinear {
    */
   Counts NonEncodingCombinationBuilder::buildWithPartials(int threadCount, Combination &maxCombination) {
     Combination baseCombination; // Has only FirstBrick
+    int token = (int)maxCombination.getTokenFromLayerSizes();
 
     BrickPlane neighbours[MAX_BRICKS];
     for(uint8_t i = 0; i < MAX_BRICKS; i++)
@@ -2195,8 +2196,44 @@ namespace rectilinear {
       BaseBuildingManager manager(v, maxCombination.layerSizes[1]);
       uint8_t picked;
       while((picked = manager.next(baseCombination, maxCombination)) != 0) {
-	NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, maxCombination);
-	Counts countsSplit = b2.buildSplit(threadCount);
+	Counts countsSplit;
+
+	// Check if partial already exists:
+	std::stringstream ss;
+	ss << "partials/" << token;
+	for(uint8_t i = 0; i < baseCombination.height; i++) {
+	  for(uint8_t j = 0; j < baseCombination.layerSizes[i]; j++) {
+	    const Brick &b = baseCombination.bricks[i][j];
+	    ss << "_";
+	    if(b.isVertical)
+	      ss << "V";
+	    else
+	      ss << "H";
+	    ss << (int)(b.x-FirstBrick.x) << "x" << (int)(b.y-FirstBrick.y);
+	  }
+	}
+	ss << ".txt";
+	std::string partialFileName = ss.str();
+	std::ifstream istream(partialFileName.c_str());
+
+	if(istream.good()) {
+	  std::cout << "Using " << partialFileName << std::endl;
+	  // Partial file exists: Use it!
+	  istream >> countsSplit.all >> countsSplit.symmetric180 >> countsSplit.symmetric90;
+	  istream.close();
+	}
+	else {
+	  NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, maxCombination);
+	  countsSplit = b2.buildSplit(threadCount);
+	  // Write partials file:
+	  std::ofstream oStream(partialFileName.c_str());
+	  oStream << countsSplit.all << std::endl;
+	  oStream << countsSplit.symmetric180 << std::endl;
+	  oStream << countsSplit.symmetric90 << std::endl;
+	  oStream.flush();
+	  oStream.close();
+	  std::cout << "Wrote " << partialFileName << std::endl;
+	}
 
 	manager.add(baseCombination, countsSplit);
 	for(uint8_t i = 0; i < picked; i++)
