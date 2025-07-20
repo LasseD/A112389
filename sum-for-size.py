@@ -1,4 +1,5 @@
 import sys
+import math
 
 S = {} # Symmetric refinements: string -> cnt
 N = {} # Non-symmetric
@@ -195,7 +196,7 @@ setData([
     '3323', 4472233899139020, 1348484,
     '3242', 3983141281731531, (21660689),
     '3251', 183657614407425, (164712),
-    '2261', 52566014594439, 21527,
+    '2261', 52566014594439, 3074177,
     '1721', 3710232065761, 8476,
 
     '42221', 1619895602468513, (13822233),
@@ -214,6 +215,7 @@ setData([
 
     '222221', 83131865065198060, (64343390), # Old Lemma 2 algorithm counted incorectly!
     '132221', 71849872746311779, (1046044), # Old Lemma 2 algorithm counted incorectly!
+    '123221', 143351914222644371, (1028025),
 ])
 
 # Impossible constructions:
@@ -280,7 +282,6 @@ def printXY(X, Y, prefix, rem, actuallyPrint):
             cntLemma1 = cntLemma1 + 1
         if n != None and s != None:
             print('  <' + prefix + '>', s + getN(prefix), '(' + str(s) + ')')
-            printed[prefix[::-1]] = True
         else:
             print('  <' + prefix + '> #')
         return sum
@@ -314,7 +315,69 @@ print()
 #print('Found using Lemma 1:', cntLemma1)
 #print()
 
-# Function below computes cross check values for "Combination::setupKnownCounts()"
+
+# writeHeatmapFile() writes the heatmap.htm file which shows colors
+# of refinements based on the amount of non-symmetric counts
+def writeHeatmapRow(f, size, height, prefix, rem, sizeMin, sizeMax):
+    if rem == 0 and len(prefix) == height:
+        n = getN(prefix)
+        if prefix in printed:
+            return # Already printed: Should still be counted
+        printed[prefix] = True
+        printed[prefix[::-1]] = True
+        if n == 0:
+            return # Impossible refinement
+        if '1' in prefix[1:-1]:
+            return # Lemma 1
+        if n != None and sizeMax != sizeMin:
+            nom = n-sizeMin
+            denom = sizeMax-sizeMin
+            #gradient = 1 - (math.log(1+nom)/math.log(1+denom))
+            #gradient = 1 - (nom*nom/(denom*denom))
+            gradient = 1 - nom/denom
+            gradient = 100 * gradient * gradient
+            f.write('<td style="background-color:hsl(' + str(gradient) +',65%,50%);">')
+        else:
+            f.write('<td>')
+        nn = '%.0E' % n if n != None else ''
+        f.write('&lt;' + prefix + '&gt;<br/>' + nn + '</td>')
+        return
+    if len(prefix) >= height or rem < 1:
+        return
+    for c in range(min(9,rem), 0, -1): # No 2+-digit rows
+        writeHeatmapRow(f, size, height, prefix + str(c), rem-c, sizeMin, sizeMax)
+def writeHeatmapFile():
+    with open('heatmap.htm', 'w') as f:
+        f.write('<html>\n')
+        f.write(' <head>\n')
+        f.write('  <style>\n')
+        f.write('   td {text-align: center; padding: 2px;}\n')
+        f.write('  </style>\n')
+        f.write(' </head>\n')
+        f.write(' <body>\n')
+        for size in range(8,to+1):
+            # Print:
+            f.write('  <h3>Size ' + str(size) + '</h3>\n')
+            f.write('  <table>\n')
+            for height in range(2,size+1):
+                # Find min and max:
+                sizeMin = 1e20
+                sizeMax = 0
+                for key in N:
+                    if len(key) == height and sum([int(x) for x in key]) == size and not '1' in key[1:-1]:
+                        sizeMin = min(sizeMin, N[key])
+                        sizeMax = max(sizeMax, N[key])
+                f.write('   <tr>\n')
+                writeHeatmapRow(f, size, height, '', size, sizeMin, sizeMax)
+                f.write('   </tr>\n')
+            f.write('  </table>\n')
+        f.write(' </body>\n')
+        f.write('</html>\n')
+printed = {} # Reset
+writeHeatmapFile()
+
+
+# setupKnownCounts() computes and prints cross check values for "Combination::setupKnownCounts()"
 def setupKnownCounts():
     global S, N
 
@@ -330,6 +393,7 @@ def setupKnownCounts():
         print(' '*4 + 'm[' + k + '] = Counts(' + a + ', ' + str(s) + ', ' + s90 + ');')
     pass
 setupKnownCounts()
+
 
 # Code below recreates Table 7 from Eilers (2016):
 def prep():
