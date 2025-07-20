@@ -223,16 +223,20 @@ namespace rectilinear {
     }
   }
 
-  SplitBuildingManager::SplitBuildingManager(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
+  BaseBuildingManager::BaseBuildingManager(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1) {
     assert(maxPick >= 1);
     inner = new BrickPicker(v, 0, 1);
   }
 
-  uint8_t SplitBuildingManager::next(Combination &c, const Combination &maxCombination) {
+  NormalBuildingManager::NormalBuildingManager(const std::vector<LayerBrick> &v, const int maxPick) : v(v), maxPick(maxPick), toPick(1), sum(Counts()) {
+    assert(maxPick >= 1);
+    inner = new BrickPicker(v, 0, 1);
+  }
+
+  uint8_t BaseBuildingManager::next(Combination &c, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
-    if(inner == NULL) {
+    if(inner == NULL)
       return 0; // Done. This is here in case multiple threads call next()
-    }
 
     bool ret;
     while(true) {
@@ -248,17 +252,20 @@ namespace rectilinear {
       }
 
       Combination c2(c);
-      //c.translateMinToOrigo(); Not needed, as FirstBrick is only brick at base layer
-      c2.sortBricks();
+      c2.normalize();
+
+      if(countsMap.find(c2) != countsMap.end()) {
+	combinations.push_back(c2);
+	for(uint8_t i = 0; i < toPick; i++)
+	  c.removeLastBrick();
+	continue;
+      }
 
       // Check mirrored:
       Combination mx(c2);
       mx.mirrorX();
       if(countsMap.find(mx) != countsMap.end()) {
 	combinations.push_back(mx);
-#ifdef TRACE
-	std::cout << " SKIP Mirror x " << mx << std::endl;
-#endif
 	for(uint8_t i = 0; i < toPick; i++)
 	  c.removeLastBrick();
 	continue; // Point to mirrored. Next!
@@ -267,45 +274,51 @@ namespace rectilinear {
       my.mirrorY();
       if(countsMap.find(my) != countsMap.end()) {
 	combinations.push_back(my);
-#ifdef TRACE
-	std::cout << " SKIP Mirror y " << my << std::endl;
-#endif
 	for(uint8_t i = 0; i < toPick; i++)
 	  c.removeLastBrick();
 	continue; // Point to mirrored. Next!
       }
 
-      if(!c2.is180Symmetric()) {
-	// Check rotated:
-	Combination rotated(c2);
-	rotated.rotate180();
-	if(countsMap.find(rotated) != countsMap.end()) {
-	  combinations.push_back(rotated);
-#ifdef TRACE
-	  std::cout << " SKIP Smaller rotated " << rotated << std::endl;
-#endif
-	  for(uint8_t i = 0; i < toPick; i++)
-	    c.removeLastBrick();
-	  continue; // Point to rotated. Next!
-	}
-      }
       combinations.push_back(c2);
-      countsMap[c2] = Counts();
-#ifdef TRACE
-      std::cout << " Normal build on " << c << std::endl;
-#endif
+      countsMap[c2] = Counts(); // Ensure checks for existing combination succeed even before fully computed
       return toPick;
     }
   }
 
-  void SplitBuildingManager::add(const Combination &c, const Counts &counts) {
+  uint8_t NormalBuildingManager::next(Combination &c, const Combination &maxCombination) {
+    std::lock_guard<std::mutex> guard(mutex);
+    if(inner == NULL)
+      return 0; // Done. This is here in case multiple threads call next()
+
+    bool ret;
+    while(true) {
+      ret = inner->next(c, maxCombination);
+      if(!ret) {
+	delete inner;
+	if(toPick == maxPick) { // Done!
+	  inner = NULL;
+	  return 0; // Done
+	}
+	inner = new BrickPicker(v, 0, ++toPick);
+	continue;
+      }
+      return toPick;
+    }
+  }
+
+  void BaseBuildingManager::add(const Combination &c, const Counts &counts) {
     std::lock_guard<std::mutex> guard(mutex);
     Combination c2(c);
-    c2.sortBricks();
+    c2.normalize();
     countsMap[c2] = counts;
   }
 
-  Counts SplitBuildingManager::getCounts() const {
+  void NormalBuildingManager::add(const Counts &counts) {
+    std::lock_guard<std::mutex> guard(mutex);
+    sum += counts;
+  }
+
+  Counts BaseBuildingManager::getCounts() const {
     Counts ret;
     for(std::vector<Combination>::const_iterator it = combinations.begin(); it != combinations.end(); it++) {
       CombinationCountsMap::const_iterator it2 = countsMap.find(*it);
@@ -313,6 +326,10 @@ namespace rectilinear {
       ret += it2->second;
     }
     return ret;
+  }
+
+  Counts NormalBuildingManager::getCounts() const {
+    return sum;
   }
 
   void BrickPlane::reset() {
@@ -713,8 +730,7 @@ namespace rectilinear {
 	b.x = PLANE_MID - (b.x - PLANE_MID);
       }
     }
-    translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    normalize();
   }
   void Combination::mirrorY() {
     for(uint8_t i = 0; i < height; i++) {
@@ -724,8 +740,7 @@ namespace rectilinear {
 	b.y = PLANE_MID - (b.y - PLANE_MID);
       }
     }
-    translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    normalize();
   }
 
   void Combination::getLayerCenter(const uint8_t layer, int16_t &cx, int16_t &cy) const {
@@ -1055,6 +1070,16 @@ namespace rectilinear {
     }
     return false;
   }
+  bool Combination::hasVerticalLayer0Brick() const {
+    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+      const Brick &b = bricks[0][i];
+      if(b.isVertical) {
+	return true;
+	break;
+      }
+    }
+    return false;
+  }
 
   void Base::normalize() {
     // Ensure FirstBrick is first and all is sorted:
@@ -1089,6 +1114,29 @@ namespace rectilinear {
       rotate90();
 
     CBase c(*this);
+    if(canRotate90()) {
+      for(int i = 0; i < 3; i++) {
+	c.rotate90();
+	if(c < *this)
+	  copy(c);
+      }
+    }
+    else {
+      c.rotate180();
+      if(c < *this)
+	copy(c);
+    }
+  }
+  void Combination::normalize() {
+    // Ensure FirstBrick is first and all is sorted:
+    if(hasVerticalLayer0Brick()) {
+      translateMinToOrigo();
+      sortBricks();
+    }
+    else
+      rotate90();
+
+    Combination c(*this);
     if(canRotate90()) {
       for(int i = 0; i < 3; i++) {
 	c.rotate90();
@@ -1392,6 +1440,8 @@ namespace rectilinear {
     isFirstBuilder(isFirstBuilder),
     encodeConnectivity(encodeConnectivity),
     encodingLocked(encodingLocked) {
+    assert(c.layerSizes[0] >= 1);
+    assert(c.bricks[0][0] == FirstBrick);
   }
 
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder(const Combination &c,
@@ -1404,6 +1454,8 @@ namespace rectilinear {
     waveSize(waveSize),
     neighbours(neighbours),
     maxCombination(maxCombination) {
+    assert(c.layerSizes[0] >= 1);
+    assert(c.bricks[0][0] == FirstBrick);
   }
 
   CombinationBuilder::CombinationBuilder(const Base &c,
@@ -1454,9 +1506,6 @@ namespace rectilinear {
       const BrickIdentifier &bi = baseCombination.history[waveStart+i];
       const int8_t layer = bi.first; // Convert to signed
       const Brick &brick = baseCombination.bricks[layer][bi.second];
-#ifdef TRACE
-      std::cout << "   Adding wave brick with blockers " << brick << " on layer " << (int)layer << ": " << add << " to " << baseCombination << std::endl;
-#endif
 
       // Add crossing bricks (one vertical, one horizontal):
       for(int16_t x = -2; x <= 2; x++) {
@@ -1615,7 +1664,6 @@ namespace rectilinear {
 	      o2OK = o2OK && !b.intersects(o2);
 	    }
 	    if(!o1OK && !o2OK) {
-	      //std::cout << "-" << std::flush;
 	      return false;
 	    }
 	  }
@@ -1647,7 +1695,6 @@ namespace rectilinear {
 	  Brick mirrored(seen[i].isVertical, cx0 - seen[i].x, cy0 - seen[i].y);
 	  for(uint8_t j = 0; j < layerSizes[layer]; j++) {
 	    if(mirrored.intersects(bricks[layer][j])) {
-	      //std::cout << "|" << std::flush;
 	      return false;
 	    }
 	  }
@@ -1735,8 +1782,23 @@ namespace rectilinear {
       } // for layer2
     }
 
-    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++)
+    // Cleanup, so that neighbours can be shared by all:
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
       neighbours[it->LAYER].unset(it->BRICK);
+#ifdef DEBUG
+      // Verify that bricks from previous waves are not reached:
+      for(uint8_t i = 0; i < waveStart; i++) {
+	uint8_t layer = baseCombination.history[i].first;
+	const Brick &b = baseCombination.bricks[layer][baseCombination.history[i].second];
+	if(ABS(it->LAYER-layer) <= 1) {
+	  if(b.intersects(it->BRICK)) {
+	    std::cerr << "Brick intersection:" << std::endl << " New brick " << it->BRICK << " on layer " << (int)it->LAYER << std::endl << " Existing brick: " << b << " on layer " << (int)layer << std::endl << "Combination: " << baseCombination << std::endl;
+	    assert(false);
+	  }
+	}
+      }
+#endif
+    }
   }
 
   void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
@@ -1792,9 +1854,6 @@ namespace rectilinear {
 	}
       }
       assert(it != counts.end());
-#ifdef TRACE
-      std::cout << "   Counting " << baseCombination << " for token " << token << std::endl;
-#endif
 
       it->second.all++;
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
@@ -1978,17 +2037,8 @@ namespace rectilinear {
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
     Counts ret = placeAllLeftToPlace(leftToPlace, v);
-
-    int incompleteLayers = 0;
-    for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i]) {
-	incompleteLayers++;
-	if(incompleteLayers > 1)
-	  break;
-      }
-    }
-    if(incompleteLayers <= 1)
-      return ret; // All done in placeAllLeftToPlace()
+    if(ret.all != 0)
+      return ret;
 
     addWaveToNeighbours(1);
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
@@ -2069,14 +2119,15 @@ namespace rectilinear {
     addWaveToNeighbours(-1);
   }
 
-  SplitBuildingBuilder::SplitBuildingBuilder() : neighbours(NULL), maxCombination(NULL), manager(NULL), threadName("") {}
+  SplitBuildingBuilder::SplitBuildingBuilder() : neighbours(NULL), baseCombination(NULL), maxCombination(NULL), manager(NULL), threadName("") {}
 
-  SplitBuildingBuilder::SplitBuildingBuilder(const SplitBuildingBuilder &b) : neighbours(b.neighbours), maxCombination(b.maxCombination), manager(b.manager), threadName(b.threadName) {}
+  SplitBuildingBuilder::SplitBuildingBuilder(const SplitBuildingBuilder &b) : neighbours(b.neighbours), baseCombination(b.baseCombination), maxCombination(b.maxCombination), manager(b.manager), threadName(b.threadName) {}
 
   SplitBuildingBuilder::SplitBuildingBuilder(BrickPlane *neighbours,
+					     Combination *baseCombination,
 					     Combination *maxCombination,
-					     SplitBuildingManager *manager,
-					     int threadIndex) : neighbours(neighbours), maxCombination(maxCombination), manager(manager) {
+					     NormalBuildingManager *manager,
+					     int threadIndex) : neighbours(neighbours), baseCombination(baseCombination), maxCombination(maxCombination), manager(manager) {
     std::string names[26] = {
       "Alma", "Bent", "Coco", "Dolf", "Edna", "Finn", "Gaya", "Hans", "Inge", "Jens",
       "Kiki", "Liam", "Mona", "Nils", "Olga", "Pino", "Qing", "Rene", "Sara", "Thor",
@@ -2088,7 +2139,7 @@ namespace rectilinear {
     }
   }
 
-  int NonEncodingCombinationBuilder::addFrom(SplitBuildingManager *manager, const std::string &threadName) {
+  int NonEncodingCombinationBuilder::addFrom(NormalBuildingManager *manager, const std::string &threadName) {
     waveSize = manager->next(baseCombination, maxCombination);
     if(waveSize > 0 &&
        maxCombination.size >= 9 &&
@@ -2097,93 +2148,120 @@ namespace rectilinear {
     return waveSize;
   }
 
-  void NonEncodingCombinationBuilder::countAndRemoveFrom(SplitBuildingManager *manager, const Counts &counts, int toRemove) {
-    manager->add(baseCombination, counts); // Mutex protected
+  void NonEncodingCombinationBuilder::countAndRemoveFrom(NormalBuildingManager *manager, const Counts &counts, int toRemove) {
+    manager->add(counts); // Mutex protected
     for(int i = 0; i < toRemove; i++)
       baseCombination.removeLastBrick();
   }
 
   void SplitBuildingBuilder::build() {
-    Combination c;
-    NonEncodingCombinationBuilder b0(c, 0, 1, neighbours, *maxCombination);
-    b0.addWaveToNeighbours(1); // Adds blockers to neighbours for first brick
-    NonEncodingCombinationBuilder b(c, 1, 0, neighbours, *maxCombination);
+    NonEncodingCombinationBuilder b0(*baseCombination, 0, baseCombination->size, neighbours, *maxCombination); // Just used to mark initial bricks
+    b0.addWaveToNeighbours(1); // Adds blockers to neighbours for baseCombination
+    NonEncodingCombinationBuilder b(*baseCombination, baseCombination->size, 0, neighbours, *maxCombination);
 
     int picked;
     while((picked = b.addFrom(manager, threadName)) > 0) {
       // Behold the beautiful C++ 11 syntax for showing elapsed time...
       std::chrono::duration<double, std::ratio<60> > duration(std::chrono::steady_clock::now() - timeStart);
-      if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial chaos:
+      if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial 2 minute chaos:
 	std::cout << "Time elapsed: " << duration.count() << " minutes" << std::endl;
       Counts c = b.build();
       b.countAndRemoveFrom(manager, c, picked);
     }
 
     b0.addWaveToNeighbours(-1); // Clean up
-#ifdef DEBUG
-    // Check that neighbours were reset:
-    for(uint8_t i = 0; i < maxCombination->height; i++) {
-      if(neighbours[i].sum != 0) {
-	std::cerr << "Neighbour bitmap on level " << (int)i << " not 0: " << neighbours[i].sum << std::endl;
-	assert(false);
+  }
+
+  /*
+    Perform the first construction step and run splitting construction on step 2
+    to collect and save after each step.
+   */
+  Counts NonEncodingCombinationBuilder::buildWithPartials(int threadCount, Combination &maxCombination) {
+    Combination baseCombination; // Has only FirstBrick
+
+    BrickPlane neighbours[MAX_BRICKS];
+    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+      neighbours[i].reset();
+
+    NonEncodingCombinationBuilder b1(baseCombination, 0, 1, neighbours, maxCombination);
+    std::vector<LayerBrick> v;
+    b1.findPotentialBricksForNextWave(v);
+    b1.addWaveToNeighbours(1);
+
+    const uint16_t leftToPlace = maxCombination.size - 1;
+    Counts ret = b1.placeAllLeftToPlace(leftToPlace, v);
+
+    if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
+      BaseBuildingManager manager(v, maxCombination.layerSizes[1]);
+      uint8_t picked;
+      while((picked = manager.next(baseCombination, maxCombination)) != 0) {
+	NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, maxCombination);
+	Counts countsSplit = b2.buildSplit(threadCount);
+
+	manager.add(baseCombination, countsSplit);
+	for(uint8_t i = 0; i < picked; i++)
+	  baseCombination.removeLastBrick();
       }
+      ret += manager.getCounts();
     }
-#endif
+    b1.addWaveToNeighbours(1); // Clean up
+
+    // Fix final counts (see also CombinationBuilder::report()):
+    const uint8_t ls0 = maxCombination.layerSizes[0];
+    ret.symmetric180 += ret.symmetric90;
+    ret.all += ret.symmetric90;
+    ret.all += ret.symmetric180;
+
+    assert(ls0 != 0);
+    assert(ret.all % (ls0*2) == 0);
+    ret.all /= 2 * ls0; // Because each model is built toward two directions
+
+    assert(ret.symmetric180 % ls0 == 0);
+    ret.symmetric180 /= ls0;
+    if(ret.symmetric90 > 0)
+      ret.symmetric90 /= ls0 / 2;
+
+    return ret;
   }
 
   /*
     Split building only from base <1>
    */
   Counts NonEncodingCombinationBuilder::buildSplit(int threadCount) {
-    assert(waveStart == 0);
-    assert(waveSize == 1);
-
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
+    if(v.empty())
+      return Counts();
 
     const uint16_t leftToPlace = maxCombination.size - baseCombination.size;
     Counts ret = placeAllLeftToPlace(leftToPlace, v);
+    if(ret.all != 0)
+      return ret;
 
-    if(ret.all == 0) { // If ret > 0, then all remaining bricks could be placed on second layer
-      int workerCount = MAX(1, threadCount-1); // Run with at least 1 thread
-      if(maxCombination.size >= 7)
-	std::cout << " Using " << workerCount << " worker threads" << std::endl;
-      SplitBuildingManager manager(v, leftToPlace-1); // Shared picker
-      BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
-      for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
-	neighbourCache[i].reset();
-      SplitBuildingBuilder *threadBuilders = new SplitBuildingBuilder[workerCount];
-      std::thread **threads = new std::thread*[workerCount];
+    int workerCount = MAX(1, threadCount-1); // Run with at least 1 worker thread
+    NormalBuildingManager manager(v, leftToPlace-1); // Shared picker
+    BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
+    for(int i = 0; i < workerCount * MAX_HEIGHT; i++)
+      neighbourCache[i].reset();
+    SplitBuildingBuilder *threadBuilders = new SplitBuildingBuilder[workerCount];
+    std::thread **threads = new std::thread*[workerCount];
 
-      for(int i = 0; i < workerCount; i++) {
-	threadBuilders[i] = SplitBuildingBuilder(&neighbourCache[i*MAX_HEIGHT],
-						 &maxCombination,
-						 &manager,
-						 i);
-	threads[i] = new std::thread(&SplitBuildingBuilder::build, std::ref(threadBuilders[i]));
-      }
-      for(int i = 0; i < workerCount; i++) {
-	threads[i]->join();
-	delete threads[i];
-      }
-      delete[] threads;
-      delete[] threadBuilders;
-      delete[] neighbourCache;
-      ret += manager.getCounts();
+    for(int i = 0; i < workerCount; i++) {
+      threadBuilders[i] = SplitBuildingBuilder(&neighbourCache[i*MAX_HEIGHT],
+					       &baseCombination,
+					       &maxCombination,
+					       &manager,
+					       i);
+      threads[i] = new std::thread(&SplitBuildingBuilder::build, std::ref(threadBuilders[i]));
     }
-
-    // Fix final counts (see also CombinationBuilder::report()):
-    ret.symmetric180 += ret.symmetric90;
-    ret.all += ret.symmetric90;
-    ret.all += ret.symmetric180;
-
-    const uint8_t ls0 = maxCombination.layerSizes[0];
-    assert(ls0 != 0);
-    ret.all /= 2 * ls0; // Because each model is built toward two directions
-    ret.symmetric180 /= ls0;
-    if(ret.symmetric90 > 0)
-      ret.symmetric90 /= ls0 / 2;
-
+    for(int i = 0; i < workerCount; i++) {
+      threads[i]->join();
+      delete threads[i];
+    }
+    delete[] threads;
+    delete[] threadBuilders;
+    delete[] neighbourCache;
+    ret = manager.getCounts();
     return ret;
   }
 
@@ -2999,7 +3077,10 @@ namespace rectilinear {
   void Lemma3Runner::run() {
     Base buildBase, registrationBase;
     while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
-      if(maxCombination->size > 6 && maxCombination->height > 2 && maxCombination->size - buildBase.layerSize > 3)
+      if(maxCombination->layerSizes[0] < 4 &&
+	 maxCombination->size > 6 &&
+	 maxCombination->height > 2 &&
+	 maxCombination->size - buildBase.layerSize > 3)
 	std::cout << threadName << " builds on " << buildBase << std::endl;
       CombinationBuilder builder(buildBase, neighbours, *maxCombination);
       builder.build();

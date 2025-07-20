@@ -121,6 +121,7 @@ namespace rectilinear {
     uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
     uint8_t countConnected(uint8_t layer, uint8_t idx);
+    bool hasVerticalLayer0Brick() const;
   public:
     uint8_t layerSizes[MAX_HEIGHT], height, size;
     Brick bricks[MAX_HEIGHT][MAX_LAYER_SIZE];
@@ -151,6 +152,7 @@ namespace rectilinear {
     bool canRotate90() const;
     void mirrorX();
     void mirrorY();
+    void normalize();
     void addBrick(const Brick &b, const uint8_t layer);
     int64_t encodeConnectivity(int64_t token);
     void removeLastBrick();
@@ -244,7 +246,7 @@ namespace rectilinear {
   typedef std::map<Combination,Counts> CombinationCountsMap;
   typedef std::pair<bool,Combination> CombinationIdentification; // True if self
 
-  class SplitBuildingManager {
+  class BaseBuildingManager {
     const std::vector<LayerBrick> &v;
     const int maxPick;
     int toPick;
@@ -254,9 +256,29 @@ namespace rectilinear {
     std::vector<Combination> combinations;
     std::mutex mutex;
   public:
-    SplitBuildingManager(const std::vector<LayerBrick> &v, const int maxPick);
+    BaseBuildingManager(const std::vector<LayerBrick> &v, const int maxPick);
     uint8_t next(Combination &c, const Combination &maxCombination);
     void add(const Combination &c, const Counts &counts);
+    Counts getCounts() const;
+  };
+
+  /*
+    The "Normal" building manager simply serves combinations and does not
+    perform the optimizations of BaseBuildingManager as wave information would
+    then have to be used to properly detect duplicates.
+   */
+  class NormalBuildingManager {
+    const std::vector<LayerBrick> &v;
+    const int maxPick;
+    int toPick;
+    LayerBrick bricks[MAX_BRICKS];
+    BrickPicker *inner;
+    Counts sum;
+    std::mutex mutex;
+  public:
+    NormalBuildingManager(const std::vector<LayerBrick> &v, const int maxPick);
+    uint8_t next(Combination &c, const Combination &maxCombination);
+    void add(const Counts &counts);
     Counts getCounts() const;
   };
 
@@ -310,12 +332,13 @@ namespace rectilinear {
     NonEncodingCombinationBuilder(const NonEncodingCombinationBuilder& b);
     NonEncodingCombinationBuilder();
 
+    static Counts buildWithPartials(int threadCount, Combination &maxCombination);
     Counts build();
-    Counts buildSplit(int threadCount);
-    int addFrom(SplitBuildingManager *manager, const std::string &threadName);
-    void countAndRemoveFrom(SplitBuildingManager *manager, const Counts &counts, int toRemove);
+    int addFrom(NormalBuildingManager *manager, const std::string &threadName);
+    void countAndRemoveFrom(NormalBuildingManager *manager, const Counts &counts, int toRemove);
     void addWaveToNeighbours(int8_t add);
   private:
+    Counts buildSplit(int threadCount);
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
     uint64_t countInvalid(Brick *combination, int combinationSize, int N, Brick const * const v, const int sizeV, const int vIndex) const;
     uint64_t simon(const uint8_t &N, const std::vector<LayerBrick> &v) const;
@@ -324,17 +347,18 @@ namespace rectilinear {
 
   class SplitBuildingBuilder {
     BrickPlane *neighbours;
-    Combination *maxCombination;
-    SplitBuildingManager *manager;
+    Combination *baseCombination, *maxCombination;
+    NormalBuildingManager *manager;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
     std::string threadName;
   public:
     SplitBuildingBuilder();
     SplitBuildingBuilder(const SplitBuildingBuilder &b);
     SplitBuildingBuilder(BrickPlane *neighbours,
-			  Combination *maxCombination,
- 			  SplitBuildingManager *manager,
-			  int threadIndex);
+			 Combination *baseCombination,
+			 Combination *maxCombination,
+			 NormalBuildingManager *manager,
+			 int threadIndex);
     void build();
   };
 

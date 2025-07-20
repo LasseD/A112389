@@ -92,7 +92,7 @@ int runSumPrecomputations(int leftToken, int base, int rightToken, int maxDist) 
     std::vector<Report> l, r;
     while(reader1.next(l)) {
       bool ok = reader2.next(r); assert(ok);
-      bool bs180, bs90, first = true;
+      bool bs180 = false, bs90 = false, first = true; // All value initialization not necessary, but makes compiling with -Wall happy
 
       Base baseCombination;
       Counts c, cl, cr;
@@ -214,17 +214,8 @@ int runRefinement(int argc, char** argv) {
   Combination maxCombination(token);
 
   int threads = argc > 3 ? get(argv[3]) : std::thread::hardware_concurrency();
-
-  BrickPlane neighbours[MAX_BRICKS];
-  for(uint8_t i = 0; i < MAX_BRICKS; i++)
-      neighbours[i].reset();
-
-  Counts counts;
-
-  Combination combination;
-  NonEncodingCombinationBuilder b(combination, 0, 1, neighbours, maxCombination);
-  std::cout << "Counting for <" << token << "> of size " << (int)maxCombination.size << std::endl;
-  counts = b.buildSplit(threads);
+  std::cout << "Counting for <" << token << "> of size " << (int)maxCombination.size << " using " << threads << " threads" << std::endl;
+  Counts counts = NonEncodingCombinationBuilder::buildWithPartials(threads, maxCombination);
   Combination::checkCounts(token, counts);
 
   std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
@@ -316,7 +307,7 @@ int runPrecomputationComparison(int argc, char** argv) {
       bool first = true;
       CountsMap m1, m2;
       Base b1, b2;
-      bool s180, s90, t180, t90;
+      bool s180 = false, s90 = false, t180 = false, t90 = false; //No need to initialize, but it makes -Wall happy :)
       for(std::vector<Report>::const_iterator it = r1.begin(); it != r1.end(); it++) {
 	const Report &report = *it;
 	if(first) {
@@ -386,9 +377,6 @@ int runRegressionTests() {
 
   // Build refinements:
   uint8_t layerSizes[MAX_HEIGHT];
-  BrickPlane neighbours[MAX_BRICKS];
-  for(uint8_t i = 0; i < MAX_BRICKS; i++)
-    neighbours[i].reset();
 
   for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
     uint64_t token = Combination::reverseToken(it->first);
@@ -408,15 +396,13 @@ int runRegressionTests() {
 
     std::cout << "Testing computation of refinement " << token << std::endl;
     Combination maxCombination(token);
-    Combination combination;
-    NonEncodingCombinationBuilder b(combination, 0, 1, neighbours, maxCombination);
-    Counts xCheck = b.buildSplit(3); // 2 worker threads
+    Counts xCheck = NonEncodingCombinationBuilder::buildWithPartials(3, maxCombination); // 2 worker threads
     if(xCheck != it->second) {
       std::cerr << "Exiting due to cross check error: " << xCheck << " != " << it->second << std::endl;
       return 2;
     }
   }
-  //return 0;
+  return 0;
   // Build precomputations max dist 24 (<41> to 8):
   int tokens[6] = {21, 22, 23, 221, 31, 41};
   for(int i = 0; i < 6; i++) {
