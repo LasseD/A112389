@@ -2144,7 +2144,8 @@ namespace rectilinear {
     waveSize = manager->next(baseCombination, maxCombination);
     if(waveSize > 0 &&
        maxCombination.size >= 9 &&
-       maxCombination.size - baseCombination.size > 3)
+       baseCombination.size >= 4 &&
+       baseCombination.size <= 6)
       std::cout << " " << threadName << " builds on " << baseCombination << " up to " << (int)maxCombination.size << std::endl;
     return waveSize;
   }

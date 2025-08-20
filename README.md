@@ -24,17 +24,18 @@
 
 [OEIS A123829](https://oeis.org/A123829) is the number of ways, counted up to symmetry, to build a contiguous model with N LEGO bricks of size 2 X 4 which is **symmetric** after a rotation by 180 degrees. The following table contains the known values of this sequence, which we denote a<sup>180</sup>(N).
 
-| N  | a<sup>180</sup>(N)| Author(s)     |
-|:--:|---------:|:-----------------------|
-|  1 |        1 |                        |
-|  2 |        2 | Kristiansen 1974       |
-|  3 |       44 | Anonymous 2002         |
-|  4 |      185 | Eilers 2004            |
-|  5 |     3276 | Eilers 2004            |
-|  6 |    15682 | Eilers 2004            |
-|  7 |   282377 | Abrahamsen-Eilers 2006 |
-|  8 |  1480410 | Abrahamsen-Eilers 2006 |
-|  9 | 26264942 | Nilsson 2014           |
+| N  | a<sup>180</sup>(N)| Author(s)      |
+|:--:|----------:|:-----------------------|
+|  1 |         1 |                        |
+|  2 |         2 | Kristiansen 1974       |
+|  3 |        44 | Anonymous 2002         |
+|  4 |       185 | Eilers 2004            |
+|  5 |      3276 | Eilers 2004            |
+|  6 |     15682 | Eilers 2004            |
+|  7 |    282377 | Abrahamsen-Eilers 2006 |
+|  8 |   1480410 | Abrahamsen-Eilers 2006 |
+|  9 |  26264942 | Nilsson 2014           |
+| 10 | 145036229 | Deleuran 2025          |
 
 
 # Project Overview
