@@ -436,6 +436,7 @@ int main(int argc, char** argv) {
     printUsage();
     return 1;
   }
+  BinomialCoefficient::init();
   char function = argv[1][0];
 
   switch(function) {

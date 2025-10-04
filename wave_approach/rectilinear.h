@@ -28,6 +28,8 @@
 #define BRICK first
 #define LAYER second
 
+#define BINOMIAL_CACHE_SIZE 200
+
 // For reporting on bases:
 #define NORMAL 0
 #define MIRROR_X 1
@@ -48,7 +50,10 @@
 namespace rectilinear {
 
   class BinomialCoefficient {
+    static uint64_t cache[][BINOMIAL_CACHE_SIZE];
+    static uint64_t nkSlow(uint64_t n, uint64_t k);
   public:
+    static void init();
     static uint64_t nChooseK(uint64_t n, uint64_t k);
   };
 

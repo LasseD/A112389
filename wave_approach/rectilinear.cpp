@@ -10,7 +10,26 @@
 
 namespace rectilinear {
 
-uint64_t BinomialCoefficient::nChooseK(uint64_t n, uint64_t k) {
+  uint64_t BinomialCoefficient::cache[BINOMIAL_CACHE_SIZE][BINOMIAL_CACHE_SIZE];
+
+  void BinomialCoefficient::init() {
+    std::cout << "Binomials init" << std::endl;
+    for(int i = 0; i < BINOMIAL_CACHE_SIZE; i++) {
+      for(int j = 0; j < BINOMIAL_CACHE_SIZE; j++)
+	cache[i][j] = nkSlow(i, j);
+    }
+    std::cout << "Binomials set up" << std::endl;
+  }
+
+  uint64_t BinomialCoefficient::nChooseK(uint64_t n, uint64_t k) {
+    if(n >= BINOMIAL_CACHE_SIZE || k >= BINOMIAL_CACHE_SIZE) {
+      std::cerr << "BINOMIAL NOT CACHABLE: n=" << n << ", k=" << k << std::endl;
+      return nkSlow(n, k);
+    }
+    return cache[n][k];
+  }
+
+  uint64_t BinomialCoefficient::nkSlow(uint64_t n, uint64_t k) {
     if(n < k)
       return 0; // Can't pick more than n
     if(n-k < k)
