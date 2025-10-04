@@ -402,15 +402,15 @@ int runRegressionTests() {
       return 2;
     }
   }
-  return 0;
-  // Build precomputations max dist 24 (<41> to 8):
-  int tokens[6] = {21, 22, 23, 221, 31, 41};
+  //return 0;
+  // Test precomputations:
+  int tokens[6] = {32, 23, 22, 21, 31, 221};
   for(int i = 0; i < 6; i++) {
     // Run precomputations
     uint64_t token = tokens[i];
-    int maxDist = i > 2 ? 16 : 8;
     Combination maxCombination(token);
     uint8_t base = maxCombination.layerSizes[0];
+    int maxDist = base > 2 || maxCombination.height > 2 ? 16 : 8;
     Lemma3 lemma3(base, 3, maxCombination);
     lemma3.precompute(maxDist, true);
 
