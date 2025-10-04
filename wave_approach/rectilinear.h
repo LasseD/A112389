@@ -47,6 +47,11 @@
 
 namespace rectilinear {
 
+  class BinomialCoefficient {
+  public:
+    static uint64_t nChooseK(uint64_t n, uint64_t k);
+  };
+
   /**
    * Struct used for totalling the number of models.
    * all includes the models counted for symmetric180 and symmetric90.
@@ -154,6 +159,7 @@ namespace rectilinear {
     void mirrorY();
     void normalize();
     void addBrick(const Brick &b, const uint8_t layer);
+    void addBrick(const LayerBrick &lb);
     int64_t encodeConnectivity(int64_t token);
     void removeLastBrick();
     int64_t getTokenFromLayerSizes() const;
@@ -314,8 +320,12 @@ namespace rectilinear {
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
-    void placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v);
+    uint64_t simonWithBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes);
+    uint64_t placeAllSizedBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t leftToPlace, uint32_t *bucketSizes, uint32_t bucketSizesI);
+    void placeAllInBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t bucketI, uint32_t bucketIndicesI, uint32_t numBuckets, uint32_t leftToPlace);
+    bool placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
     void addCountsFrom(const CountsMap &counts, bool doubleCount);
+    uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket);
   };
 
   class NonEncodingCombinationBuilder {

@@ -10,6 +10,18 @@
 
 namespace rectilinear {
 
+uint64_t BinomialCoefficient::nChooseK(uint64_t n, uint64_t k) {
+    if(n < k)
+      return 0; // Can't pick more than n
+    if(n-k < k)
+      k = n-k;
+
+    uint64_t ret = 1;
+    for(uint64_t i = 1; i <= k; ++i)
+      ret = (ret * (n-k+i)) / i;
+    return ret;
+  }
+
   Counts::Counts() : all(0), symmetric180(0), symmetric90(0) {}
   Counts::Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90) : all(all), symmetric180(symmetric180), symmetric90(symmetric90) {}
   Counts::Counts(const Counts& c) : all(c.all), symmetric180(c.symmetric180), symmetric90(c.symmetric90) {}
@@ -195,13 +207,13 @@ namespace rectilinear {
       nextVIdx(c, maxCombination);
       bool ok = vIdx < (int)v.size();
       if(ok)
-	c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+	c.addBrick(v[vIdx]);
       return ok;
     }
 
     // More than one brick to pick:
     if(inner != NULL) {
-      c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+      c.addBrick(v[vIdx]);
       if(inner->next(c, maxCombination))
 	return true; // inner placed remaining bricks
       c.removeLastBrick(); // Could not complete
@@ -213,7 +225,7 @@ namespace rectilinear {
       nextVIdx(c, maxCombination);
       if(vIdx + numberOfBricksToPick - 1 >= (int)v.size())
 	return false;
-      c.addBrick(v[vIdx].BRICK, v[vIdx].LAYER);
+      c.addBrick(v[vIdx]);
       inner = new BrickPicker(v, vIdx+1, numberOfBricksToPick-1);
       if(inner->next(c, maxCombination))
 	return true;
@@ -943,10 +955,10 @@ namespace rectilinear {
     history[size++] = BrickIdentifier(layer, layerSize);
     bricks[layer][layerSize] = b;
     layerSizes[layer]++;
-#ifdef DEBUG
-    for(uint8_t i = 0; i < layerSizes[layer]-1; i++)
-      assert(!bricks[layer][i].intersects(b));
-#endif
+  }
+
+  void Combination::addBrick(const LayerBrick &b) {
+    addBrick(b.BRICK, b.LAYER);
   }
 
   void Combination::removeLastBrick() {
@@ -1552,9 +1564,6 @@ namespace rectilinear {
 	    if(!neighbours[layer2].contains(!brick.isVertical, xx, yy) &&
 	       (layer2 == 0 || !neighbours[layer2-1].contains(!brick.isVertical, xx, yy)) &&
 	       (layer2+1 >= baseCombination.height || !neighbours[layer2+1].contains(!brick.isVertical, xx, yy))) {
-#ifdef TRACE
-	      std::cout << "   Found potential brick X " << Brick(!brick.isVertical, xx, yy) << std::endl;
-#endif
 	      neighbours[layer2].set(!brick.isVertical, xx, yy);
 	      v.push_back(LayerBrick(Brick(!brick.isVertical, xx, yy), layer2));
 	    }
@@ -1574,9 +1583,6 @@ namespace rectilinear {
 	    if(!neighbours[layer2].contains(brick.isVertical, xx, yy) &&
 	       (layer2 == 0 || !neighbours[layer2-1].contains(brick.isVertical, xx, yy)) &&
 	       (layer2+1 >= baseCombination.height || !neighbours[layer2+1].contains(brick.isVertical, xx, yy))) {
-#ifdef TRACE
-	      std::cout << "   Found potential brick | " << Brick(brick.isVertical, xx, yy) << std::endl;
-#endif
 	      neighbours[layer2].set(brick.isVertical, xx, yy);
 	      v.push_back(LayerBrick(Brick(brick.isVertical, xx, yy), layer2));
 	    }
@@ -1802,7 +1808,68 @@ namespace rectilinear {
     }
   }
 
-  void CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
+  uint64_t CombinationBuilder::simonWithBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes) {
+    // First compute all possible+impossible picks:
+    uint64_t all = 1;
+    for(uint64_t j = 0; j < numBuckets; j++) {
+      uint32_t bucketI = bucketIndices[j];
+      all *= BinomialCoefficient::nChooseK(buckets[bucketI].size(), bucketSizes[j]);
+    }
+
+    // Then remove all impossible picks:
+    // overlap(N):
+    uint64_t overlap = countInvalid(buckets, bucketIndices, numBuckets, bucketSizes, 0, 0, 0);
+
+    // Count up:
+    assert(all >= overlap);
+    return all - overlap;
+  }
+
+  uint64_t CombinationBuilder::placeAllSizedBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t leftToPlace, uint32_t *bucketSizes, uint32_t bucketSizesI) {
+    if(bucketSizesI == numBuckets) {
+      if(leftToPlace > 0)
+	return 0; // Bricks left outside of buckets!
+      return simonWithBuckets(buckets, bucketIndices, numBuckets, bucketSizes);
+    }
+
+    uint64_t ret = 0;
+    for(uint32_t bucketSize = 1; bucketSize <= leftToPlace; bucketSize++) {
+      bucketSizes[bucketSizesI] = bucketSize;
+      ret += placeAllSizedBuckets(buckets, bucketIndices, numBuckets, leftToPlace-bucketSize, bucketSizes, bucketSizesI+1);
+    }
+    return ret;
+  }
+
+  void CombinationBuilder::placeAllInBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t bucketI, uint32_t bucketIndicesI, uint32_t numBuckets, uint32_t leftToPlace) {
+    if(bucketI == numBuckets) {
+      // Call into all bucket size combinations:
+      uint32_t *bucketSizes = new uint32_t[numBuckets];
+
+      // Compute token (same for all combinations):
+      for(uint32_t i = 0; i < numBuckets; i++)
+	baseCombination.addBrick(buckets[bucketIndices[i]][0]);
+      for(uint32_t i = numBuckets; i < leftToPlace; i++)
+	baseCombination.addBrick(buckets[bucketIndices[0]][0]);
+      uint64_t token = baseCombination.getTokenFromLayerSizes();
+      token = baseCombination.encodeConnectivity(token);
+      for(uint32_t i = 0; i < leftToPlace; i++)
+	baseCombination.removeLastBrick();
+
+      uint64_t toAdd = placeAllSizedBuckets(buckets, bucketIndices, numBuckets, leftToPlace, bucketSizes, 0);
+      if(counts.find(token) == counts.end())
+	counts[token] = Counts();
+      counts[token].all += toAdd;
+      delete[] bucketSizes;
+      return; // Done!
+    }
+
+    for(uint32_t i = bucketIndicesI; i < buckets.size(); i++) {
+      bucketIndices[bucketI] = i;
+      placeAllInBuckets(buckets, bucketIndices, bucketI+1, i+1, numBuckets, leftToPlace);
+    }
+  }
+
+  bool CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
 #ifdef TRACE
     std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
@@ -1828,13 +1895,46 @@ namespace rectilinear {
     }
     if(cntNonFillableLayers > 0) {
 #ifdef TRACE
-      std::cout << "   Early exit due to non-fillable layers" << std::endl;
+      std::cout << "   Early exit of placeAllLeftToPlace due to non-fillable layers" << std::endl;
 #endif
-      return; // Can't possibly fill!
+      return false; // Can't possibly fill!
     }
     // End of optimization
 
     const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
+
+    // Simon with buckets optimization:
+    if(!canBeSymmetric180 && encodeConnectivity) {
+      //std::cout << "NEW STUFF, base=" << baseCombination << ", left=" << (int)leftToPlace << ", |v|=" << v.size() << std::endl;
+      std::vector<std::vector<LayerBrick> > buckets;
+      // Use optimization from Simon for each isolated connectivity:
+      std::map<int64_t,int> encodingToBucketIndex;
+      for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+	const LayerBrick &b = *it;
+	baseCombination.addBrick(b);
+	int64_t token = baseCombination.getTokenFromLayerSizes();
+	token = baseCombination.encodeConnectivity(token);
+	if(encodingToBucketIndex.find(token) == encodingToBucketIndex.end()) {
+	  //std::cout << " Bucket token: " << token << std::endl;
+	  buckets.push_back(std::vector<LayerBrick>());
+	  encodingToBucketIndex[token] = (int)buckets.size()-1;
+	}
+	buckets[encodingToBucketIndex[token]].push_back(b);
+	baseCombination.removeLastBrick();
+      }
+      // Try all combinations:
+      for(uint32_t numBuckets = 1; numBuckets <= leftToPlace; numBuckets++) {
+	//std::cout << "Iterate with numBuckets=" << numBuckets << std::endl;
+	// Pick 'leftToPlace' from the numBuckets number of buckets:
+	// First iterate over all ways of picking the buckets:
+	uint32_t *bucketIndices = new uint32_t[numBuckets];
+	placeAllInBuckets(buckets, bucketIndices, 0, 0, numBuckets, leftToPlace);
+	delete[] bucketIndices;
+	//std::cout << "DONE numBuckets=" << numBuckets << std::endl;
+      }
+      return true; // Done by Simon ... with buckets!
+    }
+
     BrickPicker picker(v, 0, leftToPlace);
     int64_t token = -1, prevToken = -1;
     CountsMap::iterator it;
@@ -1866,8 +1966,62 @@ namespace rectilinear {
       for(uint8_t i = 0; i < leftToPlace; i++)
 	baseCombination.removeLastBrick();
     }
+    return true; // Done slowly!
   }
 
+  uint64_t CombinationBuilder::countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket) {
+    assert(bucketI <= numBuckets);
+    if(bucketI == numBuckets)
+      return 0; // Bucket unavailable
+
+    // Pick next:
+    // Check if end of current bucket:
+    std::vector<LayerBrick> &currentBucket = buckets[bucketIndices[bucketI]];
+    uint64_t currentBucketSize = (int)currentBucket.size();
+    assert(currentBucketSize >= bucketII);
+    assert(pickedFromCurrentBucket <= bucketSizes[bucketI]);
+    if(pickedFromCurrentBucket == bucketSizes[bucketI]) {
+      bucketI++;
+      bucketII = 0;
+      return countInvalid(buckets, bucketIndices, numBuckets, bucketSizes, bucketI, bucketII, 0);
+    }
+
+    uint64_t ret = 0;
+
+    // Try to add each brick of current bucket and then recurse for future bricks:
+    for(; bucketII < currentBucketSize; bucketII++) {
+      const LayerBrick &b = currentBucket[bucketII];
+
+      bool hasIntersection = false;
+      uint8_t layer = b.LAYER;
+      for(uint8_t i = 0; i < baseCombination.layerSizes[layer]; i++) {
+	if(baseCombination.bricks[layer][i].intersects(b.BRICK)) {
+	  hasIntersection = true;
+	  break;
+	}
+      }
+
+      if(hasIntersection) {
+	// Count all with this intersection:
+	// From current bucket:
+	uint64_t leftInBucket = currentBucketSize - (uint64_t)(bucketII+1);
+	uint64_t leftToPick = bucketSizes[bucketI] - (pickedFromCurrentBucket+1);
+	uint64_t toAdd = BinomialCoefficient::nChooseK(leftInBucket, leftToPick);
+	// From remaining buckets:
+	for(uint32_t j = bucketI+1; j < numBuckets; j++)
+	  toAdd *= BinomialCoefficient::nChooseK(buckets[bucketIndices[j]].size(), bucketSizes[j]);
+	ret += toAdd;
+      }
+      else {
+	baseCombination.addBrick(b);
+	ret += countInvalid(buckets, bucketIndices, numBuckets, bucketSizes, bucketI, bucketII+1, pickedFromCurrentBucket+1);
+	baseCombination.removeLastBrick();
+      }
+    }
+
+    return ret;
+  }
+  
   /*
     Number of ways to place N bricks from v with intersections
    */
@@ -1935,11 +2089,7 @@ namespace rectilinear {
       }
 
       // all(N) is just the binomial coefficient:
-      uint64_t all = 1;
-      for(uint64_t i = 0; i < N2; i++)
-	all *= v2Size - i;
-      for(uint64_t i = 2; i <= N2; i++)
-	all /= i;
+      uint64_t all = BinomialCoefficient::nChooseK(v2Size, N2);
 
       // overlap(N):
       uint64_t overlap = countInvalid(c, 0, N2, v2, v2Size, 0);
@@ -2065,22 +2215,8 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
 
     const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
-    placeAllLeftToPlace(leftToPlace, v);
-
-    int incompleteLayers = 0;
-    for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i]) {
-	incompleteLayers++;
-	if(incompleteLayers > 1)
-	  break;
-      }
-    }
-    if(incompleteLayers <= 1) {
-#ifdef TRACE
-      std::cout << "   Early exit of build due to only " << incompleteLayers << " layers not done" << std::endl;
-#endif
-      return; // All done in placeAllLeftToPlace()
-    }
+    if(placeAllLeftToPlace(leftToPlace, v))
+      return; // Done in placeAllLeftToPlace()
 
     addWaveToNeighbours(1);
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
@@ -2905,10 +3041,6 @@ namespace rectilinear {
       if(belongsToAnotherTime)
 	continue; // Does not belong in this output
 
-#ifdef TRACE
-      std::cout << " Base to output: " << c << std::endl;
-#endif
-
       // Check for smaller bases:
       if(!c.is180Symmetric()) { // Do not do this for symmetric bases as we do not have separate handling for those
 	CBase smallerBase;
@@ -2922,9 +3054,6 @@ namespace rectilinear {
 	  if(resultsMap.find(cleanSmallerBase) != resultsMap.end()) { // Known smaller base: Point to same original:
 	    if(++reachSkips % 100000 == 0)
 	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
-#ifdef TRACE
-	    std::cout << "  Smaller base skip!" << std::endl;
-#endif
 	    continue;
 	  }
 	  else { // First time the smaller base is encountered: Mark it:
@@ -2939,9 +3068,6 @@ namespace rectilinear {
 	      int16_t dy = unreachableDist * ((i & 2) == 2 ? 1 : -1); // Expect at most 4 unreachable!
 	      buildBase.bricks[buildBase.layerSize++] = Brick(false, FirstBrick.x + dx, FirstBrick.y + dy);
 	    }
-#ifdef TRACE
-	    std::cout << "  Build smaller base " << buildBase << " ## REGISTER: " << registrationBase << std::endl;
-#endif
 	    return true;
 	  }
 	}
@@ -2955,9 +3081,6 @@ namespace rectilinear {
 	resultsMap[c] = CountsMap(); // Reserve to avoid repeats in output
 	if(++mirrorSkips % 50000 == 0)
 	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
-#ifdef TRACE
-	std::cout << "  Mirror skip!" << std::endl;
-#endif
 	continue;
       }
 
@@ -2966,9 +3089,6 @@ namespace rectilinear {
       if(++noSkips % 10000 == 0)
 	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
       buildBase = registrationBase = c;
-#ifdef TRACE
-      std::cout << "  Normal base" << std::endl;
-#endif
       return true;
     }
   }
@@ -2987,15 +3107,6 @@ namespace rectilinear {
       int baseType = it->second.first;
       CBase cBaseIt = it->second.second;
 
-#ifdef TRACE
-      if(baseType != NORMAL) {
-	std::cout << "Special base " << baseType << std::endl;
-	std::cout << " c:     " << c << std::endl;
-	std::cout << " source: " << cBaseIt << std::endl;
-      }
-      else
-	std::cout << "Normal base " << c << std::endl;
-#endif
       CountsMap cm = resultsMap[Base(cBaseIt)];
       CountsMap cmForOriginalBase;
 
@@ -3023,10 +3134,6 @@ namespace rectilinear {
 	}
 
 	if(baseType != NORMAL) {
-#ifdef TRACE
-	  std::cout << "  Token " << it3->first << " from source" << std::endl;
-#endif
-
 	  std::vector<std::pair<int,int> > pairs; // Color pairs
 	  for(uint8_t i = 1; i < cBaseIt.layerSize; i++) {
 	    if(colors[i] != i) {
@@ -3037,14 +3144,8 @@ namespace rectilinear {
 	      int a = cBaseIt.bricks[colors[i]].second;
 	      int b = cBaseIt.bricks[i].second;
 	      pairs.push_back(std::pair<int,int>(a, b));
-#ifdef TRACE
-	      std::cout << "  Irregular color " << i << " = " << colors[i] << " -> " << a << " = " << b << std::endl;
-#endif
 	    }
 	  }
-#ifdef TRACE
-	  std::cout << "   -> Colors 0";
-#endif
 	  // Use pairs to connect colors:
 	  for(int i = 0; i < base; i++)
 	    colors[i] = i;
@@ -3060,19 +3161,6 @@ namespace rectilinear {
 	      }
 	    }
 	  }
-#ifdef TRACE
-	  for(int i = 1; i < base; i++)
-	    std::cout << " " << colors[i];
-	  std::cout << ": " << it3->second << std::endl;
-#endif
-	}
-	else { // else: baseType == NORMAL
-	  // No need to transform for normal bases:
-#ifdef TRACE
-	  for(int i = 1; i < base; i++)
-	    std::cout << " " << colors[i];
-	  std::cout << ": " << it3->second << " from token " << it3->first << std::endl;
-#endif
 	}
 
 	for(int i = 1; i < base; i++)
