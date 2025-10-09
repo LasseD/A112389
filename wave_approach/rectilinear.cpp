@@ -129,12 +129,12 @@ namespace rectilinear {
     return y - b.y;
   }
   bool Brick::intersects(const Brick &b) const {
+    //return (ABS(b.x-x) < 4-isVertical-b.isVertical) && (ABS(b.y-y) < 2+isVertical+b.isVertical); // DID NOT CONSISTENTLY IMPROVE PERFORMANCE
     if(isVertical != b.isVertical)
       return DIFFLT(b.x, x, 3) && DIFFLT(b.y, y, 3);
     if(isVertical)
       return DIFFLT(b.x, x, 2) && DIFFLT(b.y, y, 4);
-    else
-      return DIFFLT(b.y, y, 2) && DIFFLT(b.x, x, 4);
+    return DIFFLT(b.x, x, 4) && DIFFLT(b.y, y, 2);
   }
   void Brick::mirror(Brick &b, const int16_t &cx, const int16_t &cy) const {
     b.isVertical = isVertical;
@@ -1050,8 +1050,20 @@ namespace rectilinear {
     return size == countConnected(0, 0);
   }
 
+  void Combination::colorFull() {
+    // Reset colors (state):
+    for(uint8_t i = 0; i < height; i++) {
+      uint8_t s = layerSizes[i];
+      for(uint8_t j = 0; j < s; j++)
+	colors[i][j] = 0;
+    }
+    for(uint8_t i = 0; i < layerSizes[0]; i++) {
+      if(colors[0][i] == 0) // Check here in case another connected to base brick
+	colorConnected(0, i, i+1);
+    }
+  }
+
   int64_t Combination::encodeConnectivity(int64_t token) {
-    assert(height > 1);
     assert(layerSizes[0] >= 2);
 
     // Reset colors (state):
@@ -1935,21 +1947,50 @@ namespace rectilinear {
 
     // Simon with buckets optimization:
     if(!canBeSymmetric180 && encodeConnectivity) {
-      std::vector<std::vector<LayerBrick> > buckets;
       // Use optimization from Simon for each isolated connectivity:
-      std::map<int64_t,int> encodingToBucketIndex;
+
+      // Put all bricks into buckets based on which bricks in baseCombination they touch:
+      // First color all bricks in baseCombination:
+      baseCombination.colorFull();
+
+      // Categorize each brick in baseCombination by its color:
+      std::vector<LayerBrick> colorToBricks[4]; // Max 4 bricks in base
+      for(uint8_t layer = 0; layer < baseCombination.height; layer++) {
+	for(uint8_t i = 0; i < baseCombination.layerSizes[layer]; i++) {
+	  uint8_t color = baseCombination.colors[layer][i];
+	  assert(color > 0);
+	  colorToBricks[color-1].push_back(LayerBrick(baseCombination.bricks[layer][i], layer));
+	}
+      }
+
+      // Categorize each brick in v by the colors they touch:
+      const uint8_t base = baseCombination.layerSizes[0];
+      std::vector<std::vector<LayerBrick> > buckets;
+      std::map<int32_t,int> encodingToBucketIndex;
       for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
 	const LayerBrick &b = *it;
-	baseCombination.addBrick(b);
-	int64_t token = baseCombination.getTokenFromLayerSizes();
-	token = baseCombination.encodeConnectivity(token);
-	if(encodingToBucketIndex.find(token) == encodingToBucketIndex.end()) {
-	  buckets.push_back(std::vector<LayerBrick>());
-	  encodingToBucketIndex[token] = (int)buckets.size()-1;
+	int32_t encoding = 0;
+	int countColors = 0;
+	for(uint8_t i = 0; i < base; i++) {
+	  for(std::vector<LayerBrick>::const_iterator it = colorToBricks[i].begin(); it != colorToBricks[i].end(); it++) {
+	    if((b.LAYER == it->LAYER+1 || b.LAYER+1 == it->LAYER) && it->BRICK.intersects(b.BRICK)) {
+	      encoding += (1 << i);
+	      countColors++;
+	      break;
+	    }
+	  }
 	}
-	buckets[encodingToBucketIndex[token]].push_back(b);
-	baseCombination.removeLastBrick();
+	assert(countColors > 0); // All bricks should touch something... that is how they we chosen.
+	if(countColors == 1)
+	  encoding = 1; // If only touching one, they cannot be used to change an encoding, so bundle them all.
+
+	if(encodingToBucketIndex.find(encoding) == encodingToBucketIndex.end()) {
+	  buckets.push_back(std::vector<LayerBrick>());
+	  encodingToBucketIndex[encoding] = (int)buckets.size()-1;
+	}
+	buckets[encodingToBucketIndex[encoding]].push_back(b);
       }
+
       // Try all combinations:
       uint32_t *bucketIndices = new uint32_t[leftToPlace];
       for(uint32_t numBuckets = 1; numBuckets <= leftToPlace && numBuckets <= buckets.size(); numBuckets++) {

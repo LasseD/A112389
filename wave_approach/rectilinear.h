@@ -128,11 +128,11 @@ namespace rectilinear {
 
   class Combination {
     // State to check connectivity:
-    uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
     uint8_t countConnected(uint8_t layer, uint8_t idx);
     bool hasVerticalLayer0Brick() const;
   public:
+    uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
     uint8_t layerSizes[MAX_HEIGHT], height, size;
     Brick bricks[MAX_HEIGHT][MAX_LAYER_SIZE];
     BrickIdentifier history[MAX_BRICKS];
@@ -169,7 +169,8 @@ namespace rectilinear {
     void removeLastBrick();
     int64_t getTokenFromLayerSizes() const;
     bool isConnected();
-    bool canBecomeSymmetric(const Combination &maxCombination) const; 
+    bool canBecomeSymmetric(const Combination &maxCombination) const;
+    void colorFull();
     static int64_t reverseToken(int64_t token);
     static uint8_t heightOfToken(int64_t token);
     static uint8_t sizeOfToken(int64_t token);

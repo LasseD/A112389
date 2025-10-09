@@ -404,8 +404,8 @@ int runRegressionTests() {
   }
   //return 0;
   // Test precomputations:
-  int tokens[6] = {32, 23, 22, 21, 31, 221};
-  for(int i = 0; i < 6; i++) {
+  int tokens[7] = {32, 23, 22, 21, 31, 221, 41};
+  for(int i = 0; i < 7; i++) {
     // Run precomputations
     uint64_t token = tokens[i];
     Combination maxCombination(token);
