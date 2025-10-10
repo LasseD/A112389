@@ -2,6 +2,8 @@
 *~
 .DS_Store
 d*.bin
+wave_approach/partials/*_11_*.txt
+wave_approach/partials/*_12_*.txt
 wave_approach/partials/*_13_*.txt
 wave_approach/partials/*_14_*.txt
 wave_approach/partials/*_15_*.txt

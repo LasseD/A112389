@@ -129,12 +129,11 @@ namespace rectilinear {
     return y - b.y;
   }
   bool Brick::intersects(const Brick &b) const {
-    //return (ABS(b.x-x) < 4-isVertical-b.isVertical) && (ABS(b.y-y) < 2+isVertical+b.isVertical); // DID NOT CONSISTENTLY IMPROVE PERFORMANCE
-    if(isVertical != b.isVertical)
-      return DIFFLT(b.x, x, 3) && DIFFLT(b.y, y, 3);
-    if(isVertical)
-      return DIFFLT(b.x, x, 2) && DIFFLT(b.y, y, 4);
-    return DIFFLT(b.x, x, 4) && DIFFLT(b.y, y, 2);
+    const int16_t dx = x-b.x;
+    const int16_t dy = y-b.y;
+    const int16_t MX = 4-isVertical-b.isVertical;
+    const int16_t MY = 2+isVertical+b.isVertical;
+    return (dx*dx < MX*MX) && (dy*dy < MY*MY);
   }
   void Brick::mirror(Brick &b, const int16_t &cx, const int16_t &cy) const {
     b.isVertical = isVertical;

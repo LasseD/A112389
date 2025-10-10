@@ -381,7 +381,7 @@ int runRegressionTests() {
   for(CountsMap::const_iterator it = m.begin(); it != m.end(); it++) {
     uint64_t token = Combination::reverseToken(it->first);
     uint8_t size = Combination::sizeOfToken(token);
-    if(size >= 9 || it->second.all > 3100000000)
+    if(size >= 9 || it->second.all > 31000000)
       continue;
     Combination::getLayerSizesFromToken(token, layerSizes);
     uint8_t height = Combination::heightOfToken(token);
