@@ -1476,7 +1476,6 @@ namespace rectilinear {
 					 BrickPlane *neighbours,
 					 Combination &maxCombination,
 					 bool isFirstBuilder,
-					 bool encodeConnectivity,
 					 bool encodingLocked) :
     baseCombination(c),
     waveStart(waveStart),
@@ -1484,7 +1483,6 @@ namespace rectilinear {
     neighbours(neighbours),
     maxCombination(maxCombination),
     isFirstBuilder(isFirstBuilder),
-    encodeConnectivity(encodeConnectivity),
     encodingLocked(encodingLocked) {
     assert(c.layerSizes[0] >= 1);
     assert(c.bricks[0][0] == FirstBrick);
@@ -1513,7 +1511,6 @@ namespace rectilinear {
     neighbours(neighbours),
     maxCombination(maxCombination),
     isFirstBuilder(false),
-    encodeConnectivity(true),
     encodingLocked(false) {
   }
 
@@ -1524,7 +1521,6 @@ namespace rectilinear {
     neighbours(b.neighbours),
     maxCombination(b.maxCombination),
     isFirstBuilder(b.isFirstBuilder),
-    encodeConnectivity(b.encodeConnectivity),
     encodingLocked(b.encodingLocked) {
   }
 
@@ -1540,7 +1536,6 @@ namespace rectilinear {
 					     waveSize(0),
 					     neighbours(NULL),
 					     isFirstBuilder(false),
-					     encodeConnectivity(false),
 					     encodingLocked(false) {}
 
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
@@ -1945,7 +1940,7 @@ namespace rectilinear {
     const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
 
     // Simon with buckets optimization:
-    if(!canBeSymmetric180 && encodeConnectivity) {
+    if(!canBeSymmetric180) {
       // Use optimization from Simon for each isolated connectivity:
 
       // Put all bricks into buckets based on which bricks in baseCombination they touch:
@@ -2007,8 +2002,7 @@ namespace rectilinear {
     while(picker.next(baseCombination, maxCombination)) {
       if(!encodingLocked || token == -1) {
 	token = baseCombination.getTokenFromLayerSizes();
-	if(encodeConnectivity)
-	  token = baseCombination.encodeConnectivity(token);
+	token = baseCombination.encodeConnectivity(token);
 
 	if(token != prevToken) {
 	  it = counts.find(token);
@@ -2312,7 +2306,7 @@ namespace rectilinear {
 	// Encoding can only take on a single value if bricks being picked belong to same base bricks.
 	// TODO: Check encoding
 	bool nextEncodingLocked = encodingLocked || toPick == 1;
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, encodeConnectivity, nextEncodingLocked);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, nextEncodingLocked);
 
  	builder.build();
 

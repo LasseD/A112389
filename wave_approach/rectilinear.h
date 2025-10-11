@@ -299,7 +299,7 @@ namespace rectilinear {
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
-    bool isFirstBuilder, encodeConnectivity, encodingLocked;
+    bool isFirstBuilder, encodingLocked;
   public:
     CountsMap counts;
 
@@ -309,7 +309,6 @@ namespace rectilinear {
 		       BrickPlane *neighbours,
 		       Combination &maxCombination,
 		       bool isFirstBuilder,
-		       bool encodeConnectivity,
 		       bool encodingLocked);
 
     CombinationBuilder(const Base &c,
