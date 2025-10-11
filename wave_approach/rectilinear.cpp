@@ -1904,7 +1904,7 @@ namespace rectilinear {
 #ifdef TRACE
     std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
 #endif
-    // Optimization: Check if all layers can be filled:
+    // Check if all layers can even be filled:
     // "non-full" layers: Layers that are not filled by v:
     int cntNonFillableLayers = 0;
     for(uint8_t i = 0; i < maxCombination.height; i++) {
@@ -1922,6 +1922,8 @@ namespace rectilinear {
       if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
 	checkedLayers[layer] = true;
 	cntNonFillableLayers--;
+	if(cntNonFillableLayers == 0)
+	  break;
       }
     }
     if(cntNonFillableLayers > 0) {
@@ -1991,6 +1993,7 @@ namespace rectilinear {
       return true; // Done by Simon ... with buckets!
     }
 
+    // Can be symmetric, so slow algorithm OK here:
     BrickPicker picker(v, 0, leftToPlace);
     int64_t token = -1, prevToken = -1;
     CountsMap::iterator it;
