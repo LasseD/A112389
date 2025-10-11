@@ -1901,9 +1901,6 @@ namespace rectilinear {
   }
 
   bool CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
-#ifdef TRACE
-    std::cout << "   Placing " << (int)leftToPlace << " bricks onto " << baseCombination << std::endl;
-#endif
     // Check if all layers can even be filled:
     // "non-full" layers: Layers that are not filled by v:
     int cntNonFillableLayers = 0;
@@ -1926,13 +1923,9 @@ namespace rectilinear {
 	  break;
       }
     }
-    if(cntNonFillableLayers > 0) {
-#ifdef TRACE
-      std::cout << "   Early exit of placeAllLeftToPlace due to non-fillable layers" << std::endl;
-#endif
+    if(cntNonFillableLayers > 0)
       return false; // Can't possibly fill!
-    }
-    // End of optimization
+
 
     const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
 
