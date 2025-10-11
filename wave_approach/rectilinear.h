@@ -308,7 +308,6 @@ namespace rectilinear {
 		       const uint8_t waveSize,
 		       BrickPlane *neighbours,
 		       Combination &maxCombination,
-		       bool isFirstBuilder,
 		       bool encodingLocked);
 
     CombinationBuilder(const Base &c,
@@ -329,7 +328,7 @@ namespace rectilinear {
     uint64_t placeAllSizedBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t leftToPlace, uint32_t *bucketSizes, uint32_t bucketSizesI);
     void placeAllInBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t bucketI, uint32_t bucketIndicesI, uint32_t numBuckets, uint32_t leftToPlace);
     bool placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
-    void addCountsFrom(const CountsMap &counts, bool doubleCount);
+    void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
   };
 

@@ -1475,14 +1475,12 @@ namespace rectilinear {
 					 const uint8_t waveSize,
 					 BrickPlane *neighbours,
 					 Combination &maxCombination,
-					 bool isFirstBuilder,
 					 bool encodingLocked) :
     baseCombination(c),
     waveStart(waveStart),
     waveSize(waveSize),
     neighbours(neighbours),
     maxCombination(maxCombination),
-    isFirstBuilder(isFirstBuilder),
     encodingLocked(encodingLocked) {
     assert(c.layerSizes[0] >= 1);
     assert(c.bricks[0][0] == FirstBrick);
@@ -1510,7 +1508,6 @@ namespace rectilinear {
     waveSize(c.layerSize),
     neighbours(neighbours),
     maxCombination(maxCombination),
-    isFirstBuilder(false),
     encodingLocked(false) {
   }
 
@@ -1520,7 +1517,6 @@ namespace rectilinear {
     waveSize(b.waveSize),
     neighbours(b.neighbours),
     maxCombination(b.maxCombination),
-    isFirstBuilder(b.isFirstBuilder),
     encodingLocked(b.encodingLocked) {
   }
 
@@ -1535,7 +1531,6 @@ namespace rectilinear {
   CombinationBuilder::CombinationBuilder() : waveStart(0),
 					     waveSize(0),
 					     neighbours(NULL),
-					     isFirstBuilder(false),
 					     encodingLocked(false) {}
 
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
@@ -2223,13 +2218,10 @@ namespace rectilinear {
     return ret;
   }
 
-  void CombinationBuilder::addCountsFrom(const CountsMap &countsFrom, bool doubleCount) {
+  void CombinationBuilder::addCountsFrom(const CountsMap &countsFrom) {
     for(CountsMap::const_iterator it = countsFrom.begin(); it != countsFrom.end(); it++) {
       int64_t token = it->first;
       Counts toAdd = it->second;
-
-      if(doubleCount)
-	toAdd += toAdd; // Since we skipped "the other time" (optimization 1)
 
       CountsMap::iterator it2;
       if((it2 = counts.find(token)) == counts.end())
@@ -2287,30 +2279,14 @@ namespace rectilinear {
       BrickPicker picker(v, 0, toPick);
 
       while(picker.next(baseCombination, maxCombination)) {
-	// Optimization: Skip half of constructions in first builder (unless symmetric)
-	// Is not enabled for precomputations, as base order changes on symmetries.
-	bool doubleCount = isFirstBuilder && !baseCombination.is180Symmetric();
-	if(doubleCount) {
-	  Combination rotated(baseCombination);
-	  Combination baseCopy(baseCombination);
-	  baseCopy.translateMinToOrigo();
-	  baseCopy.sortBricks();
-	  rotated.rotate180();
-	  if(rotated < baseCopy) {
-	    for(uint8_t i = 0; i < toPick; i++)
-	      baseCombination.removeLastBrick();
-	    continue; // Skip!
-	  }
-	}
-
 	// Encoding can only take on a single value if bricks being picked belong to same base bricks.
 	// TODO: Check encoding
 	bool nextEncodingLocked = encodingLocked || toPick == 1;
-	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, false, nextEncodingLocked);
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, nextEncodingLocked);
 
  	builder.build();
 
- 	addCountsFrom(builder.counts, doubleCount);
+ 	addCountsFrom(builder.counts);
 
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.removeLastBrick();
