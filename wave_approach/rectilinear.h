@@ -363,7 +363,7 @@ namespace rectilinear {
     BrickPlane *neighbours;
     Combination *baseCombination, *maxCombination;
     NormalBuildingManager *manager;
-    std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
+    std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() }, timePrev = timeStart;
     std::string threadName;
   public:
     SplitBuildingBuilder();
