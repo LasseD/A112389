@@ -1782,8 +1782,8 @@ namespace rectilinear {
 	  int16_t xx = brick.x+x;
 	  for(int16_t y = -2; y < 3; y++) {
 	    int16_t yy = brick.y+y;
-	    if(!neighbours[layer2].contains(!brick.isVertical, xx, yy) &&
-	       (layer2 == 0 || !neighbours[layer2-1].contains(!brick.isVertical, xx, yy)) &&
+	    if(!neighbours[layer2].contains(!brick.isVertical, xx, yy) && // Duplicate check
+	       (layer2 == 0 || !neighbours[layer2-1].contains(!brick.isVertical, xx, yy)) && // TODO: Why?
 	       (layer2+1 >= baseCombination.height || !neighbours[layer2+1].contains(!brick.isVertical, xx, yy))) {
 	      neighbours[layer2].set(!brick.isVertical, xx, yy);
 	      v.push_back(LayerBrick(Brick(!brick.isVertical, xx, yy), layer2));
@@ -1900,6 +1900,55 @@ namespace rectilinear {
     }
   }
 
+  void CombinationBuilder::setUpBucketsForSimon(std::vector<std::vector<LayerBrick> > &buckets, const std::vector<LayerBrick> &v) {
+    if(encodingLocked) {
+      // If the encoding is locked, they will all fall into same bucket:
+      buckets.push_back(v);
+      return;
+    }
+
+    // Put all bricks into buckets based on which bricks in baseCombination they touch:
+    // First color all bricks in baseCombination:
+    baseCombination.colorFull();
+
+    // Categorize each brick in baseCombination by its color:
+    std::vector<LayerBrick> colorToBricks[4]; // Max 4 bricks in base
+    for(uint8_t layer = 0; layer < baseCombination.height; layer++) {
+      for(uint8_t i = 0; i < baseCombination.layerSizes[layer]; i++) {
+	uint8_t color = baseCombination.colors[layer][i];
+	assert(color > 0);
+	colorToBricks[color-1].push_back(LayerBrick(baseCombination.bricks[layer][i], layer));
+      }
+    }
+
+    // Categorize each brick in v by the colors they touch:
+    const uint8_t base = baseCombination.layerSizes[0];
+    std::map<int32_t,int> encodingToBucketIndex;
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      const LayerBrick &b = *it;
+      int32_t encoding = 0;
+      int countColors = 0;
+      for(uint8_t i = 0; i < base; i++) {
+	for(std::vector<LayerBrick>::const_iterator it = colorToBricks[i].begin(); it != colorToBricks[i].end(); it++) {
+	  if((b.LAYER == it->LAYER+1 || b.LAYER+1 == it->LAYER) && it->BRICK.intersects(b.BRICK)) {
+	    encoding += (1 << i);
+	    countColors++;
+	    break;
+	  }
+	}
+      }
+      assert(countColors > 0); // All bricks should touch something... that is how they we chosen.
+      if(countColors == 1)
+	encoding = 1; // If only touching one, they cannot be used to change an encoding, so bundle them all.
+
+      if(encodingToBucketIndex.find(encoding) == encodingToBucketIndex.end()) {
+	buckets.push_back(std::vector<LayerBrick>());
+	encodingToBucketIndex[encoding] = (int)buckets.size()-1;
+      }
+      buckets[encodingToBucketIndex[encoding]].push_back(b);
+    }
+  }
+
   bool CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
     // Check if all layers can even be filled:
     // "non-full" layers: Layers that are not filled by v:
@@ -1932,48 +1981,8 @@ namespace rectilinear {
     // Simon with buckets optimization:
     if(!canBeSymmetric180) {
       // Use optimization from Simon for each isolated connectivity:
-
-      // Put all bricks into buckets based on which bricks in baseCombination they touch:
-      // First color all bricks in baseCombination:
-      baseCombination.colorFull();
-
-      // Categorize each brick in baseCombination by its color:
-      std::vector<LayerBrick> colorToBricks[4]; // Max 4 bricks in base
-      for(uint8_t layer = 0; layer < baseCombination.height; layer++) {
-	for(uint8_t i = 0; i < baseCombination.layerSizes[layer]; i++) {
-	  uint8_t color = baseCombination.colors[layer][i];
-	  assert(color > 0);
-	  colorToBricks[color-1].push_back(LayerBrick(baseCombination.bricks[layer][i], layer));
-	}
-      }
-
-      // Categorize each brick in v by the colors they touch:
-      const uint8_t base = baseCombination.layerSizes[0];
       std::vector<std::vector<LayerBrick> > buckets;
-      std::map<int32_t,int> encodingToBucketIndex;
-      for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
-	const LayerBrick &b = *it;
-	int32_t encoding = 0;
-	int countColors = 0;
-	for(uint8_t i = 0; i < base; i++) {
-	  for(std::vector<LayerBrick>::const_iterator it = colorToBricks[i].begin(); it != colorToBricks[i].end(); it++) {
-	    if((b.LAYER == it->LAYER+1 || b.LAYER+1 == it->LAYER) && it->BRICK.intersects(b.BRICK)) {
-	      encoding += (1 << i);
-	      countColors++;
-	      break;
-	    }
-	  }
-	}
-	assert(countColors > 0); // All bricks should touch something... that is how they we chosen.
-	if(countColors == 1)
-	  encoding = 1; // If only touching one, they cannot be used to change an encoding, so bundle them all.
-
-	if(encodingToBucketIndex.find(encoding) == encodingToBucketIndex.end()) {
-	  buckets.push_back(std::vector<LayerBrick>());
-	  encodingToBucketIndex[encoding] = (int)buckets.size()-1;
-	}
-	buckets[encodingToBucketIndex[encoding]].push_back(b);
-      }
+      setUpBucketsForSimon(buckets, v);
 
       // Try all combinations:
       uint32_t *bucketIndices = new uint32_t[leftToPlace];
@@ -2418,7 +2427,7 @@ namespace rectilinear {
       }
       ret += manager.getCounts();
     }
-    b1.addWaveToNeighbours(1); // Clean up
+    b1.addWaveToNeighbours(-1); // Clean up
 
     // Fix final counts (see also CombinationBuilder::report()):
     const uint8_t ls0 = maxCombination.layerSizes[0];
