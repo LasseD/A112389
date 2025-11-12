@@ -2342,7 +2342,8 @@ namespace rectilinear {
     if(waveSize > 0 &&
        maxCombination.size >= 9 &&
        baseCombination.size >= 4 &&
-       baseCombination.size <= 6)
+       baseCombination.size <= 6 &&
+       threadName[0] == 'A')
       std::cout << " " << threadName << " builds on " << baseCombination << " up to " << (int)maxCombination.size << std::endl;
     return waveSize;
   }
@@ -2360,10 +2361,13 @@ namespace rectilinear {
 
     int picked;
     while((picked = b.addFrom(manager, threadName)) > 0) {
-      // Behold the beautiful C++ 11 syntax for showing elapsed time...
-      std::chrono::duration<double, std::ratio<60> > duration(std::chrono::steady_clock::now() - timeStart);
-      if(duration > std::chrono::duration<double, std::ratio<60> >(2)) // Avoid the initial 2 minute chaos:
-	std::cout << "Time elapsed: " << duration.count() << " minutes" << std::endl;
+      // Behold! The beautiful C++ 11 types for elapsed time...
+      std::chrono::duration<double, std::ratio<60> > duration(std::chrono::steady_clock::now() - timePrev);
+      if(duration > std::chrono::duration<double, std::ratio<60> >(1)) {
+	std::chrono::duration<double, std::ratio<60> > fullDuration(std::chrono::steady_clock::now() - timeStart);
+	std::cout << "Time elapsed: " << fullDuration.count() << " minutes" << std::endl;
+	timePrev = std::chrono::steady_clock::now();
+      }
       Counts c = b.build();
       b.countAndRemoveFrom(manager, c, picked);
     }
@@ -3270,7 +3274,8 @@ namespace rectilinear {
       if(maxCombination->layerSizes[0] < 4 &&
 	 maxCombination->size > 6 &&
 	 maxCombination->height > 2 &&
-	 maxCombination->size - buildBase.layerSize > 3)
+	 maxCombination->size - buildBase.layerSize > 3 &&
+	 threadName[0] == 'A')
 	std::cout << threadName << " builds on " << buildBase << std::endl;
       CombinationBuilder builder(buildBase, neighbours, *maxCombination);
       builder.build();
