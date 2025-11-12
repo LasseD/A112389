@@ -1833,9 +1833,25 @@ namespace rectilinear {
 
   uint64_t CombinationBuilder::simonWithBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes) {
     // Common case: 1 brick being placed:
-    if(numBuckets == 1 && bucketSizes[0] == 1) {
-      const uint32_t bucketI = bucketIndices[0];
-      return buckets[bucketI].size();
+    if(numBuckets == 1) {
+      if(bucketSizes[0] == 1) {
+	const uint32_t bucketI = bucketIndices[0];
+	return buckets[bucketI].size();
+      }
+      // For 2 bricks from 1 bucket, simply running O(n^2) comparisons might be faster:
+      if(bucketSizes[0] == 2) {
+	const std::vector<LayerBrick>& bucket = buckets[bucketIndices[0]];
+	uint64_t ret = 0;
+	for(uint32_t i = 0; i < bucket.size(); i++) {
+	  const LayerBrick& b1 = bucket[i];
+	  for(uint32_t j = i+1; j < bucket.size(); j++) {
+	    const LayerBrick& b2 = bucket[j];
+	    if(b1.LAYER != b2.LAYER || !b1.BRICK.intersects(b2.BRICK))
+	      ret++;
+	  }
+	}
+	return ret;
+      }
     }
     
     // First count all possible+impossible picks:
@@ -1884,6 +1900,7 @@ namespace rectilinear {
       for(uint32_t i = 0; i < numBuckets; i++)
 	baseCombination.removeLastBrick();
 
+      // Perform computation:
       uint64_t toAdd = placeAllSizedBuckets(buckets, bucketIndices, numBuckets, leftToPlace, bucketSizes, 0);
       CountsMap::iterator it = counts.find(token);
       if(it == counts.end())
