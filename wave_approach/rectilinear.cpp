@@ -697,7 +697,7 @@ namespace rectilinear {
       }
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void Base::rotate180() {
     // Perform rotation:
@@ -707,7 +707,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void CBase::rotate180() {
     // Perform rotation:
@@ -717,7 +717,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
 
   void Base::mirrorX() {
@@ -726,7 +726,7 @@ namespace rectilinear {
       b.x = PLANE_MID - (b.x - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void Base::mirrorY() {
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -734,7 +734,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void CBase::mirrorX() {
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -742,7 +742,7 @@ namespace rectilinear {
       b.x = PLANE_MID - (b.x - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void CBase::mirrorY() {
     for(uint8_t j = 0; j < layerSize; j++) {
@@ -750,7 +750,7 @@ namespace rectilinear {
       b.y = PLANE_MID - (b.y - PLANE_MID);
     }
     translateMinToOrigo();
-    sortBricks(); // TODO: Is std::sort fast enough?
+    sortBricks();
   }
   void Combination::mirrorX() {
     for(uint8_t i = 0; i < height; i++) {
@@ -1783,7 +1783,7 @@ namespace rectilinear {
 	  for(int16_t y = -2; y < 3; y++) {
 	    int16_t yy = brick.y+y;
 	    if(!neighbours[layer2].contains(!brick.isVertical, xx, yy) && // Duplicate check
-	       (layer2 == 0 || !neighbours[layer2-1].contains(!brick.isVertical, xx, yy)) && // TODO: Why?
+	       (layer2 == 0 || !neighbours[layer2-1].contains(!brick.isVertical, xx, yy)) && // TODO: Why check below?
 	       (layer2+1 >= baseCombination.height || !neighbours[layer2+1].contains(!brick.isVertical, xx, yy))) {
 	      neighbours[layer2].set(!brick.isVertical, xx, yy);
 	      v.push_back(LayerBrick(Brick(!brick.isVertical, xx, yy), layer2));
@@ -2302,7 +2302,7 @@ namespace rectilinear {
 
       while(picker.next(baseCombination, maxCombination)) {
 	// Encoding can only take on a single value if bricks being picked belong to same base bricks.
-	// TODO: Check encoding
+	// TODO: Improve this by checking the encoding
 	bool nextEncodingLocked = encodingLocked || toPick == 1;
 	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, nextEncodingLocked);
 
@@ -2587,7 +2587,7 @@ namespace rectilinear {
     uint8_t base = maxCombination.layerSizes[0];
     if(base == 2)
       return maxCombination.height > 2 && maxCombination.size >= 8;
-    return false; // TODO for larger bases!
+    return false; // TODO Add logic for larger bases once failures are observed (seg fault and console errors are written)
   }
   void BitWriter::writeColor(uint8_t toWrite) {
     assert(toWrite < 8);

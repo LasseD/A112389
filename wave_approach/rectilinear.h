@@ -49,6 +49,11 @@
 
 namespace rectilinear {
 
+  /**
+   * Cached binomial coefficients, as these are computed in the
+   * hot loops of the "Simon" implementations.
+   * Remember to call init() once and before any call to nChooseK()!
+   */
   class BinomialCoefficient {
     static uint64_t cache[][BINOMIAL_CACHE_SIZE];
     static uint64_t nkSlow(uint64_t n, uint64_t k);
@@ -59,9 +64,9 @@ namespace rectilinear {
 
   /**
    * Struct used for totalling the number of models.
-   * all includes the models counted for symmetric180 and symmetric90.
-   * symmetric90 is 0 unless counting for <44>. In this case symmetric180
-   * also includes the models counted for symmetric90.
+   * Note: 'all' includes the models counted for 'symmetric180' and 'symmetric90'.
+   * Note: 'symmetric90' is 0 unless counting for <44>. In this case 'symmetric180'
+   * also includes the models counted for 'symmetric90'.
    */
   struct Counts {
     uint64_t all, symmetric180, symmetric90;
@@ -82,7 +87,7 @@ namespace rectilinear {
 
   /**
    * A Brick represents a 2x4 LEGO brick with an orientation and x,y-position.
-   * x,y is the position of the middle of the brick (like in LDRAW).
+   * x,y is the position of the center of the brick (like in LDRAW).
    */
   struct Brick {
     bool isVertical;
@@ -107,10 +112,16 @@ namespace rectilinear {
 
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
-  typedef std::pair<Brick,uint8_t> LayerBrick;
-  typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // layer, idx
+  typedef std::pair<Brick,uint8_t> LayerBrick; // A brick placed at a given layer of a combination
+  typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // Identify a brick in a combination (layer, idx)
   typedef std::map<int64_t,Counts> CountsMap; // token -> counts
 
+  /**
+   * Cache for bricks placed in a plane or layer.
+   * A brick is cached by its orientation, then x, and finally by y.
+   * int8_t is used to allow for multiple bricks at the same location.
+   * This is used for speeding up checks for colissions.
+   */
   struct BrickPlane {
     int8_t bricks[2][PLANE_WIDTH][PLANE_WIDTH];
 #ifdef DEBUG
@@ -124,18 +135,19 @@ namespace rectilinear {
     bool contains(const bool v, const int16_t x, const int16_t y);
   };
 
-  struct Base;
+  struct Base; // To be defined later. Needed here to allow for C++ compilation.
 
+  // Represents a combination/model
   class Combination {
     // State to check connectivity:
     void colorConnected(uint8_t layer, uint8_t idx, uint8_t color);
     uint8_t countConnected(uint8_t layer, uint8_t idx);
     bool hasVerticalLayer0Brick() const;
   public:
-    uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE];
+    uint8_t colors[MAX_HEIGHT][MAX_LAYER_SIZE]; // Colors of bricks. Used for checking connectivity.
     uint8_t layerSizes[MAX_HEIGHT], height, size;
     Brick bricks[MAX_HEIGHT][MAX_LAYER_SIZE];
-    BrickIdentifier history[MAX_BRICKS];
+    BrickIdentifier history[MAX_BRICKS]; // Used for knowing which bricks belong to current and previous layers.
 
     /*
       Rectilinear models with restriction: First brick of first layer must be FirstBrick.
@@ -180,7 +192,15 @@ namespace rectilinear {
     static bool checkCounts(uint64_t token, const Counts &c);
   };
 
-  struct CBase;
+  struct CBase; // To be defined later. Needed here to allow for C++ compilation.
+
+  /**
+   * Represents a "base", which is a single layer of bricks.
+   * Used when computing precomputations.
+   * Note: Some times "base" is used to denote the number of bricks (layerSize) of a base.
+   * This struct is used instead of using combinations of height 1 in order to speed up
+   * computation time and reduce memory usage.
+   */
   struct Base {
     uint8_t layerSize;
     Brick bricks[MAX_LAYER_SIZE];
@@ -213,6 +233,11 @@ namespace rectilinear {
   };
 
   typedef std::pair<Brick,int> CBrick; // Brick with initial position
+
+  /**
+   * Similar to base, but each brick retains its "initial" position.
+   * This is used to cache rotational and mirrored duplicates when computing precomputations.
+   */
   struct CBase {
     uint8_t layerSize;
     CBrick bricks[MAX_LAYER_SIZE];
@@ -236,7 +261,10 @@ namespace rectilinear {
   private:
     bool hasVerticalLayer0Brick() const;
   };
-  
+
+  /**
+   * Helper class to pick all combinations of 'numberOfBricks' bricks from a list of bricks 'v'.
+   */
   class BrickPicker {
     const std::vector<LayerBrick> &v; // Available bricks
     int vIdx; // First index of available bricks
@@ -253,11 +281,13 @@ namespace rectilinear {
     bool next(Combination &c, const Combination &maxCombination);
   };
 
-  typedef std::map<Base,CountsMap> BaseResultsMap;
-  typedef std::map<Base,Base> CombinationMap;
+  typedef std::map<Base,CountsMap> BaseResultsMap; // CountsMap for each base. Used for caching results during computation of precomputations.
   typedef std::map<Combination,Counts> CombinationCountsMap;
-  typedef std::pair<bool,Combination> CombinationIdentification; // True if self
 
+  /**
+   * Helper class for serving the combinations that partials are starting on.
+   * Does not serve rotational, nor mirror duplicates.
+   */
   class BaseBuildingManager {
     const std::vector<LayerBrick> &v;
     const int maxPick;
