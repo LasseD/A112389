@@ -10,7 +10,7 @@ Compile the code:
 g++ -std=c++11 -O3 -DNDEBUG *.cpp -o run.o
 ```
 
-### Count for a specific refinement R using T threads
+### Count for a specific refinement <R> using T threads
 
 ```
 ./run.o R T
@@ -23,7 +23,7 @@ a(8,3,4,2,2) with the shorthand <422>. Here a refinement is the subset of models
 ./run.o 422 9
 ```
 
-### Construct precomputation files up to maximal distance D for base B, refinement R using T threads
+### Construct precomputation files up to maximal distance D for base B, refinement <R> using T threads
 
 ```
 ./run.o R D T
@@ -37,31 +37,32 @@ To compute the files up to maximal distance 8 between the bricks in the base and
 ```
 mkdir base_2_size_3_refinement_21
 
-./run.o 21 8 9
+./run.o P 21 8 9
+```
+
+### Sum precomputation files up to maximal distance D for base B, for refinement <ABC>
+
+```
+./run.o S A B C D
+```
+
+Example:
+After computing the base 2 precomputations of refinement <21> up to distance 8, the refinement <121> can be computed by running:
+
+
+```
+./run.o S 1 2 1 8
 ```
 
 The code is in public domain, and you may copy and add to it as you see fit.
 
 
-## Brief code overview
+## Code overview
 
-The code computes all models a(N) by adding bricks to existing models in "waves". A "wave" of a model is a subset of the bricks of the model. See the source code for further documentation.
+The code base is structured in 3 files:
 
-### Base case
+- main.cpp which performs command line parameter validation and executes the requested function
 
-a(1) consists of the single model consisting of one 2x4 LEGO brick. The "wave" of the model consists of the brick.
+- rectilinear.* files which have the actual implementation for computing refinements and precomputations
 
-This model is symmetric, so a(N) = a<sup>180</sup>(N) = 1.
-
-### Iterative case
-
-Consider a model M0 and its wave W0.
-
-New models are created by selecting bricks for new waves:
-
-Let Q be the set of possible brick locations where each brick connects to W0, but does not connect to any other brick of M0 and does not overlap with any brick in M0.
-
-New models are created by selecting all non-empty subset of Q as the new waves.
-
-
-
+See the comments in top of the structs and classes of rectilinear.h for brief overviews.

@@ -42,13 +42,13 @@
 
 It took "a matter of months" to compute a(9) and more than 1.5 years to compute a(10).
 Since there currently is no known way of computing the sequence without iterating through (most of) the models, the time to compute a(N+1) is roughly 100 times the time to compute a(N).
-As 150 years of computing resources is a high price to pay for a(11), we seek to find novel ways of computing subsets of a(11) more efficiently and reduce the amount of models that have to be counted individually to something more reasonable.
+As 150 years of computing resources is a high price to pay for a(11), we seek to find novel ways of computing subsets of a(11) more efficiently and reduce the amount of models that have to be counted individually.
 
 ## Definitions
 
-- A "brick" refers to a 2 x 4 LEGO brick with 8 stod on top. A brick has a position, and since we only concerns ourselves with bricks that are connected to each other using the studs, and only at rectillinear ("right") angles, the position of a brick is identified by its coordinate pair (x,y) and its orientation (horizontal or vertical). A brick also has a height. A "base brick" is located at (0,0) at height 0 and a brick connected to another from above has the height 1 larger than the other.
+- A "brick" refers to a 2 x 4 LEGO brick with 8 stod on top. For this project we only concern ourselves with bricks that are connected to each other using the studs, and only at rectillinear ("right") angles. The position of a brick is thus identified by its coordinate pair (x,y), its orientation (horizontal or vertical) and the height of which it is placed: A "base brick" is located at (0,0) at height 0. A brick connected to a base brick from above has the height 1, and so on.
 
-- A "model" consists of one or more bricks connected by the studs. All connections are rectilinear. [Another project](https://github.com/LasseD/BrickCounting) concerns bricks connected at all possible angles. We consider two models to be the same if they are rotationally symmetric. The code base uses "combination" and "model" interchangeably.
+- A "model" consists of one or more bricks connected by their studs. All connections are rectilinear. [Another project](https://github.com/LasseD/BrickCounting) concerns bricks connected at all possible angles. We consider two models to be the same if they are rotationally symmetric. The code base uses "combination" and "model" interchangeably.
 
 - A(N) is the set of all models with exactly N bricks.
 
@@ -56,11 +56,17 @@ As 150 years of computing resources is a high price to pay for a(11), we seek to
 
 - A<sup>180</sup>(N) is the subset of A(N) where the models are symmetric after 180 degrees of rotation. a<sup>180</sup>(N) is the size of A<sup>180</sup>(N). Similarly A<sup>90</sup>(N) is the subset of A(N) where the models are symmetric after 90 degrees of rotation, and a<sup>90</sup>(N) is the size of A<sup>90</sup>(N).
 
-- A "layer" of a model is the subset of bricks of the model whose height is the same. The "base layer" or "first layer" refers to the lower-most layer of a model (at height 0).
+- A "layer" of a model is the subset of bricks of the model whose height is the same as the layer. The "base layer" or "first layer" refers to the lower-most layer of a model (at height 0).
 
 - The "height" of a model is the number of layers of it.
 
-- A "refinement" A(N,M,Z1,Z2,...,ZM) is the subset of a(N) where the models have height M and the sized of the layers from base layer and up are Z1, Z2, ..., ZM. We use the shorthand <Z1Z2...ZM> to denote the refinement A(N,M,Z1,Z2,...,ZM). a(N,M,Z1,Z2,...,ZM) is the size of refinement A(N,M,Z1,Z2,...,ZM).
+- A "refinement" A(N,M,Z1,Z2,...,ZM) is the subset of A(N) where the models have height M and the sized of the layers from base layer and up are Z1, Z2, ..., ZM. a(N,M,Z1,Z2,...,ZM) is the size of refinement A(N,M,Z1,Z2,...,ZM). We use the shorthand <Z1Z2...ZM> to denote a(N,M,Z1,Z2,...,ZM).
+
+
+
+# Software Implementations
+
+This project contains two approaches to compute a(N): "Brute-Force Approach" and "Wave Approach". The sections below provide brief overviews of these.
 
 
 ## Brute-Force Approach
@@ -76,10 +82,10 @@ This is a very simplistic and inefficient approach that iterates through all mod
 
 ## Wave Approach
 
-Consider the following by Abrahamsen and Eilers:
+Abrahamsen and Eilers presented the following approach to compute a(N) in 'Eilers 2016':
 Consider the first brick at the first layer of any model as being fixed.
 Construct all models by adding bricks to this first brick.
-Divide the final counts as outlined in 'Eilers 2016' to address symmetries.
+Divide the final counts to address symmetries.
 
 Our "wave" algorithm constructs models iteratively by following this approach.
 
@@ -94,9 +100,15 @@ This is repeated for all possible subsets T while ensuring that the bricks of T 
 The folder [/wave_approach](wave_approach/) contains the source code.
 
 
+
+# Lemmas
+
+Key insights of how to efficiently compute A(N) are captured in the lemmas of this section. Lemma 1 has been known since A(4) was computed, while Lemma 2 and Lemma 3 have been developed by us to improve the performance when computing A(11).
+
+
 ## Lemma 1 “Divide and Conquer” (L1)
 
-We call a layer of size 1 a “bottleneck”.
+We call a non-extreme layer of size 1 a “bottleneck”. The "extreme" layers are the base and top layers.
 
 If a refinement has a bottleneck, then we can easily compute its size from the size of smaller refinements:
 
