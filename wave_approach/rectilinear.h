@@ -28,7 +28,7 @@
 #define BRICK first
 #define LAYER second
 
-#define BINOMIAL_CACHE_SIZE 200
+#define BINOMIAL_CACHE_SIZE 256
 
 // For reporting on bases:
 #define NORMAL 0

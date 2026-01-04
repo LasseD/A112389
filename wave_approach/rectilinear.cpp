@@ -2587,7 +2587,9 @@ namespace rectilinear {
     uint8_t base = maxCombination.layerSizes[0];
     if(base == 2)
       return maxCombination.height > 2 && maxCombination.size >= 8;
-    return false; // TODO Add logic for larger bases once failures are observed (seg fault and console errors are written)
+    if(base == 3)
+      return maxCombination.height > 2 && maxCombination.size >= 9;
+    return false;
   }
   void BitWriter::writeColor(uint8_t toWrite) {
     assert(toWrite < 8);
