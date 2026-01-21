@@ -1,0 +1,8 @@
+<1631> 991756464038495 (232826)
+Computation time: 1.84331 seconds
+
+Code line for sums-for-token.py:
+    '1631', 991756464038495, 232826,
+
+Code line for Combination::setupKnownCounts():
+    m[1631] = Counts(991756464038495, 232826, 0);

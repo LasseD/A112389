@@ -1,0 +1,8 @@
+<1532> 7154845370835644 (1495234)
+Computation time: 235033 seconds
+
+Code line for sums-for-token.py:
+    '1532', 7154845370835644, 1495234,
+
+Code line for Combination::setupKnownCounts():
+    m[1532] = Counts(7154845370835644, 1495234, 0);

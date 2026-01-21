@@ -1,0 +1,8 @@
+<2621> 1039388269581582 (8373861)
+Computation time: 292716 seconds
+
+Code line for sums-for-token.py:
+    '2621', 1039388269581582, 8373861,
+
+Code line for Combination::setupKnownCounts():
+    m[2621] = Counts(1039388269581582, 8373861, 0);
