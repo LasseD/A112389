@@ -161,3 +161,62 @@ TODO
 Consider the precomputations for base B up to maximal distance D where models of size n are built for each base.
 
 (8D)^B  *  B * O(A(n)) = (8D)^B  *  B * 100^n
+
+
+## Lemma 4 "Two Brick Base Work Reduction" L4
+
+Let A(<...>, E) be the refinements with encoding E.
+
+A(<2Z2Z3...>, E_1):
+ Z2 = 1:
+  Brick must be bridging both (single-brick bridge/SBB): Sum <1Z3...> (from refinements A) with bridging placements
+ Z2 = 2:
+  Cache <2Z3...> with base placements and based on encoding: Q2
+  For all SBB: Sum from <2Z3...> from A
+  For no SBB: Use and update Q2
+  TODO
+ Z2 = 3:
+  Cache <3Z3...> with base placements and based on encoding: Q3
+  TODO
+
+A(<2Z2Z3...>, E_0):
+ Z2 = 1:
+  For all non-SBB placements: Sum <1Z3...> (from refinements A)
+ Z2 = 2:
+  For all bases where both bricks touch only one brick: Sum from Q2
+  For all bases where one brick touches each: Sum non-connecting from Q2
+  If one brick touches one base brick:
+   Let X = <2Z3...> be result. Initially overcounts where another brick touches one of the originals
+   For all second-brick placements touching either base brick: Reduce count in Q2 from X
+ Z2 = 3:
+  For all bases where all bricks touch only one brick: Sum from Q3
+  For all bases where one brick touches one base brick and two touch the other: Sum non-connecting from Q3
+  For all initial-brick placements:
+   X = <3Z3...> includes overcounts
+   Reduce overcounts from Q3
+...
+ Z2 = 5:
+  Q2...Q5 = caches for bases to be reused (might not be needed in the end)
+  Case: 5 bricks touch initial two bricks:
+   - Compute all and store in Q5 (use Q5 for mirrors and translations)
+  Case: 4 bricks touch initial two bricks:
+   - For each base B:
+    - Build all X combinations from second layer while ignoring base layer
+    - Remove counts from Q5 which overlap with B
+    - Use Q4 to not double-count mirrors and translations
+  Case: 3 bricks touch initial two bricks:
+   - For each base B:
+    - Build all X combinations from second layer while ignoring base layer
+    - Remove counts from Q4 and Q5 which overlap with B
+    - Use Q3 to not double-count mirrors and translations
+  ...
+  Case: 1 brick touch initial two bricks:
+   - For each brick B:
+    - X = <1Z3...>
+    - Remove counts from Q2, Q3, Q4 and Q5 which contain B
+ ->
+  for i = 1 ... 5:
+   for all placements B of i bricks on base:
+    X = all models buildable on B, ignoring first layer
+    ret += X
+    ret -= X * d, where d is number of ways X are overcounted for smaller i
