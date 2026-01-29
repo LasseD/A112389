@@ -208,6 +208,7 @@ namespace rectilinear {
     Base();
     Base(const Base &b);
     Base(const CBase &b);
+    Base(const Combination &c, uint8_t layer); // Construct the base from a given layer
 
     bool operator <(const Base& b) const;
     bool operator ==(const Base& b) const;
@@ -324,12 +325,24 @@ namespace rectilinear {
     Counts getCounts() const;
   };
 
+  class Lemma4Cache {
+    std::mutex mutex;
+    Combination maxCombination;
+    BaseResultsMap caches[MAX_LAYER_SIZE]; // base size / base -> counts
+    void set(const Base &b, const CountsMap &m); // Mutex locked
+  public:
+    bool get(const Base &b, CountsMap &m); // Mutex locked
+    Lemma4Cache(const Combination &maxCombination);
+    void computeOrGet(const Base &b, CountsMap &m);
+    static uint64_t computeToken(const Combination &baseCombination, const CBase &secondLayer, uint64_t cacheToken, const uint64_t baseToken);
+  };
+
   class CombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
-    bool isFirstBuilder, encodingLocked;
+    bool encodingLocked;
   public:
     CountsMap counts;
 
@@ -349,6 +362,8 @@ namespace rectilinear {
     CombinationBuilder();
 
     void build();
+    void buildSymmetricOnly();
+    void buildUsingLemma4(Lemma4Cache &Q);
     void report();
     Counts report(uint64_t returnToken); // Returns counts for token if present in results
     void addWaveToNeighbours(int8_t add);
@@ -359,6 +374,7 @@ namespace rectilinear {
     void placeAllInBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t bucketI, uint32_t bucketIndicesI, uint32_t numBuckets, uint32_t leftToPlace);
     void setUpBucketsForSimon(std::vector<std::vector<LayerBrick> > &buckets, const std::vector<LayerBrick> &v);
     bool placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
+    bool placeAllSymmetricLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
     void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
   };
@@ -448,8 +464,11 @@ namespace rectilinear {
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
 
+  /*
+    A "Report" represents a batch of data from a base in a precomputation.
+   */
   struct Report {
-    uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
+    uint8_t base, colors[4]; // Lemma 3 is only used up to base 4
     bool baseSymmetric180, baseSymmetric90;
     Counts counts;
     Base c;
@@ -483,32 +502,54 @@ namespace rectilinear {
     bool next(std::vector<Report> &v);
   };
 
+  /*
+    Common interface for producing bases
+   */
   class IBaseProducer {
   public:
     virtual bool nextBase(Base &c) = 0;
     virtual void resetCombination(Base &c) = 0;
-    virtual ~IBaseProducer() = default;
+    virtual ~IBaseProducer() = default; // TODO: Add a note on why this is necessary (destructors do not work without it)
   };
 
-  class Size1InnerBaseBuilder final : public IBaseProducer {
-    int16_t encoded, d;
+  /*
+    Chooser a single brick
+   */
+  class BaseSubsetBuilder final : public IBaseProducer {
+    const uint8_t brickIdx, toPick;
+    int8_t idx;
+    const std::vector<Brick> &bricks;
+    BaseSubsetBuilder *inner;
+  public:
+    BaseSubsetBuilder(const uint8_t brickIdx, const int8_t idx, const uint8_t toPick, const std::vector<Brick> &bricks);
+    ~BaseSubsetBuilder();
+    bool nextBase(Base &c);
+    void resetCombination(Base &c);
+  };  
+
+  /*
+    Produce any single brick up to distance D
+   */
+  class Size1InnerBaseProducer final : public IBaseProducer {
+    int16_t encoded; // Encoding with 'isVertical' and sign of x and y
+    int16_t d; // 0 <= d <= D increasing as bricks are produced
     const int16_t D;
     Brick b;
   public:
-    Size1InnerBaseBuilder(int16_t D);
+    Size1InnerBaseProducer(int16_t D);
     bool nextBase(Base &c);
     void resetCombination(Base &c);
   };
 
-  class InnerBaseBuilder final : public IBaseProducer {
+  class InnerBaseProducer final : public IBaseProducer {
     const int16_t idx;
     int16_t encoded, d;
     const int16_t D;
     IBaseProducer * inner;
     Brick b;
   public:
-    InnerBaseBuilder(int16_t size, const std::vector<int> &distances);
-    ~InnerBaseBuilder();
+    InnerBaseProducer(int16_t size, const std::vector<int> &distances);
+    ~InnerBaseProducer();
     bool nextBase(Base &c);
     void resetCombination(Base &c);
   };
@@ -516,7 +557,7 @@ namespace rectilinear {
   typedef std::pair<int,CBase> BaseIdentification;
   typedef std::pair<Base,BaseIdentification> BaseWithID; // Used to identify how base was computed
 
-  class BaseBuilder {
+  class BaseProducer {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter *writer;
@@ -527,8 +568,8 @@ namespace rectilinear {
     int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
-    BaseBuilder();
-    ~BaseBuilder();
+    BaseProducer();
+    ~BaseProducer();
     bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
     void registerCounts(Base &registrationBase, CountsMap counts);
     void report(const Combination &maxCombination);
@@ -537,17 +578,19 @@ namespace rectilinear {
   };
 
   class Lemma3Runner {
-    BaseBuilder *baseBuilder;
+    Lemma4Cache *Q;
+    BaseProducer *baseProducer;
     Combination *maxCombination;
     BrickPlane *neighbours;
     std::string threadName;
   public:
     Lemma3Runner();
     Lemma3Runner(const Lemma3Runner &b);
-    Lemma3Runner(BaseBuilder *b,
+    Lemma3Runner(BaseProducer *b,
 		 Combination *maxCombination,
 		 int threadIndex,
-		 BrickPlane *neighbours);
+		 BrickPlane *neighbours,
+		 Lemma4Cache *Q);
     void run();
   };
 
@@ -560,8 +603,8 @@ namespace rectilinear {
     void precompute(int maxDist);
     void precompute(int maxDist, bool overwriteFiles);
   private:
-    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances);
-    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist);
+    void precompute(BaseProducer *baseProducer, std::vector<int> &distances);
+    void precompute(BaseProducer *baseProducer, std::vector<int> &distances, int maxDist);
   };
 }
 

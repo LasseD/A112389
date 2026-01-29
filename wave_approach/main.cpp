@@ -260,7 +260,12 @@ int runPrecomputations(int argc, char** argv) {
 
   std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << " using " << threads << " threads" << std::endl;
   Lemma3 lemma3(base, threads, maxCombination);
+#ifdef DEBUG
+  std::cout << "Running debug mode: Files are overwritten!" << std::endl;
+  lemma3.precompute(maxDist, true);
+#else
   lemma3.precompute(maxDist);
+#endif
 
   std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
   std::cout << "Total precomputation time: " << duration.count() << " seconds" << std::endl;
