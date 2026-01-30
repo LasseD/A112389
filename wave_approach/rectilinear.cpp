@@ -2399,18 +2399,20 @@ namespace rectilinear {
       m[1] = fromAll;
       caches[1][b] = m;
 #ifdef DEBUG
-      BrickPlane *neighbours = new BrickPlane[MAX_HEIGHT];
-      for(int i = 0; i < MAX_HEIGHT; i++)
-	neighbours[i].reset();
-      CombinationBuilder cb(b, neighbours, maxCombination);
-      cb.build();
-      delete[] neighbours;
-      assert(cb.counts.size() == 1);
-      Counts xCheck = cb.counts.begin()->second;
+      {
+	BrickPlane *neighbours = new BrickPlane[MAX_HEIGHT];
+	for(int i = 0; i < MAX_HEIGHT; i++)
+	  neighbours[i].reset();
+	CombinationBuilder cb(b, neighbours, maxCombination);
+	cb.build();
+	delete[] neighbours;
+	assert(cb.counts.size() == 1);
+	Counts xCheck = cb.counts.begin()->second;
 #ifdef TRACE
-      std::cout << "SHOULD BE SAME " << fromAll << " and " << xCheck << std::endl;
+	std::cout << "SHOULD BE SAME " << fromAll << " and " << xCheck << std::endl;
 #endif
-      assert(xCheck == fromAll);
+	assert(xCheck == fromAll);
+      }
 #endif
       return true;
     }
@@ -2578,16 +2580,11 @@ namespace rectilinear {
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++)
 	  std::cout << "    " << it->first << ": " << it->second << std::endl;
 #endif
-	bool baseIs180Symmetric = baseCombination.is180Symmetric();
-	bool doubleNonSymmetric = !baseIs180Symmetric && secondLayer.is180Symmetric();
 	//  2.1) If baseCombination connect first layer bricks: Add all from X as if connected:
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
 	  const uint64_t token = Lemma4Cache::computeToken(baseCombination, normalizedSecondLayer, it->first, baseToken);
 	  counts[token].all += it->second.all;
-	  if(doubleNonSymmetric) {
-	    //counts[token].all += it->second.all - it->second.symmetric180; // symmetric base on top of non-symmetric: Double-count for mirror-symmetries
 #ifdef TRACE
-	  }
 	  std::cout << "    -> counts for token " << token << ": " << counts[token] << std::endl;
 #endif
 	}
@@ -2620,8 +2617,8 @@ namespace rectilinear {
 	    CBase normalizedSmallerSecondLayer(smallerSecondLayer);
 	    normalizedSmallerSecondLayer.normalize();
 	    CountsMap smallerX; // Contains counts built from secondLayer as base
-	    bool found = Q.get(Base(normalizedSmallerSecondLayer), smallerX);
-	    assert(found);
+	    bool alreadyExists = Q.get(Base(normalizedSmallerSecondLayer), smallerX);
+	    assert(alreadyExists);
 #ifdef TRACE
 	    std::cout << "   REDUCE " << smallerSecondLayer << " normalized to " << normalizedSmallerSecondLayer << ":" << std::endl;
 #endif
@@ -2632,9 +2629,13 @@ namespace rectilinear {
 #endif
 	      assert(counts[token].all >= X[allOnes].all);
 	      counts[token].all -= X[allOnes].all;
-	      if(smallerCombination.is180Symmetric() && secondLayer.is180Symmetric()) {
-		//counts[token].all -= X[allOnes].all - X[allOnes].symmetric180;
-	      }
+	      /*
+		Total precomputation time: 3.5453 seconds
+		./run4.o P 221 24 1  3.45s user 0.02s system 97% cpu 3.556 total
+
+		Total precomputation time: 0.88978 seconds
+		./runTest.o P 221 24 1  0.86s user 0.02s system 57% cpu 1.536 total
+	       */
 	    }
 	  }
 	}
