@@ -13,12 +13,10 @@ namespace rectilinear {
   uint64_t BinomialCoefficient::cache[BINOMIAL_CACHE_SIZE][BINOMIAL_CACHE_SIZE];
 
   void BinomialCoefficient::init() {
-    std::cout << "Binomials init" << std::endl;
     for(int i = 0; i < BINOMIAL_CACHE_SIZE; i++) {
       for(int j = 0; j < BINOMIAL_CACHE_SIZE; j++)
 	cache[i][j] = nkSlow(i, j);
     }
-    std::cout << "Binomials set up" << std::endl;
   }
 
   uint64_t BinomialCoefficient::nChooseK(uint64_t n, uint64_t k) {
@@ -2380,6 +2378,8 @@ namespace rectilinear {
     addWaveToNeighbours(-1);
   }
 
+  Lemma4Cache::Lemma4Cache(const Combination &maxCombination) : maxCombination(maxCombination) {}
+
   bool Lemma4Cache::get(const Base &b, CountsMap &m) {
     std::lock_guard<std::mutex> guard(mutex);
     BaseResultsMap::const_iterator it = caches[b.layerSize].find(b);
@@ -2390,8 +2390,28 @@ namespace rectilinear {
     if(b.layerSize == 1) {
       CountsMap allKnown;
       Combination::setupKnownCounts(allKnown);
-      m[1] = allKnown[maxCombination.getTokenFromLayerSizes()]; // token 1
+      Counts fromAll = allKnown[maxCombination.getTokenFromLayerSizes()]; // token 1
+      fromAll.all *= maxCombination.layerSizes[0]; // For each brick in base
+      fromAll.all -= fromAll.symmetric180; // Otherwise symmetric are over-counted
+      // Both directions:
+      fromAll.all *= 2;
+      fromAll.symmetric180 *= 2;
+      m[1] = fromAll;
       caches[1][b] = m;
+#ifdef DEBUG
+      BrickPlane *neighbours = new BrickPlane[MAX_HEIGHT];
+      for(int i = 0; i < MAX_HEIGHT; i++)
+	neighbours[i].reset();
+      CombinationBuilder cb(b, neighbours, maxCombination);
+      cb.build();
+      delete[] neighbours;
+      assert(cb.counts.size() == 1);
+      Counts xCheck = cb.counts.begin()->second;
+#ifdef TRACE
+      std::cout << "SHOULD BE SAME " << fromAll << " and " << xCheck << std::endl;
+#endif
+      assert(xCheck == fromAll);
+#endif
       return true;
     }
     return false;
@@ -2401,8 +2421,6 @@ namespace rectilinear {
     std::lock_guard<std::mutex> guard(mutex);
     caches[b.layerSize][b] = m;
   }
-
-  Lemma4Cache::Lemma4Cache(const Combination &maxCombination) : maxCombination(maxCombination) {}
 
   void Lemma4Cache::computeOrGet(const Base &b, CountsMap &m) {
     if(get(b, m))
@@ -2429,6 +2447,9 @@ namespace rectilinear {
 	rToken/=10;
       }
       toCache[token] = it->second;
+#ifdef TRACE
+      std::cout << "BUILT FOR CACHE " << b << " TOKEN " << token << ": " << it->second << std::endl;
+#endif
     }
 
     set(b, toCache); // set
@@ -2444,17 +2465,27 @@ namespace rectilinear {
   uint64_t Lemma4Cache::computeToken(const Combination &baseCombination, const CBase &secondLayer, uint64_t cacheToken, const uint64_t baseToken) {
     uint8_t s1 = baseCombination.layerSizes[0], s2 = baseCombination.layerSizes[1];
     uint8_t colorsA[2][MAX_LAYER_SIZE], colorsB[MAX_LAYER_SIZE]; // A from baseCombination, B from cache
+#ifdef TRACE
     std::cout << "     Color for token " << cacheToken << " Initial colors A: ";
+#endif
     for(uint8_t i = 0; i < s1; i++) {
       colorsA[0][i] = baseCombination.colors[0][i];
+#ifdef TRACE
       std::cout << (int)colorsA[0][i];
+#endif
     }
+#ifdef TRACE
     std::cout << " / ";
+#endif
     for(uint8_t i = 0; i < s2; i++) {
       colorsA[1][i] = baseCombination.colors[1][i];
+#ifdef TRACE
       std::cout << (int)colorsA[0][i];
+#endif
     }
+#ifdef TRACE
     std::cout << " " << secondLayer << " cache token " << cacheToken;
+#endif
     for(uint8_t i = 0; i < s2; i++) {
       colorsB[secondLayer.bricks[i].second] = cacheToken%10;
       cacheToken /= 10;
@@ -2486,7 +2517,9 @@ namespace rectilinear {
     uint64_t token = baseToken*10+1;
     for(uint8_t i = 1; i < s1; i++)
       token = token * 10 + colorsA[0][i];
+#ifdef TRACE
     std::cout << " -> token " << token << std::endl;
+#endif
     return token;
   }
 
@@ -2528,7 +2561,7 @@ namespace rectilinear {
       BrickPicker picker(v, 0, toPick);
 
       while(picker.next(baseCombination, maxCombination)) {
-#ifdef DEBUG
+#ifdef TRACE
 	std::cout << "  Picked " << (int)toPick << " bricks on top of base: " << baseCombination << std::endl;
 #endif
 	baseCombination.colorFull(); // colors can now be used reliably
@@ -2540,18 +2573,20 @@ namespace rectilinear {
 	normalizedSecondLayer.normalize();
 	CountsMap X; // Contains counts built from secondLayer as base
 	Q.computeOrGet(Base(normalizedSecondLayer), X);
-#ifdef DEBUG
+#ifdef TRACE
 	std::cout << "   Countsmap for second layer " << secondLayer << " normalized to " << normalizedSecondLayer << ":" << std::endl;
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++)
 	  std::cout << "    " << it->first << ": " << it->second << std::endl;
 #endif
+	bool baseIs180Symmetric = baseCombination.is180Symmetric();
+	bool doubleNonSymmetric = !baseIs180Symmetric && secondLayer.is180Symmetric();
 	//  2.1) If baseCombination connect first layer bricks: Add all from X as if connected:
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
 	  const uint64_t token = Lemma4Cache::computeToken(baseCombination, normalizedSecondLayer, it->first, baseToken);
 	  counts[token].all += it->second.all;
-	  if(!baseCombination.is180Symmetric() && secondLayer.is180Symmetric()) {
-	    counts[token].all += it->second.all - it->second.symmetric180; // symmetric base on top of non-symmetric: Double-count for mirror-symmetries
-#ifdef DEBUG
+	  if(doubleNonSymmetric) {
+	    //counts[token].all += it->second.all - it->second.symmetric180; // symmetric base on top of non-symmetric: Double-count for mirror-symmetries
+#ifdef TRACE
 	  }
 	  std::cout << "    -> counts for token " << token << ": " << counts[token] << std::endl;
 #endif
@@ -2574,7 +2609,9 @@ namespace rectilinear {
 
 	  Base Y;
 	  while(baseBuilder.nextBase(Y)) {
+#ifdef TRACE
 	    std::cout << "   Smaller base: " << Y << std::endl;
+#endif
 	    for(uint8_t i = 0; i < Z; i++)
 	      smallerCombination.bricks[1][i] = Y.bricks[i];
 	    smallerCombination.colorFull();
@@ -2585,23 +2622,22 @@ namespace rectilinear {
 	    CountsMap smallerX; // Contains counts built from secondLayer as base
 	    bool found = Q.get(Base(normalizedSmallerSecondLayer), smallerX);
 	    assert(found);
-#ifdef DEBUG
+#ifdef TRACE
 	    std::cout << "   REDUCE " << smallerSecondLayer << " normalized to " << normalizedSmallerSecondLayer << ":" << std::endl;
 #endif
 	    for(CountsMap::const_iterator it = smallerX.begin(); it != smallerX.end(); it++) {
 	      const uint64_t token = Lemma4Cache::computeToken(smallerCombination, normalizedSmallerSecondLayer, it->first, baseToken);
-#ifdef DEBUG
-	      std::cout << "     Reducing " << X[allOnes] << " from " << counts[allOnes] << " for allOnes " << allOnes << " of " << smallerCombination << std::endl;
+#ifdef TRACE
+	      std::cout << "     Reducing " << X[allOnes] << " from " << counts[token] << " for token " << token << " of " << smallerCombination << std::endl;
 #endif
 	      assert(counts[token].all >= X[allOnes].all);
 	      counts[token].all -= X[allOnes].all;
 	      if(smallerCombination.is180Symmetric() && secondLayer.is180Symmetric()) {
-		counts[token].all -= X[allOnes].all - X[allOnes].symmetric180;
+		//counts[token].all -= X[allOnes].all - X[allOnes].symmetric180;
 	      }
 	    }
 	  }
 	}
-	// TODO:  counts: 71924 (40) / 86576 (56)
 
 	// Clean up base combination:
 	for(uint8_t i = 0; i < toPick; i++)
@@ -3691,7 +3727,7 @@ namespace rectilinear {
 	maxCombinationForLemma4Cache.bricks[i-1][j] = maxCombination.bricks[i][j];
     }    
     Lemma4Cache Q(maxCombinationForLemma4Cache);
-#ifdef DEBUG
+#ifdef TRACE
     std::cout << " Lemma 4 cache set up!" << std::endl;
 #endif
 
