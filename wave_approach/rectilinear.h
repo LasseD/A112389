@@ -334,7 +334,11 @@ namespace rectilinear {
     bool get(const Base &b, CountsMap &m); // Mutex locked
     Lemma4Cache(const Combination &maxCombination);
     void computeOrGet(const Base &b, CountsMap &m);
-    static uint64_t computeToken(const Combination &baseCombination, const CBase &secondLayer, uint64_t cacheToken, const uint64_t baseToken);
+    uint64_t computeToken(const Combination &baseCombination,
+				 const CBase &secondLayer,
+				 uint64_t cacheToken,
+				 const uint64_t baseToken) const;
+    bool didSmallerBaseContribute(uint64_t A, uint8_t sizeA, uint64_t B) const;
   };
 
   class CombinationBuilder {
