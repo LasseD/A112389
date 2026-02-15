@@ -284,6 +284,8 @@ namespace rectilinear {
 
   typedef std::map<Base,CountsMap> BaseResultsMap; // CountsMap for each base. Used for caching results during computation of precomputations.
   typedef std::map<Combination,Counts> CombinationCountsMap;
+  typedef std::map<int64_t,CountsMap> DirectedMap; // token -> token -> counts
+  typedef std::map<Base,DirectedMap> Lemma4CacheMap; // Base -> token -> token -> counts
 
   /**
    * Helper class for serving the combinations that partials are starting on.
@@ -338,7 +340,11 @@ namespace rectilinear {
 				 const CBase &secondLayer,
 				 uint64_t cacheToken,
 				 const uint64_t baseToken) const;
-    bool didSmallerBaseContribute(uint64_t A, uint8_t sizeA, uint64_t B) const;
+    bool didSmallerBaseContribute(uint64_t t,
+				  uint64_t T,
+				  const CBase &base_t,
+				  const CBase &base_T,
+				  int const * const subset) const;
   };
 
   class CombinationBuilder {
@@ -519,16 +525,14 @@ namespace rectilinear {
   /*
     Chooser a single brick
    */
-  class BaseSubsetBuilder final : public IBaseProducer {
-    const uint8_t brickIdx, toPick;
+  class SubsetProducer {
+    const uint8_t from, to, toPick;
     int8_t idx;
-    const std::vector<Brick> &bricks;
-    BaseSubsetBuilder *inner;
+    SubsetProducer *inner;
   public:
-    BaseSubsetBuilder(const uint8_t brickIdx, const int8_t idx, const uint8_t toPick, const std::vector<Brick> &bricks);
-    ~BaseSubsetBuilder();
-    bool nextBase(Base &c);
-    void resetCombination(Base &c);
+    SubsetProducer(const uint8_t from, const uint8_t to, const uint8_t toPick);
+    ~SubsetProducer();
+    bool next(int *x);
   };  
 
   /*
