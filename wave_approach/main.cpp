@@ -354,15 +354,18 @@ int runPrecomputationComparison(int argc, char** argv) {
 	std::cerr << "Index " << cnt << std::endl;
 	return 6;
       }
+      bool anyMismatch = false;
       for(CountsMap::const_iterator it1 = m1.begin(), it2 = m2.begin(); it1 != m1.end(); it1++, it2++) {
 	if(it1->first != it2->first || it1->second != it2->second) {
 	  std::cerr << "Counts mismatch!" << std::endl;
 	  std::cerr << " Base: " << b1 << std::endl;
 	  std::cerr << " tokens: " << it1->first << " / " << it2->first << std::endl;
 	  std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
-	  return 7;
+	  anyMismatch = true;
 	}
       }
+      if(anyMismatch)
+	return 7;
       r1.clear();
       r2.clear();
     }
