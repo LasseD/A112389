@@ -40,7 +40,7 @@ namespace rectilinear {
   }
 
   Counts::Counts() : all(0), symmetric180(0), symmetric90(0) {}
-  Counts::Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90) : all(all), symmetric180(symmetric180), symmetric90(symmetric90) {}
+  Counts::Counts(int64_t all, int64_t symmetric180, int64_t symmetric90) : all(all), symmetric180(symmetric180), symmetric90(symmetric90) {}
   Counts::Counts(const Counts& c) : all(c.all), symmetric180(c.symmetric180), symmetric90(c.symmetric90) {}
   Counts& Counts::operator +=(const Counts& c) {
     all += c.all;
@@ -2629,23 +2629,25 @@ namespace rectilinear {
     addWaveToNeighbours(-1);
   }
 
+  /*
+    Overview of Lemma 4 approach:
+    For each toPick in 1 ... second layer size:
+    For all subsets 'secondLayer' of second layer bricks:
+    Count up for secondLayer, ignoring first layer.
+    For all actual subsets of secondLayer: Repair over counts.
+   */
   void CombinationBuilder::buildUsingLemma4(Lemma4Cache &Q) {
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
     const uint64_t baseToken = maxCombination.getTokenFromLayerSizes();
-
-#ifdef DEBUG
-    BaseResultsMap xCheck;
-#endif
     Lemma4CacheMap m;
 
     for(uint8_t toPick = 1; toPick <= maxCombination.layerSizes[1]; toPick++) {
       // Pick toPick from v:
       BrickPicker picker(v, 0, toPick);
       while(picker.next(baseCombination, maxCombination)) {
-#ifdef TRACEX
-	//if(toPick == 1 && baseCombination.bricks[1][0] == Brick(true,PLANE_MID-1,PLANE_MID-3))
-	  std::cout << std::endl << "  Picked " << (int)toPick << " bricks on top of base: " << baseCombination << std::endl;
+#ifdef TRACE
+	std::cout << std::endl << "  Picked " << (int)toPick << " bricks on top of base: " << baseCombination << std::endl;
 #endif
 	baseCombination.colorFull(); // colors can now be used reliably
 
@@ -2656,16 +2658,14 @@ namespace rectilinear {
 	CountsMap X; // Contains counts built from secondLayer as base
 	Q.computeOrGet(Base(normalizedSecondLayer), X);
 
-#ifdef TRACEX
-	//if(toPick == 1 && baseCombination.bricks[1][0] == Brick(true,PLANE_MID-1,PLANE_MID-3)) {
-	  std::cout << "   Countsmap for second layer " << secondLayer << " normalized to " << normalizedSecondLayer << ":" << std::endl;
-	  CountsMap::const_iterator it = X.begin();
-	  std::cout << "    " << it->first << ": " << it->second;
-	  it++;
-	  for(; it != X.end(); it++)
-	    std::cout << "\t\t" << it->first << ": " << it->second;
-	  std::cout << std::endl;
-	  //}
+#ifdef TRACE
+	std::cout << "   Countsmap for second layer " << secondLayer << " normalized to " << normalizedSecondLayer << ":" << std::endl;
+	CountsMap::const_iterator it = X.begin();
+	std::cout << "    " << it->first << ": " << it->second;
+	it++;
+	for(; it != X.end(); it++)
+	  std::cout << "\t\t" << it->first << ": " << it->second;
+	std::cout << std::endl;
 #endif
 
 	// 2) Add X to counts:
@@ -2673,11 +2673,7 @@ namespace rectilinear {
 	  const uint64_t token = Q.computeToken(baseCombination, normalizedSecondLayer, it->first, baseToken);
 	  counts[token].all += it->second.all;
 	  m[secondLayer][it->first][token] = Counts(1,0,0);
-#ifdef DEBUG
-	  xCheck[secondLayer][token].all += it->second.all;
-#endif
 #ifdef TRACE
-	if(toPick == 1 && baseCombination.bricks[1][0] == Brick(true,PLANE_MID-1,PLANE_MID-3))
 	  std::cout << "    " << secondLayer << " with " << it->second.all << " -> counts for token " << token << ": " << counts[token] << std::endl;
 #endif
 	}
@@ -2707,88 +2703,65 @@ namespace rectilinear {
 #endif
 	    Q.get(baseOfNormalizedSmallerSecondLayer, smallerX);
 	    assert(alreadyExists);
+	    assert(m.find(smallerSecondLayer) != m.end());
+	    Lemma4CountsMap &l4cm = m[smallerSecondLayer];
 #ifdef TRACE
-	    if(Z == 1 && smallerSecondLayer.bricks[0] == Brick(true,PLANE_MID-1,PLANE_MID-3)) {
 	      std::cout << "   FROM " << secondLayer << " SMALLER " << smallerSecondLayer << " normalized: " << normalizedSmallerSecondLayer << " from subset ";
 	      for(uint8_t i = 0; i < Z; i++)
 		std::cout << (int)subset[i];
-	      std::cout << std::endl;
-	    }
+	      std::cout << std::endl << "    Existing:" << std::endl;
+	      for(Lemma4CountsMap::const_iterator it = l4cm.begin(); it != l4cm.end(); it++) {
+		for(CountsMap::const_iterator it2 = it->second.begin(); it2 != it->second.end(); it2++)
+		  std::cout << "     " << it->first << " -> " << it2->first << " -> " << it2->second << std::endl;
+	      }
 #endif
+
 	    for(CountsMap::const_iterator it = smallerX.begin(); it != smallerX.end(); it++) {
 	      const uint64_t t = it->first;
-	      const uint64_t smallerToken = Q.computeToken(smallerCombination, normalizedSmallerSecondLayer, t, baseToken); // Where it was originally counted
-#ifdef TRACE
-	      if(Z == 1 && smallerSecondLayer.bricks[0] == Brick(true,PLANE_MID-1,PLANE_MID-3))
-		std::cout << "    it = " << t << " -> smallerToken = " << smallerToken << std::endl;
-#endif
+	      //const uint64_t smallerToken = Q.computeToken(smallerCombination, normalizedSmallerSecondLayer, t, baseToken); // Where it was originally counted // TODO: Cache this!
+
 	      for(CountsMap::const_iterator it2 = X.begin(); it2 != X.end(); it2++) {
 		const uint64_t T = it2->first; // Check if big T from X had over-counting:
+		//const uint64_t token = Q.computeToken(baseCombination, normalizedSecondLayer, T, baseToken);
 		if(!Q.didSmallerBaseContribute(t,
 					       T,
 					       normalizedSmallerSecondLayer,
 					       normalizedSecondLayer,
-					       subset))
+					       subset)) {
 		  continue;
+		}
+		assert(l4cm.find(t) != l4cm.end());
+		const CountsMap &cm = l4cm[t];
+		for(CountsMap::const_iterator it3 = cm.begin(); it3 != cm.end(); it3++) {
+		  const uint64_t inheritedToken = it3->first;
+		  const Counts &smallerCounts = it3->second;
 #ifdef TRACE
-		if(Z == 1 && smallerSecondLayer.bricks[0] == Brick(true,PLANE_MID-1,PLANE_MID-3))
-		  std::cout << "     -" << X[T] << " for T=" << T << ", t=" << t << std::endl;
+		  std::cout << "      Adjust for it=" << inheritedToken << ", t=" << t << ", T=" << T << ": " << counts[inheritedToken] << "-" << smallerCounts << "*" << it2->second << ", m[][" << T << "]: " << m[secondLayer][T][inheritedToken] << std::endl;
 #endif
-		assert(counts[smallerToken].all >= it2->second.all);
-		counts[smallerToken].all -= it2->second.all;
-#ifdef DEBUG
-		xCheck[smallerSecondLayer][smallerToken].all -= it2->second.all;
-#endif
-	      }
-	    }
-	  }
+		  assert(m[secondLayer].find(T) != m[secondLayer].end());
+		  assert(m[secondLayer][T].find(inheritedToken) != m[secondLayer][T].end());
+
+		  // Update how second layer should propagate in the future:
+		  m[secondLayer][T][inheritedToken].all -= smallerCounts.all;
+
+		  counts[inheritedToken].all -= smallerCounts.all * it2->second.all;
+		} // for cm
+	      } // for X
+	    } // for smallerX
+	  } // for subset
 	}
+#ifdef TRACE
+	std::cout << "   Handled " << secondLayer << std::endl;
+	for(Lemma4CountsMap::const_iterator it = m[secondLayer].begin(); it != m[secondLayer].end(); it++)
+	  for(CountsMap::const_iterator it2 = it->second.begin(); it2 != it->second.end(); it2++)
+	    std::cout << "    " << it->first << " -> " << it2->first << ": " << it2->second << std::endl;
+#endif
 
 	// Clean up base combination:
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.removeLastBrick();
       } // while(picker.next(baseCombination, maxCombination)) {
     } // for toPick
-
-#ifdef DEBUG
-    // Check that all in xCheck match what was counted:
-    addWaveToNeighbours(1);
-    for(BaseResultsMap::const_iterator it = xCheck.begin(); it != xCheck.end(); it++) {
-      const Base base = it->first;
-      const CountsMap xCheckCounts = it->second;
-
-      // Check counts of slow building against xCheckCounts:
-      for(uint8_t i = 0; i < base.layerSize; i++)
-	baseCombination.addBrick(base.bricks[i], 1); // Add brick to layer 1
-
-      CombinationBuilder builder(baseCombination, baseCombination.layerSizes[0], base.layerSize, neighbours, maxCombination, false);
-      builder.build();
-
-      // Perform comparison:
-      bool ok = true;
-      for(CountsMap::const_iterator it2 = xCheckCounts.begin(); it2 != xCheckCounts.end(); it2++) {
-	CountsMap::const_iterator it3 = builder.counts.find(it2->first);
-	if(it3 == builder.counts.end() || it3->second.all != it2->second.all) {
-	  ok = false;
-	  break;
-	}
-      }
-      if(!ok || builder.counts.size() != xCheckCounts.size()) {
-	std::cerr << "Counts mismatch for base " << base << " becoming combination " << baseCombination << std::endl;
-	std::cerr << "Lemma 4 counts:" << std::endl;
-	for(CountsMap::const_iterator it2 = xCheckCounts.begin(); it2 != xCheckCounts.end(); it2++)
-	  std::cerr << " " << it2->first << ": " << it2->second << std::endl;
-	std::cerr << "Old counts:" << std::endl;
-	for(CountsMap::const_iterator it2 = builder.counts.begin(); it2 != builder.counts.end(); it2++)
-	  std::cerr << " " << it2->first << ": " << it2->second << std::endl;
-	return;
-      }
-
-      for(uint8_t i = 0; i < base.layerSize; i++)
-	baseCombination.removeLastBrick();
-    }
-    addWaveToNeighbours(-1);
-#endif
   }
 
   SplitBuildingBuilder::SplitBuildingBuilder() : neighbours(NULL), baseCombination(NULL), maxCombination(NULL), manager(NULL), threadName("") {}

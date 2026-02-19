@@ -361,6 +361,7 @@ int runPrecomputationComparison(int argc, char** argv) {
 	  std::cerr << " Base: " << b1 << std::endl;
 	  std::cerr << " tokens: " << it1->first << " / " << it2->first << std::endl;
 	  std::cerr << " counts: " << it1->second << " / " << it2->second << std::endl;
+	  std::cerr << " diff: " << it1->second-it2->second << std::endl;
 	  anyMismatch = true;
 	}
       }

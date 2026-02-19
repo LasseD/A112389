@@ -69,10 +69,10 @@ namespace rectilinear {
    * also includes the models counted for 'symmetric90'.
    */
   struct Counts {
-    uint64_t all, symmetric180, symmetric90;
+    int64_t all, symmetric180, symmetric90;
 
     Counts();
-    Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90);
+    Counts(int64_t all, int64_t symmetric180, int64_t symmetric90);
     Counts(const Counts& c);
     Counts& operator +=(const Counts &c);
     Counts& operator -=(const Counts &c);
@@ -284,8 +284,8 @@ namespace rectilinear {
 
   typedef std::map<Base,CountsMap> BaseResultsMap; // CountsMap for each base. Used for caching results during computation of precomputations.
   typedef std::map<Combination,Counts> CombinationCountsMap;
-  typedef std::map<int64_t,CountsMap> DirectedMap; // token -> token -> counts
-  typedef std::map<Base,DirectedMap> Lemma4CacheMap; // Base -> token -> token -> counts
+  typedef std::map<int64_t,CountsMap> Lemma4CountsMap; // token -> (adjustment token -> count)
+  typedef std::map<Base,Lemma4CountsMap> Lemma4CacheMap; // Base -> token -> (adjustment token -> count)
 
   /**
    * Helper class for serving the combinations that partials are starting on.
