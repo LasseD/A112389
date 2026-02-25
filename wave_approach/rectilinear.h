@@ -69,10 +69,10 @@ namespace rectilinear {
    * also includes the models counted for 'symmetric90'.
    */
   struct Counts {
-    int64_t all, symmetric180, symmetric90;
+    uint64_t all, symmetric180, symmetric90;
 
     Counts();
-    Counts(int64_t all, int64_t symmetric180, int64_t symmetric90);
+    Counts(uint64_t all, uint64_t symmetric180, uint64_t symmetric90);
     Counts(const Counts& c);
     Counts& operator +=(const Counts &c);
     Counts& operator -=(const Counts &c);
@@ -112,9 +112,10 @@ namespace rectilinear {
 
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
+  typedef uint64_t Token;
   typedef std::pair<Brick,uint8_t> LayerBrick; // A brick placed at a given layer of a combination
   typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // Identify a brick in a combination (layer, idx)
-  typedef std::map<int64_t,Counts> CountsMap; // token -> counts
+  typedef std::map<Token,Counts> CountsMap; // token -> counts
 
   /**
    * Cache for bricks placed in a plane or layer.
@@ -177,19 +178,19 @@ namespace rectilinear {
     void normalize();
     void addBrick(const Brick &b, const uint8_t layer);
     void addBrick(const LayerBrick &lb);
-    int64_t encodeConnectivity(int64_t token);
+    Token encodeConnectivity(Token token);
     void removeLastBrick();
-    int64_t getTokenFromLayerSizes() const;
+    Token getTokenFromLayerSizes() const;
     bool isConnected();
     bool canBecomeSymmetric(const Combination &maxCombination) const;
     void colorFull();
-    static int64_t reverseToken(int64_t token);
-    static uint8_t heightOfToken(int64_t token);
-    static uint8_t sizeOfToken(int64_t token);
-    static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
+    static Token reverseToken(Token token);
+    static uint8_t heightOfToken(Token token);
+    static uint8_t sizeOfToken(Token token);
+    static void getLayerSizesFromToken(Token token, uint8_t *layerSizes);
     static int countBricksToBridge(const Combination &maxCombination);
     static void setupKnownCounts(CountsMap &m);
-    static bool checkCounts(uint64_t token, const Counts &c);
+    static bool checkCounts(Token token, const Counts &c);
   };
 
   struct CBase; // To be defined later. Needed here to allow for C++ compilation.
@@ -284,8 +285,16 @@ namespace rectilinear {
 
   typedef std::map<Base,CountsMap> BaseResultsMap; // CountsMap for each base. Used for caching results during computation of precomputations.
   typedef std::map<Combination,Counts> CombinationCountsMap;
-  typedef std::map<int64_t,CountsMap> Lemma4CountsMap; // token -> (adjustment token -> count)
-  typedef std::map<Base,Lemma4CountsMap> Lemma4CacheMap; // Base -> token -> (adjustment token -> count)
+
+  struct Lemma4Info {
+    Token cacheToken, computedToken;
+    uint64_t count;
+    Lemma4Info();
+    Lemma4Info(const Lemma4Info &x);
+    Lemma4Info(Token cacheToken, Token computedToken, uint64_t count);
+  };
+  typedef std::vector<Lemma4Info> InfoVector;
+  typedef std::map<Base,InfoVector> Lemma4CacheMap;
 
   /**
    * Helper class for serving the combinations that partials are starting on.
@@ -336,15 +345,15 @@ namespace rectilinear {
     bool get(const Base &b, CountsMap &m); // Mutex locked
     Lemma4Cache(const Combination &maxCombination);
     void computeOrGet(const Base &b, CountsMap &m);
-    uint64_t computeToken(const Combination &baseCombination,
-				 const CBase &secondLayer,
-				 uint64_t cacheToken,
-				 const uint64_t baseToken) const;
-    bool didSmallerBaseContribute(uint64_t t,
-				  uint64_t T,
+    Token computeToken(const Combination &baseCombination,
+		       const CBase &secondLayer,
+		       Token cacheToken,
+		       const Token baseToken) const;
+    bool didSmallerBaseContribute(Token t,
+				  Token T,
 				  const CBase &base_t,
 				  const CBase &base_T,
-				  int const * const subset) const;
+				  const CBase &t_to_T) const;
   };
 
   class CombinationBuilder {
@@ -375,7 +384,7 @@ namespace rectilinear {
     void buildSymmetricOnly();
     void buildUsingLemma4(Lemma4Cache &Q);
     void report();
-    Counts report(uint64_t returnToken); // Returns counts for token if present in results
+    Counts report(Token returnToken); // Returns counts for token if present in results
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
