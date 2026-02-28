@@ -2526,10 +2526,6 @@ namespace rectilinear {
     const uint8_t &size_t = base_t.layerSize;
     const uint8_t &size_T = base_T.layerSize;
     uint8_t colors_t[MAX_LAYER_SIZE], colors_T[MAX_LAYER_SIZE];
-#ifdef TRACE
-    if(base_t.layerSize == 1)
-      std::cout << "       t=" << t << " |" << (int)size_t << "|, T=" << T << " |" << (int)size_T << "| ";
-#endif
 
     // Use colors_T as temporary buffer for computing colors_t
     for(int8_t i = size_t-1; i >= 0; i--) {
@@ -2551,21 +2547,6 @@ namespace rectilinear {
       T/=10;
     }
 
-#ifdef TRACE
-    if(base_t.layerSize == 1) {
-      std::cout << " ACTUAL t=";
-      for(uint8_t i = 0; i < size_T; i++) {
-	if(colors_t[i] == 99)
-	  std::cout << "-";
-	else
-	  std::cout << (int)colors_t[i];
-      }
-      std::cout << ", T=";
-      for(uint8_t i = 0; i < size_T; i++)
-	std::cout << (int)colors_T[i];
-    }
-#endif
-
     // Check each color in T:
     for(uint8_t i = 0; i < size_T; i++) {
       if(colors_t[i] == 99) {
@@ -2580,13 +2561,8 @@ namespace rectilinear {
 	    break;
 	  }
 	}
-	if(!connected) {
-#ifdef TRACE
-	  if(base_t.layerSize == 1)
-	    std::cout << " NOT CONNECTED i=" << (int)i << std::endl;
-#endif
+	if(!connected)
 	  return false;
-	}
       }
       else {
 	// Check that all bricks with same color in t also have the same color in T:
@@ -2595,20 +2571,11 @@ namespace rectilinear {
 	for(uint8_t j = i+1; j < size_T; j++) {
 	  if(colors_t[j] == 99)
 	    continue;
-	  if((color_t == colors_t[j]) != (color_T == colors_T[j])) {
-#ifdef TRACE
-	    if(base_t.layerSize == 1)
-	      std::cout << " i=" << (int)i << " -> COLOR CHECK" << std::endl;
-#endif
+	  if((color_t == colors_t[j]) != (color_T == colors_T[j]))
 	    return false; // Should not result in same color
-	  }
 	}
       }
     }
-#ifdef TRACE
-    if(base_t.layerSize == 1)
-      std::cout << " OK" << std::endl;
-#endif
     return true;
   }
 
@@ -2655,11 +2622,6 @@ namespace rectilinear {
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
     std::sort(v.begin(), v.end());
-#ifdef TRACEX
-    std::cout << "   |v|=" << v.size() << std::endl;
-    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++)
-      std::cout << "    " << it->first << std::endl;
-#endif
     const Token baseToken = maxCombination.getTokenFromLayerSizes();
     Lemma4CacheMap m;
 
@@ -2725,13 +2687,6 @@ namespace rectilinear {
 	  if(ok)
 	    w.push_back(*it);
 	}
-#ifdef TRACE
-	if(toPick == 1) {
-	  std::cout << "    |w|=" << w.size() << std::endl;
-	  for(std::vector<LayerBrick>::const_iterator it = w.begin(); it != w.end(); it++)
-	    std::cout << "     " << it->first << std::endl;
-	}
-#endif
 
 	// Subtract for supersets of second layer:
 	Combination largerCombination(baseCombination);
