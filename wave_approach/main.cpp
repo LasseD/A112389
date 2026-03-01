@@ -311,6 +311,12 @@ int runPrecomputationComparison(int argc, char** argv) {
 	std::cerr << "Report size does not match!" << std::endl;
 	std::cerr << "Sizes: " << r1.size() << " / " << r2.size() << std::endl;
 	std::cerr << "Bases: " << r1[0].c << " / " << r2[0].c << std::endl;
+	std::cerr << "r1:" << std::endl;
+	for(std::vector<Report>::const_iterator it = r1.begin(); it != r1.end(); it++)
+	  std::cerr << " " << *it << std::endl;
+	std::cerr << "r2:" << std::endl;
+	for(std::vector<Report>::const_iterator it = r2.begin(); it != r2.end(); it++)
+	  std::cerr << " " << *it << std::endl;
 	return 5;
       }
       bool first = true;
@@ -329,9 +335,8 @@ int runPrecomputationComparison(int argc, char** argv) {
 	  first = false;
 	}
 	int t = 1;
-	for(int i = 0; i < base-1; i++) {
+	for(int i = 0; i < base-1; i++)
 	  t = 10 * t + (report.colors[i]+1);
-	}
 	m1[t] = report.counts;
       }
       first = true;
