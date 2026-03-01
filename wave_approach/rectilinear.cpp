@@ -1065,7 +1065,7 @@ namespace rectilinear {
     }
   }
 
-  Token Combination::encodeConnectivity(Token token) {
+  Token Combination::encodeConnectivity(Token baseToken) {
     assert(layerSizes[0] >= 2);
 
     // Reset colors (state):
@@ -1086,8 +1086,8 @@ namespace rectilinear {
 
     // Encode:
     for(uint8_t i = 0; history[i].first == 0; i++)
-      token = 10 * token + colors[0][i];
-    return token;
+      baseToken = 10 * baseToken + colors[0][i];
+    return baseToken;
   }
   
   Token Combination::getTokenFromLayerSizes() const {
@@ -2624,15 +2624,15 @@ namespace rectilinear {
     std::sort(v.begin(), v.end());
     const Token baseToken = maxCombination.getTokenFromLayerSizes();
     Lemma4CacheMap m;
+    buildUsingLemma4ForSize2Plus(Q, v, baseToken, m);
+    buildUsingLemma4ForSize1(Q, v, baseToken, m);
+  }
 
-    for(uint8_t toPick = maxCombination.layerSizes[1]; toPick >= 1; toPick--) {
+  void CombinationBuilder::buildUsingLemma4ForSize2Plus(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m) {
+    for(uint8_t toPick = maxCombination.layerSizes[1]; toPick > 1; toPick--) {
       // Pick toPick from v:
       BrickPicker picker(v, 0, toPick);
       while(picker.next(baseCombination, maxCombination)) {
-#ifdef TRACE
-	if(toPick == 1)
-	  std::cout << std::endl << "  Picked " << (int)toPick << " bricks on top of base: " << baseCombination << std::endl;
-#endif
 	baseCombination.colorFull(); // colors can now be used reliably
 
 	// Build/cache X with counts from Q divided into tokens
@@ -2642,35 +2642,13 @@ namespace rectilinear {
 	CountsMap X; // Contains counts built from secondLayer as base
 	Q.computeOrGet(Base(normalizedSecondLayer), X);
 
-#ifdef TRACE
-	if(toPick == 1) {
-	  std::cout << "   Countsmap for second layer " << secondLayer << " normalized to " << normalizedSecondLayer << ":" << std::endl;
-	  CountsMap::const_iterator it = X.begin();
-	  std::cout << "    " << it->first << ": " << it->second;
-	  it++;
-	  for(; it != X.end(); it++)
-	    std::cout << "\t\t" << it->first << ": " << it->second;
-	  std::cout << std::endl;
-	}
-#endif
-#ifdef DEBUG
-	CountsMap xCheck;
-#endif
-
 	// Add X to counts and cache for later:
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
-	  const Token cacheToken = it->first;
-	  const uint64_t count = it->second.all;
+	  const Token &cacheToken = it->first;
+	  const uint64_t &count = it->second.all;
 	  const Token computedToken = Q.computeToken(baseCombination, normalizedSecondLayer, cacheToken, baseToken);
 	  counts[computedToken].all += count; // Adding
-#ifdef DEBUG
-	  xCheck[computedToken].all += count; // Debug checking
-#endif
 	  m[secondLayer].push_back(Lemma4Info(cacheToken, computedToken, count)); // Caching
-#ifdef TRACE
-	  if(toPick == 1)
-	    std::cout << "    " << cacheToken << " with " << count << " -> counts for token " << computedToken << ": " << counts[computedToken] << std::endl;
-#endif
 	}
 
 	// Find bricks to build supersets with (in addition to second layer of baseCombination):
@@ -2693,122 +2671,110 @@ namespace rectilinear {
 	for(uint8_t Z = maxCombination.layerSizes[1]; Z > toPick; Z--) {
 	  uint8_t diff = Z - toPick;
 	  BrickPicker picker2(w, 0, diff);
-#ifdef TRACE
-	  if(toPick == 1)
-	    std::cout << "    Handling Z=" << (int)Z << ", diff=" << (int)diff << std::endl;
-#endif
 
 	  // For all subsets of size Z taken from second layer: X overcount for them, which must be reduced:
 	  while(picker2.next(largerCombination, maxCombination)) {
-	    largerCombination.colorFull();
-#ifdef TRACE
-	    if(toPick == 1)
-	      std::cout << "     Handling larger " << largerCombination << std::endl;
-#endif
-
 	    Base largerSecondLayer(largerCombination, 1);
 	    CBase sortedLargerSecondLayer(largerSecondLayer);
-	    sortedLargerSecondLayer.sortBricks(); // TODO: Improve performance to O(Z) with zipper-merge
+	    sortedLargerSecondLayer.sortBricks();
 	    const Base sortedLargerSecondLayerBase(sortedLargerSecondLayer);
 	    CBase normalizedLargerSecondLayer(sortedLargerSecondLayerBase);
 	    normalizedLargerSecondLayer.normalize();
-	    assert(m.find(Base(sortedLargerSecondLayer)) != m.end());
 	    InfoVector &iv = m[Base(sortedLargerSecondLayer)];
-#ifdef TRACE
-	    if(toPick == 1){
-	      std::cout << "   FROM " << secondLayer << " LARGER " << largerSecondLayer << std::endl;
-	      std::cout << "    sorted:     " << sortedLargerSecondLayer << std::endl;
-	      std::cout << "    normalized: " << normalizedLargerSecondLayer << std::endl;
-	      std::cout << "    Cache from larger:" << std::endl;
-	      for(InfoVector::const_iterator it = iv.begin(); it != iv.end(); it++)
-		std::cout << "     cache token " << it->cacheToken << ", computed " << it->computedToken << " -> " << it->count << std::endl;
-	    }
-#endif
+
 	    for(InfoVector::const_iterator it = iv.begin(); it != iv.end(); it++) {
 	      const Lemma4Info &info = *it;
-	      const Token T = info.cacheToken;
-
-	      InfoVector &iv2 = m[secondLayer]; // smaller
+	      const Token &T = info.cacheToken;
+	      InfoVector &iv2 = m[secondLayer];
+	      bool anyZero = false;
 	      for(InfoVector::iterator it2 = iv2.begin(); it2 != iv2.end(); it2++) {
-		const Token t = it2->cacheToken; // Check if big T from X had over-counting:
-		if(!Q.didSmallerBaseContribute(t,
-					       T,
-					       normalizedSecondLayer,
-					       normalizedLargerSecondLayer,
-					       sortedLargerSecondLayer)) {
-		  continue;
+		const Token &t = it2->cacheToken; // Check if big T from X had over-counting:
+		if(Q.didSmallerBaseContribute(t,
+					      T,
+					      normalizedSecondLayer,
+					      normalizedLargerSecondLayer,
+					      sortedLargerSecondLayer)) {
+		  // Update how second layer should propagate in the future:
+		  it2->count -= info.count;
+		  if(it2->count == 0)
+		     anyZero = true;
+		  counts[it2->computedToken].all -= info.count;
 		}
-#ifdef TRACE
-		if(toPick == 1) {
-		  std::cout << "      Adjust for cache=" << t << "/" << T << ", computed=" << it2->computedToken << "/" << info.computedToken << ": ";
-#ifdef DEBUG
-		  std::cout << xCheck[it2->computedToken].all;
-#endif
-		  std::cout << "-=" << info.count << std::endl;
+	      } // for InfoVector iv2
+	      // Optimization: Clean up iv2 in case of zeroes
+	      if(anyZero) {
+		InfoVector iv3;
+		for(InfoVector::iterator it2 = iv2.begin(); it2 != iv2.end(); it2++) {
+		  if(it2->count != 0)
+		    iv3.push_back(*it2);
 		}
-#endif
-		// Update how second layer should propagate in the future:
-		it2->count -= info.count;
-		counts[it2->computedToken].all -= info.count;
-#ifdef DEBUG
-		xCheck[it2->computedToken].all -= info.count; // Debug checking
-#endif
-	      } // for X
+		m[secondLayer] = iv3;
+	      }
 	    } // for InfoVector iv
 	    for(uint8_t i = 0; i < diff; i++)
 	      largerCombination.removeLastBrick();
 	  } // for picker2.next()
 	} // for Z
-#ifdef TRACE
-	if(toPick == 1) {
-	  std::cout << "   Handled " << secondLayer << std::endl;
-	  for(InfoVector::const_iterator it = m[secondLayer].begin(); it != m[secondLayer].end(); it++)
-	    std::cout << "    " << it->cacheToken << " -> " << it->computedToken << ": " << it->count << std::endl;
-	}
-#endif
-#ifdef DEBUG
-	// Check that all in xCheck match what was counted:
-	addWaveToNeighbours(1);
-	CombinationBuilder builder(baseCombination, baseCombination.layerSizes[0], baseCombination.layerSizes[1], neighbours, maxCombination, false);
-	builder.build();
-
-	// Perform comparison:
-	bool ok = true;
-	for(CountsMap::const_iterator it2 = xCheck.begin(); it2 != xCheck.end(); it2++) {
-	  if(it2->second.all == 0)
-	    continue;
-	  CountsMap::const_iterator it3 = builder.counts.find(it2->first);
-	  if(it3 == builder.counts.end() || it3->second.all != it2->second.all) {
-	    ok = false;
-	    break;
-	  }
-	}
-	for(CountsMap::const_iterator it2 = builder.counts.begin(); it2 != builder.counts.end(); it2++) {
-	  if(it2->second.all == 0)
-	    continue;
-	  if(xCheck.find(it2->first) == xCheck.end()) {
-	    ok = false;
-	    break;
-	  }	  
-	}
-	if(!ok) {
-	  std::cout << "Counts mismatch for base " << secondLayer << " becoming combination " << baseCombination << std::endl;
-	  std::cout << "Lemma 4 counts:" << std::endl;
-	  for(CountsMap::const_iterator it2 = xCheck.begin(); it2 != xCheck.end(); it2++)
-	    std::cout << " " << it2->first << ": " << it2->second << std::endl;
-	  std::cout << "Old counts:" << std::endl;
-	  for(CountsMap::const_iterator it2 = builder.counts.begin(); it2 != builder.counts.end(); it2++)
-	    std::cout << " " << it2->first << ": " << it2->second << std::endl;
-	  int *a = NULL; a[2] = 4; // Seg fault stops the program...
-	}
-	addWaveToNeighbours(-1);
-#endif
 
 	// Clean up base combination:
 	for(uint8_t i = 0; i < toPick; i++)
 	  baseCombination.removeLastBrick();
       } // while(picker.next(baseCombination, maxCombination)) {
     } // for toPick
+  }
+
+  /*
+    For 1 brick to pick, many optimizations can be made:
+    - The base/sorted base is always just consisting of a single brick.
+    - The normalized base consists of FirstBrick.
+    - Cache X can be reused for all.
+   */
+  void CombinationBuilder::buildUsingLemma4ForSize1(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m) {
+    CountsMap X; // Contains counts built from secondLayer as base
+    Base normalizedSecondLayer;
+    Q.computeOrGet(normalizedSecondLayer, X);
+    uint64_t XCount = X[1].all;
+
+    std::map<Brick,Token> brickToToken; // Used to count "down" later
+
+    // Count up:
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      baseCombination.addBrick(*it);
+      baseCombination.colorFull(); // colors can now be used reliably
+
+      Base secondLayer;
+      secondLayer.bricks[0] = it->first;
+
+      // Add X to counts:
+      const Token computedToken = baseCombination.encodeConnectivity(baseToken);
+      brickToToken[it->first] = computedToken;
+      counts[computedToken].all += XCount;
+
+      // Clean up base combination:
+      baseCombination.removeLastBrick();
+    }
+
+    // Quick lookup for all ones:
+    Token allOnes[MAX_LAYER_SIZE];
+    allOnes[0] = 11;
+    for(int i = 1; i < MAX_LAYER_SIZE; i++)
+      allOnes[i] = 10*allOnes[i-1]+1;
+
+    // Count down:
+    for(Lemma4CacheMap::const_iterator it = m.begin(); it != m.end(); it++) {
+      const Base &biggerBase = it->first;
+      const InfoVector &iv = it->second;
+      // Find the coutn with all "1" and substract:
+      for(InfoVector::const_iterator it2 = iv.begin(); it2 != iv.end(); it2++) {
+	const Lemma4Info &info = *it2;
+	if(info.cacheToken == allOnes[biggerBase.layerSize-2]) {
+	  for(uint8_t i = 0; i < biggerBase.layerSize; i++) {
+	    counts[brickToToken[biggerBase.bricks[i]]].all -= info.count;
+	  }
+	  break; // Token with all ones handled
+	}
+      }
+    }
   }
 
   SplitBuildingBuilder::SplitBuildingBuilder() : neighbours(NULL), baseCombination(NULL), maxCombination(NULL), manager(NULL), threadName("") {}

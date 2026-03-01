@@ -178,7 +178,7 @@ namespace rectilinear {
     void normalize();
     void addBrick(const Brick &b, const uint8_t layer);
     void addBrick(const LayerBrick &lb);
-    Token encodeConnectivity(Token token);
+    Token encodeConnectivity(Token baseToken);
     void removeLastBrick();
     Token getTokenFromLayerSizes() const;
     bool isConnected();
@@ -396,6 +396,9 @@ namespace rectilinear {
     bool placeAllSymmetricLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
     void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
+  private:
+    void buildUsingLemma4ForSize2Plus(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
+    void buildUsingLemma4ForSize1(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
   };
 
   class NonEncodingCombinationBuilder {
