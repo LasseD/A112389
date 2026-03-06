@@ -2346,9 +2346,6 @@ namespace rectilinear {
   }
 
   void CombinationBuilder::build() {
-#ifdef TRACE
-    //std::cout << "  Building on " << baseCombination << std::endl;
-#endif
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
@@ -2421,16 +2418,12 @@ namespace rectilinear {
     caches[b.layerSize][b] = m;
   }
 
-  void Lemma4Cache::computeOrGet(const Base &b, CountsMap &m) {
+  void Lemma4Cache::computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours) {
     if(get(b, m))
       return;
     
-    BrickPlane *neighbours = new BrickPlane[MAX_HEIGHT];
-    for(int i = 0; i < MAX_HEIGHT; i++)
-      neighbours[i].reset();
     CombinationBuilder cb(b, neighbours, maxCombination);
     cb.build();
-    delete[] neighbours;
     CountsMap toCache;
     for(CountsMap::const_iterator it = cb.counts.begin(); it != cb.counts.end(); it++) {
       // Keep only color encoding from counts map:
@@ -2623,9 +2616,21 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
     std::sort(v.begin(), v.end());
     const Token baseToken = maxCombination.getTokenFromLayerSizes();
+
+    // Ensure waves can be used in addWaveToNeighbours()
+    uint8_t base = baseCombination.layerSizes[0];
+    assert(waveStart == 0);
+    assert(waveSize == base);
+    waveStart = base;
+
+    // Perform computations:
     Lemma4CacheMap m;
     buildUsingLemma4ForSize2Plus(Q, v, baseToken, m);
     buildUsingLemma4ForSize1(Q, v, baseToken, m);
+
+    // Reset:
+    waveStart = 0;
+    waveSize = base;
   }
 
   void CombinationBuilder::buildUsingLemma4ForSize2Plus(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m) {
@@ -2634,13 +2639,15 @@ namespace rectilinear {
       BrickPicker picker(v, 0, toPick);
       while(picker.next(baseCombination, maxCombination)) {
 	baseCombination.colorFull(); // colors can now be used reliably
+	// Prepare baseCombination for second layer testing:
+	waveSize = toPick;
 
 	// Build/cache X with counts from Q divided into tokens
 	Base secondLayer(baseCombination, 1);
 	CBase normalizedSecondLayer(secondLayer);
 	normalizedSecondLayer.normalize();
 	CountsMap X; // Contains counts built from secondLayer as base
-	Q.computeOrGet(Base(normalizedSecondLayer), X);
+	Q.computeOrGet(Base(normalizedSecondLayer), X, neighbours);
 
 	// Add X to counts and cache for later:
 	for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
@@ -2652,12 +2659,13 @@ namespace rectilinear {
 	}
 
 	// Find bricks to build supersets with (in addition to second layer of baseCombination):
+	addWaveToNeighbours(1);
 	std::vector<LayerBrick> w; // Bricks to build supersets with
 	for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
 	  const Brick &b = it->first;
 	  bool ok = true;
 	  for(uint8_t i = 0; i < baseCombination.layerSizes[1]; i++) {
-	    if(baseCombination.bricks[1][i].intersects(b)) {
+	    if(neighbours[1].contains(b.isVertical, b.x, b.y)) {
 	      ok = false;
 	      break;
 	    }
@@ -2665,6 +2673,7 @@ namespace rectilinear {
 	  if(ok)
 	    w.push_back(*it);
 	}
+	addWaveToNeighbours(-1);
 
 	// Subtract for supersets of second layer:
 	Combination largerCombination(baseCombination);
@@ -2732,7 +2741,7 @@ namespace rectilinear {
   void CombinationBuilder::buildUsingLemma4ForSize1(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m) {
     CountsMap X; // Contains counts built from secondLayer as base
     Base normalizedSecondLayer;
-    Q.computeOrGet(normalizedSecondLayer, X);
+    Q.computeOrGet(normalizedSecondLayer, X, neighbours);
     uint64_t XCount = X[1].all;
 
     std::map<Brick,Token> brickToToken; // Used to count "down" later
@@ -2840,6 +2849,8 @@ namespace rectilinear {
     to collect and save after each step.
    */
   Counts NonEncodingCombinationBuilder::buildWithPartials(int threadCount, Combination &maxCombination) {
+    if(maxCombination.size == 1)
+      return Counts(1,1,0);
     Combination baseCombination; // Has only FirstBrick
     int token = (int)maxCombination.getTokenFromLayerSizes();
 
@@ -2880,7 +2891,6 @@ namespace rectilinear {
 	std::ifstream istream(partialFileName.c_str());
 
 	if(istream.good()) {
-	  std::cout << "Using " << partialFileName << std::endl;
 	  // Partial file exists: Use it!
 	  istream >> countsSplit.all >> countsSplit.symmetric180 >> countsSplit.symmetric90;
 	  istream.close();
@@ -2888,14 +2898,16 @@ namespace rectilinear {
 	else {
 	  NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, maxCombination);
 	  countsSplit = b2.buildSplit(threadCount);
-	  // Write partials file:
-	  std::ofstream oStream(partialFileName.c_str());
-	  oStream << countsSplit.all << std::endl;
-	  oStream << countsSplit.symmetric180 << std::endl;
-	  oStream << countsSplit.symmetric90 << std::endl;
-	  oStream.flush();
-	  oStream.close();
-	  std::cout << "Wrote " << partialFileName << std::endl;
+	  // Write partials file if big enough:
+	  if(countsSplit.all > 10000000) {
+	    std::ofstream oStream(partialFileName.c_str());
+	    oStream << countsSplit.all << std::endl;
+	    oStream << countsSplit.symmetric180 << std::endl;
+	    oStream << countsSplit.symmetric90 << std::endl;
+	    oStream.flush();
+	    oStream.close();
+	    std::cout << "Wrote " << partialFileName << std::endl;
+	  }
 	}
 
 	manager.add(baseCombination, countsSplit);
@@ -3779,7 +3791,7 @@ namespace rectilinear {
       if(maxCombination->height >= 3) {
 	builder.buildUsingLemma4(*Q);
 	builder.buildSymmetricOnly();
-#ifdef DEBUG
+#ifdef TRACE
 	std::cout << "Counts after building on " << buildBase << ":" << std::endl;
 	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
 	  std::cout << " " << it->first << ": " << it->second << std::endl;

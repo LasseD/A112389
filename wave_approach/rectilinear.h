@@ -344,7 +344,7 @@ namespace rectilinear {
   public:
     bool get(const Base &b, CountsMap &m); // Mutex locked
     Lemma4Cache(const Combination &maxCombination);
-    void computeOrGet(const Base &b, CountsMap &m);
+    void computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours);
     Token computeToken(const Combination &baseCombination,
 		       const CBase &secondLayer,
 		       Token cacheToken,
