@@ -2645,14 +2645,14 @@ namespace rectilinear {
     BrickPicker picker(v, 0, toPick);
     while(picker.next(baseCombination, maxCombination)) {
       baseCombination.colorFull(); // colors can now be used reliably
-      
+
       // Build/cache X with counts from Q divided into tokens
       Base secondLayer(baseCombination, 1);
       CBase normalizedSecondLayer(secondLayer);
       normalizedSecondLayer.normalize();
       CountsMap X; // Contains counts built from secondLayer as base
       Q.computeOrGet(Base(normalizedSecondLayer), X, neighbours);
-      
+
       // Add X to counts and cache for later:
       for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
 	const Token &cacheToken = it->first;
@@ -2661,7 +2661,7 @@ namespace rectilinear {
 	counts[computedToken].all += count; // Adding
 	m[secondLayer].push_back(Lemma4Info(cacheToken, computedToken, count)); // Caching
       }
-      
+
       // Find bricks to build supersets with (in addition to second layer of baseCombination):
       addWaveToNeighbours(1);
       std::vector<LayerBrick> w; // Bricks to build supersets with
@@ -2678,13 +2678,13 @@ namespace rectilinear {
 	  w.push_back(*it);
       }
       addWaveToNeighbours(-1);
-      
+
       // Subtract for supersets of second layer:
       Combination largerCombination(baseCombination);
       for(uint8_t Z = maxCombination.layerSizes[1]; Z > toPick; Z--) {
 	uint8_t diff = Z - toPick;
 	BrickPicker picker2(w, 0, diff); // TODO: Unecessary check against existing bricks in second layer of largerCombination!
-	
+
 	// For all subsets of size Z taken from second layer: X overcount for them, which must be reduced:
 	while(picker2.next(largerCombination, maxCombination)) {
 	  Base largerSecondLayer(largerCombination, 1);
@@ -2694,7 +2694,7 @@ namespace rectilinear {
 	  CBase normalizedLargerSecondLayer(sortedLargerSecondLayerBase);
 	  normalizedLargerSecondLayer.normalize();
 	  InfoVector &iv = m[Base(sortedLargerSecondLayer)];
-	  
+
 	  for(InfoVector::const_iterator it = iv.begin(); it != iv.end(); it++) {
 	    const Lemma4Info &info = *it;
 	    const Token &T = info.cacheToken;
