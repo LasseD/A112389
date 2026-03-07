@@ -1528,12 +1528,6 @@ namespace rectilinear {
     maxCombination(b.maxCombination) {
   }
 
-  CombinationBuilder::CombinationBuilder() : waveStart(0),
-					     waveSize(0),
-					     neighbours(NULL),
-					     encodingLocked(false),
-					     maxCombination(Combination()) {}
-
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
 								   waveSize(0),
 								   neighbours(NULL), maxCombination(NULL) {}

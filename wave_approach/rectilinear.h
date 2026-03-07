@@ -384,8 +384,6 @@ namespace rectilinear {
 
     CombinationBuilder(const CombinationBuilder &b);
 
-    CombinationBuilder();
-
     void build();
     void buildSymmetricOnly();
     void buildUsingLemma4(Lemma4CacheManager &Q);
