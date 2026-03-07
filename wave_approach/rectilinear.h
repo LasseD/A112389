@@ -337,13 +337,19 @@ namespace rectilinear {
   };
 
   class Lemma4Cache {
-    std::mutex mutex;
-    Combination maxCombination;
-    BaseResultsMap caches[MAX_LAYER_SIZE]; // base size / base -> counts
-    void set(const Base &b, const CountsMap &m); // Mutex locked
+    BaseResultsMap cache; // base -> counts
   public:
-    bool get(const Base &b, CountsMap &m); // Mutex locked
-    Lemma4Cache(const Combination &maxCombination);
+    void set(const Base &b, const CountsMap &m);
+    bool get(const Base &b, CountsMap &m);
+  };
+
+  class Lemma4CacheManager {
+    Lemma4Cache caches[MAX_LAYER_SIZE]; // base size -> cache
+    Combination maxCombination; // Used to construct
+    Counts base1Counts;
+  public:
+    Lemma4CacheManager(const Combination &maxCombination);
+    Counts getBase1Counts();
     void computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours);
     Token computeToken(const Combination &baseCombination,
 		       const CBase &secondLayer,
@@ -360,7 +366,7 @@ namespace rectilinear {
     Combination baseCombination;
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
-    Combination maxCombination;
+    const Combination &maxCombination;
     bool encodingLocked;
   public:
     CountsMap counts;
@@ -369,20 +375,20 @@ namespace rectilinear {
 		       const uint8_t waveStart,
 		       const uint8_t waveSize,
 		       BrickPlane *neighbours,
-		       Combination &maxCombination,
+		       const Combination &maxCombination,
 		       bool encodingLocked);
 
     CombinationBuilder(const Base &c,
 		       BrickPlane *neighbours,
-		       Combination &maxCombination);
+		       const Combination &maxCombination);
 
-    CombinationBuilder(const CombinationBuilder& b);
+    CombinationBuilder(const CombinationBuilder &b);
 
     CombinationBuilder();
 
     void build();
     void buildSymmetricOnly();
-    void buildUsingLemma4(Lemma4Cache &Q);
+    void buildUsingLemma4(Lemma4CacheManager &Q);
     void report();
     Counts report(Token returnToken); // Returns counts for token if present in results
     void addWaveToNeighbours(int8_t add);
@@ -397,25 +403,25 @@ namespace rectilinear {
     void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
   private:
-    void buildUsingLemma4ForSize2Plus(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
-    void buildUsingLemma4ForSize1(Lemma4Cache &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
+    void buildUsingLemma4ForSize2Plus(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick);
+    void buildUsingLemma4ForSize1(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
   };
 
   class NonEncodingCombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
-    Combination maxCombination;
+    Combination const * maxCombination;
   public:
     NonEncodingCombinationBuilder(const Combination &c,
 				  const uint8_t waveStart,
 				  const uint8_t waveSize,
 				  BrickPlane *neighbours,
-				  Combination &maxCombination);
+				  Combination const * maxCombination);
     NonEncodingCombinationBuilder(const NonEncodingCombinationBuilder& b);
     NonEncodingCombinationBuilder();
 
-    static Counts buildWithPartials(int threadCount, Combination &maxCombination);
+    static Counts buildWithPartials(int threadCount, const Combination &maxCombination);
     Counts build();
     int addFrom(NormalBuildingManager *manager, const std::string &threadName);
     void countAndRemoveFrom(NormalBuildingManager *manager, const Counts &counts, int toRemove);
@@ -430,7 +436,8 @@ namespace rectilinear {
 
   class SplitBuildingBuilder {
     BrickPlane *neighbours;
-    Combination *baseCombination, *maxCombination;
+    Combination *baseCombination;
+    Combination const * maxCombination;
     NormalBuildingManager *manager;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() }, timePrev = timeStart;
     std::string threadName;
@@ -439,7 +446,7 @@ namespace rectilinear {
     SplitBuildingBuilder(const SplitBuildingBuilder &b);
     SplitBuildingBuilder(BrickPlane *neighbours,
 			 Combination *baseCombination,
-			 Combination *maxCombination,
+			 Combination const * maxCombination,
 			 NormalBuildingManager *manager,
 			 int threadIndex);
     void build();
@@ -598,28 +605,26 @@ namespace rectilinear {
   };
 
   class Lemma3Runner {
-    Lemma4Cache *Q;
     BaseProducer *baseProducer;
-    Combination *maxCombination;
+    Combination const * maxCombination; // Notice: Not a reference in order to get local reference in thread
     BrickPlane *neighbours;
     std::string threadName;
   public:
     Lemma3Runner();
     Lemma3Runner(const Lemma3Runner &b);
     Lemma3Runner(BaseProducer *b,
-		 Combination *maxCombination,
+		 Combination const * maxCombination,
 		 int threadIndex,
-		 BrickPlane *neighbours,
-		 Lemma4Cache *Q);
+		 BrickPlane *neighbours);
     void run();
   };
 
   class Lemma3 {
     int base, threadCount, token;
     CountsMap counts;
-    Combination maxCombination;
+    const Combination &maxCombination;
   public:
-    Lemma3(int base, int threads, Combination &maxCombination);
+    Lemma3(int base, int threads, const Combination &maxCombination);
     void precompute(int maxDist);
     void precompute(int maxDist, bool overwriteFiles);
   private:
