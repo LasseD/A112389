@@ -422,8 +422,8 @@ int runRegressionTests() {
   }
   //return 0;
   // Test precomputations:
-  int tokens[7] = {321, 222, 32, 23, 22, 31, 41};
-  int mDists[7] = { 32,  16, 16,  8,  8, 16, 16};
+  int tokens[7] = {231, 321, 222, 32, 23, 31, 41};
+  int mDists[7] = { 16,  32,  16, 16,  8, 16, 16};
   for(int i = 0; i < 7; i++) {
     // Run precomputations
     uint64_t token = tokens[i];

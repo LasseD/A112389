@@ -385,6 +385,7 @@ namespace rectilinear {
     CombinationBuilder(const CombinationBuilder &b);
 
     void build();
+    void buildWithoutSymmetriesSeparately();
     void buildSymmetricOnly();
     void buildUsingLemma4(Lemma4CacheManager &Q);
     void report();
@@ -398,9 +399,11 @@ namespace rectilinear {
     void setUpBucketsForSimon(std::vector<std::vector<LayerBrick> > &buckets, const std::vector<LayerBrick> &v);
     bool placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
     bool placeAllSymmetricLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
+    bool placeAllLeftToPlaceWithoutSymmetries(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v);
     void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
   private:
+    void buildUsingLemma4ForSizeMax(const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick);
     void buildUsingLemma4ForSize2Plus(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick);
     void buildUsingLemma4ForSize1(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
   };

@@ -2098,6 +2098,49 @@ namespace rectilinear {
     return true; // Done slowly!
   }
 
+  bool CombinationBuilder::placeAllLeftToPlaceWithoutSymmetries(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
+    // Check if all layers can even be filled:
+    // "non-full" layers: Layers that are not filled by v:
+    int cntNonFillableLayers = 0;
+    for(uint8_t i = 0; i < maxCombination.height; i++) {
+      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+	cntNonFillableLayers++;
+    }
+    bool checkedLayers[MAX_HEIGHT];
+    for(uint8_t i = 0; i < maxCombination.height; i++)
+      checkedLayers[i] = false;
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      const LayerBrick &lb = *it;
+      uint8_t layer = lb.LAYER;
+      if(checkedLayers[layer])
+	continue;
+      if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
+	checkedLayers[layer] = true;
+	cntNonFillableLayers--;
+	if(cntNonFillableLayers == 0)
+	  break;
+      }
+    }
+    if(cntNonFillableLayers > 0)
+      return false; // Can't possibly fill!
+
+
+    // Simon with buckets optimization:
+    // Use optimization from Simon for each isolated connectivity:
+    std::vector<std::vector<LayerBrick> > buckets;
+    setUpBucketsForSimon(buckets, v);
+
+    // Try all combinations:
+    uint32_t *bucketIndices = new uint32_t[leftToPlace];
+    for(uint32_t numBuckets = 1; numBuckets <= leftToPlace && numBuckets <= buckets.size(); numBuckets++) {
+      // Pick 'leftToPlace' from the numBuckets number of buckets:
+      // First iterate over all ways of picking the buckets:
+      placeAllInBuckets(buckets, bucketIndices, 0, 0, numBuckets, leftToPlace);
+    }
+    delete[] bucketIndices;
+    return true; // Done by Simon ... with buckets!
+  }
+
   uint64_t CombinationBuilder::countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal) {
     assert(bucketI <= numBuckets);
     if(bucketI == numBuckets)
@@ -2366,6 +2409,33 @@ namespace rectilinear {
     addWaveToNeighbours(-1);
   }
 
+  void CombinationBuilder::buildWithoutSymmetriesSeparately() {
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
+
+    const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
+    if(placeAllLeftToPlaceWithoutSymmetries(leftToPlace, v))
+      return;
+
+    addWaveToNeighbours(1);
+    for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
+      // Pick toPick from neighbours:
+      BrickPicker picker(v, 0, toPick);
+
+      while(picker.next(baseCombination, maxCombination)) {
+	bool nextEncodingLocked = encodingLocked || toPick == 1;
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, nextEncodingLocked);
+
+ 	builder.buildWithoutSymmetriesSeparately();
+ 	addCountsFrom(builder.counts);
+
+	for(uint8_t i = 0; i < toPick; i++)
+	  baseCombination.removeLastBrick();
+      }
+    } // for toPick
+    addWaveToNeighbours(-1);
+  }
+
   Lemma4CacheManager::Lemma4CacheManager(const Combination &maxCombination) : maxCombination(maxCombination) {
     // Set up base size 1 counts:
     CountsMap allKnown;
@@ -2613,16 +2683,17 @@ namespace rectilinear {
     findPotentialBricksForNextWave(v);
     std::sort(v.begin(), v.end());
     const Token baseToken = maxCombination.getTokenFromLayerSizes();
-
-    // Ensure waves can be used in addWaveToNeighbours()
     uint8_t base = baseCombination.layerSizes[0];
-    assert(waveStart == 0);
-    assert(waveSize == base);
-    waveStart = base;
 
     // Perform computations:
+    assert(waveStart == 0);
+    assert(waveSize == base);
     Lemma4CacheMap m;
-    for(uint8_t toPick = maxCombination.layerSizes[1]; toPick > 1; toPick--) {
+    buildUsingLemma4ForSizeMax(v, baseToken, m, maxCombination.layerSizes[1]);
+
+    // Ensure waves can be used in addWaveToNeighbours()
+    waveStart = base;
+    for(uint8_t toPick = maxCombination.layerSizes[1]-1; toPick > 1; toPick--) {
       // Prepare baseCombination for second layer testing:
       waveSize = toPick;
       buildUsingLemma4ForSize2Plus(Q, v, baseToken, m, toPick);
@@ -2632,6 +2703,48 @@ namespace rectilinear {
     // Reset:
     waveStart = 0;
     waveSize = base;
+  }
+
+  void CombinationBuilder::buildUsingLemma4ForSizeMax(const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick) {
+    // Pick toPick from v:
+    BrickPicker picker(v, 0, toPick);
+    uint8_t baseSize = baseCombination.size;
+    addWaveToNeighbours(1);
+    while(picker.next(baseCombination, maxCombination)) {
+      CombinationBuilder b(baseCombination, baseSize, toPick, neighbours, maxCombination, false);
+      b.buildWithoutSymmetriesSeparately();
+
+      // Count up
+      Base secondLayer(baseCombination, 1);
+      CBase normalizedSecondLayer(secondLayer);
+      normalizedSecondLayer.normalize();
+      uint8_t colors[MAX_LAYER_SIZE];
+#ifdef TRACE
+      std::cout << "  Build for size max " << (int)toPick << " of base " << baseCombination << " normalized: " << Base(normalizedSecondLayer) << std::endl; 
+#endif
+      for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
+	Token cacheToken = it->first;
+	for(uint8_t i = 0; i < toPick; i++) {
+	  colors[toPick-1-i] = cacheToken%10;
+	  cacheToken/=10;
+	}
+	cacheToken = 0;
+	for(uint8_t i = 0; i < toPick; i++) {
+	  uint8_t color = colors[normalizedSecondLayer.bricks[i].second];
+	  cacheToken = 10*cacheToken + color;
+	}
+	Token computedToken = it->first;
+	counts[computedToken] += it->second;
+	m[secondLayer].push_back(Lemma4Info(cacheToken, computedToken, it->second.all));
+#ifdef TRACE
+	std::cout << "   computed " << computedToken << " -> cache " << cacheToken << " : " << it->second << std::endl; 
+#endif
+      }
+      
+      for(uint8_t i = 0; i < toPick; i++)
+	baseCombination.removeLastBrick();
+    }
+    addWaveToNeighbours(-1);
   }
 
   void CombinationBuilder::buildUsingLemma4ForSize2Plus(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick) {
@@ -2702,12 +2815,15 @@ namespace rectilinear {
 					    normalizedLargerSecondLayer,
 					    sortedLargerSecondLayer)) {
 		// Update how second layer should propagate in the future:
+		assert(it2->count >= info.count);
 		it2->count -= info.count;
 		if(it2->count == 0)
 		  anyZero = true;
+		assert(counts[it2->computedToken].all >= info.count);
 		counts[it2->computedToken].all -= info.count;
 	      }
 	    } // for InfoVector iv2
+	    
 	      // Optimization: Clean up iv2 in case of zeroes
 	    if(anyZero) {
 	      InfoVector iv3;
@@ -2847,8 +2963,8 @@ namespace rectilinear {
     Combination baseCombination; // Has only FirstBrick
     int token = (int)maxCombination.getTokenFromLayerSizes();
 
-    BrickPlane neighbours[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+    BrickPlane neighbours[MAX_HEIGHT];
+    for(uint8_t i = 0; i < MAX_HEIGHT; i++)
       neighbours[i].reset();
 
     NonEncodingCombinationBuilder b1(baseCombination, 0, 1, neighbours, &maxCombination);
@@ -3437,8 +3553,9 @@ namespace rectilinear {
 	rm[b] = it->second;
     }
     resultsMap = rm;
-    if(!resultsMap.empty())
-      std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
+#ifdef FTRACE
+    std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
+#endif
 
     bases.clear();
   }
@@ -3616,8 +3733,8 @@ namespace rectilinear {
 
 	  Base cleanSmallerBase(smallerBase);
 	  if(resultsMap.find(cleanSmallerBase) != resultsMap.end()) { // Known smaller base: Point to same original:
-	    if(++reachSkips % 100000 == 0)
-	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+	    if(++reachSkips % 500000 == 0)
+	      std::cout << "  Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	    continue;
 	  }
 	  else { // First time the smaller base is encountered: Mark it:
@@ -3643,15 +3760,13 @@ namespace rectilinear {
       if(mirrorSymmetryType != NORMAL) {
 	bases.push_back(BaseWithID(c, BaseIdentification(mirrorSymmetryType,mirrored)));
 	resultsMap[c] = CountsMap(); // Reserve to avoid repeats in output
-	if(++mirrorSkips % 50000 == 0)
-	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	continue;
       }
 
       resultsMap[c] = CountsMap(); // Reserve the entry so that check for "seen" above works.
       bases.push_back(BaseWithID(c, BaseIdentification(NORMAL,CBase(c))));
-      if(++noSkips % 10000 == 0)
-	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
+      if(++noSkips % 100000 == 0)
+	std::cout << "  Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
       buildBase = registrationBase = c;
       return true;
     }
