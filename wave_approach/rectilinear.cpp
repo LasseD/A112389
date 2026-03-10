@@ -2486,8 +2486,11 @@ namespace rectilinear {
   void Lemma4CacheManager::computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours) {
     const uint8_t &baseSize = b.layerSize;
     assert(baseSize != 1);
-    if(caches[baseSize].get(b, m))
-      return;
+    // Cache becomes too big if largest base size is included:
+    if(baseSize <= 2 || baseSize < maxCombination.layerSizes[0]) {
+      if(caches[baseSize].get(b, m))
+	return;
+    }
     
     CombinationBuilder cb(b, neighbours, maxCombination);
     cb.build();
@@ -2508,7 +2511,9 @@ namespace rectilinear {
       toCache[token] = it->second;
     }
 
-    caches[baseSize].set(b, toCache); // set
+    if(baseSize <= 2 || baseSize < maxCombination.layerSizes[0]) {
+      caches[baseSize].set(b, toCache); // set
+    }
     m = toCache; // final get
   }
 
@@ -2689,11 +2694,11 @@ namespace rectilinear {
     assert(waveStart == 0);
     assert(waveSize == base);
     Lemma4CacheMap m;
-    buildUsingLemma4ForSizeMax(v, baseToken, m, maxCombination.layerSizes[1]);
+    //buildUsingLemma4ForSizeMax(v, baseToken, m, maxCombination.layerSizes[1]);
 
     // Ensure waves can be used in addWaveToNeighbours()
     waveStart = base;
-    for(uint8_t toPick = maxCombination.layerSizes[1]-1; toPick > 1; toPick--) {
+    for(uint8_t toPick = maxCombination.layerSizes[1]; toPick > 1; toPick--) {
       // Prepare baseCombination for second layer testing:
       waveSize = toPick;
       buildUsingLemma4ForSize2Plus(Q, v, baseToken, m, toPick);
