@@ -13,12 +13,10 @@ namespace rectilinear {
   uint64_t BinomialCoefficient::cache[BINOMIAL_CACHE_SIZE][BINOMIAL_CACHE_SIZE];
 
   void BinomialCoefficient::init() {
-    std::cout << "Binomials init" << std::endl;
     for(int i = 0; i < BINOMIAL_CACHE_SIZE; i++) {
       for(int j = 0; j < BINOMIAL_CACHE_SIZE; j++)
 	cache[i][j] = nkSlow(i, j);
     }
-    std::cout << "Binomials set up" << std::endl;
   }
 
   uint64_t BinomialCoefficient::nChooseK(uint64_t n, uint64_t k) {
@@ -404,7 +402,7 @@ namespace rectilinear {
   bool BrickPlane::contains(const bool v, const int16_t x, const int16_t y) {
     return bricks[v][x][y] > 0;
   }
-   
+
   Combination::Combination() : height(1), size(1) {
     bricks[0][0] = FirstBrick;
     layerSizes[0] = 1;
@@ -452,6 +450,11 @@ namespace rectilinear {
   Base::Base(const CBase &b) : layerSize(b.layerSize) {
     for(uint8_t i = 0; i < layerSize; i++)
       bricks[i] = b.bricks[i].first;
+  }
+  Base::Base(const Combination &c, uint8_t layer) {
+    layerSize = c.layerSizes[layer];
+    for(uint8_t i = 0; i < layerSize; i++)
+      bricks[i] = c.bricks[layer][i];
   }
   CBase::CBase() : layerSize(1) {
     bricks[0].first = FirstBrick;
@@ -1062,7 +1065,7 @@ namespace rectilinear {
     }
   }
 
-  int64_t Combination::encodeConnectivity(int64_t token) {
+  Token Combination::encodeConnectivity(Token baseToken) {
     assert(layerSizes[0] >= 2);
 
     // Reset colors (state):
@@ -1079,16 +1082,16 @@ namespace rectilinear {
 	colorConnected(0, i, i+1);
     }
     if(colors[0][s0-1] == 0)
-      colors[0][s0-1] = s0; // No need to run DFS on last
+      colors[0][s0-1] = s0; // No need to run DFS on last, as it should have been hit if connected
 
     // Encode:
-    for(uint8_t i = 0; i < layerSizes[0]; i++)
-      token = 10 * token + colors[0][i];
-    return token;
+    for(uint8_t i = 0; history[i].first == 0; i++)
+      baseToken = 10 * baseToken + colors[0][i];
+    return baseToken;
   }
   
-  int64_t Combination::getTokenFromLayerSizes() const {
-    int64_t ret = 0;
+  Token Combination::getTokenFromLayerSizes() const {
+    Token ret = 0;
     for(uint8_t i = 0; i < height; i++) {
       ret = (ret * 10) + layerSizes[i];
     }
@@ -1196,8 +1199,8 @@ namespace rectilinear {
     }
   }
 
-  int64_t Combination::reverseToken(int64_t token) {
-    int64_t ret = 0;
+  Token Combination::reverseToken(Token token) {
+    Token ret = 0;
     while(token > 0) {
       ret = (ret * 10) + (token % 10);
       token /= 10;
@@ -1205,7 +1208,7 @@ namespace rectilinear {
     return ret;
   }
 
-  uint8_t Combination::heightOfToken(int64_t token) {
+  uint8_t Combination::heightOfToken(Token token) {
     uint8_t ret = 0;
     while(token > 0) {
       ret++;
@@ -1214,7 +1217,7 @@ namespace rectilinear {
     return ret;
   }
 
-  uint8_t Combination::sizeOfToken(int64_t token) {
+  uint8_t Combination::sizeOfToken(Token token) {
     uint8_t ret = 0;
     while(token > 0) {
       ret += token % 10;
@@ -1223,7 +1226,7 @@ namespace rectilinear {
     return ret;
   }
 
-  void Combination::getLayerSizesFromToken(int64_t token, uint8_t *layerSizes) {
+  void Combination::getLayerSizesFromToken(Token token, uint8_t *layerSizes) {
     uint8_t layers = 0;
     while(token > 0) {
       uint8_t size_add = token % 10;
@@ -1261,6 +1264,7 @@ namespace rectilinear {
   }
 
   void Combination::setupKnownCounts(CountsMap &m) {
+    m[1] = Counts(1, 1, 0);
     m[11] = Counts(24, 2, 0);
     m[21] = Counts(250, 20, 0);
     m[31] = Counts(648, 8, 0);
@@ -1416,11 +1420,11 @@ namespace rectilinear {
     m[2431] = Counts(936478355031379, 3294187, 0);
   }
 
-  bool Combination::checkCounts(uint64_t token, const Counts &c) {
+  bool Combination::checkCounts(Token token, const Counts &c) {
     CountsMap m;
     setupKnownCounts(m);
 
-    uint64_t reversed = Combination::reverseToken(token);
+    Token reversed = Combination::reverseToken(token);
     if(m.find(reversed) != m.end())
       token = reversed;
     else if(m.find(token) == m.end()) {
@@ -1474,7 +1478,7 @@ namespace rectilinear {
 					 const uint8_t waveStart,
 					 const uint8_t waveSize,
 					 BrickPlane *neighbours,
-					 Combination &maxCombination,
+					 const Combination &maxCombination,
 					 bool encodingLocked) :
     baseCombination(c),
     waveStart(waveStart),
@@ -1486,11 +1490,7 @@ namespace rectilinear {
     assert(c.bricks[0][0] == FirstBrick);
   }
 
-  NonEncodingCombinationBuilder::NonEncodingCombinationBuilder(const Combination &c,
-							       const uint8_t waveStart,
-							       const uint8_t waveSize,
-							       BrickPlane *neighbours,
-							       Combination &maxCombination) :
+  NonEncodingCombinationBuilder::NonEncodingCombinationBuilder(const Combination &c, const uint8_t waveStart, const uint8_t waveSize, BrickPlane *neighbours, Combination const * maxCombination) :
     baseCombination(c),
     waveStart(waveStart),
     waveSize(waveSize),
@@ -1502,7 +1502,7 @@ namespace rectilinear {
 
   CombinationBuilder::CombinationBuilder(const Base &c,
 					 BrickPlane *neighbours,
-					 Combination &maxCombination) :
+					 const Combination &maxCombination) :
     baseCombination(c),
     waveStart(0),
     waveSize(c.layerSize),
@@ -1528,14 +1528,9 @@ namespace rectilinear {
     maxCombination(b.maxCombination) {
   }
 
-  CombinationBuilder::CombinationBuilder() : waveStart(0),
-					     waveSize(0),
-					     neighbours(NULL),
-					     encodingLocked(false) {}
-
   NonEncodingCombinationBuilder::NonEncodingCombinationBuilder() : waveStart(0),
 								   waveSize(0),
-								   neighbours(NULL) {}
+								   neighbours(NULL), maxCombination(NULL) {}
 
   void CombinationBuilder::addWaveToNeighbours(int8_t add) {
     for(uint8_t i = 0; i < waveSize; i++) {
@@ -1772,9 +1767,9 @@ namespace rectilinear {
       for(int8_t layer2 = waveBrickLayer-1; layer2 <= waveBrickLayer+1; layer2+=2) {
 	if(layer2 < 0)
 	  continue; // Do not allow building below base layer
-	if(layer2 >= maxCombination.height)
+	if(layer2 >= maxCombination->height)
 	  continue; // Out of range
-	if(layer2 < baseCombination.height && baseCombination.layerSizes[layer2] == maxCombination.layerSizes[layer2])
+	if(layer2 < baseCombination.height && baseCombination.layerSizes[layer2] == maxCombination->layerSizes[layer2])
 	  continue; // Already at maximum allowed for layer
 
 	// Add crossing bricks (one vertical, one horizontal):
@@ -1895,7 +1890,7 @@ namespace rectilinear {
       // Compute token (same for all combinations):
       for(uint32_t i = 0; i < numBuckets; i++)
 	baseCombination.addBrick(buckets[bucketIndices[i]][0]);
-      int64_t token = 0;
+      Token token = maxCombination.getTokenFromLayerSizes();
       token = baseCombination.encodeConnectivity(token);
       for(uint32_t i = 0; i < numBuckets; i++)
 	baseCombination.removeLastBrick();
@@ -1966,6 +1961,63 @@ namespace rectilinear {
     }
   }
 
+  bool CombinationBuilder::placeAllSymmetricLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
+    // Copied from placeAllLeftToPlace:
+    int cntNonFillableLayers = 0;
+    for(uint8_t i = 0; i < maxCombination.height; i++) {
+      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+	cntNonFillableLayers++;
+    }
+    bool checkedLayers[MAX_HEIGHT];
+    for(uint8_t i = 0; i < maxCombination.height; i++)
+      checkedLayers[i] = false;
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      const LayerBrick &lb = *it;
+      uint8_t layer = lb.LAYER;
+      if(checkedLayers[layer])
+	continue;
+      if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
+	checkedLayers[layer] = true;
+	cntNonFillableLayers--;
+	if(cntNonFillableLayers == 0)
+	  break;
+      }
+    }
+    if(cntNonFillableLayers > 0)
+      return false; // Can't possibly fill!
+
+    BrickPicker picker(v, 0, leftToPlace);
+    Token token = 0, prevToken = 0;
+    CountsMap::iterator it;
+    while(picker.next(baseCombination, maxCombination)) {
+      if(baseCombination.is180Symmetric()) {
+	if(!encodingLocked || token == 0) {
+	  token = baseCombination.getTokenFromLayerSizes();
+	  token = baseCombination.encodeConnectivity(token);
+
+	  if(token != prevToken) {
+	    it = counts.find(token);
+	    if(it == counts.end()) {
+	      std::pair<CountsMap::iterator,bool> pp = counts.insert(std::pair<Token,Counts>(token, Counts()));
+	      assert(pp.second);
+	      it = pp.first;
+	    }
+	    prevToken = token;
+	  }
+	}
+	assert(it != counts.end());
+
+	it->second.symmetric180++;
+	if(baseCombination.is90Symmetric())
+	  it->second.symmetric90++;
+      }
+
+      for(uint8_t i = 0; i < leftToPlace; i++)
+	baseCombination.removeLastBrick(); // Built in picker.next...
+    }
+    return true;
+  }
+
   bool CombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
     // Check if all layers can even be filled:
     // "non-full" layers: Layers that are not filled by v:
@@ -2014,17 +2066,17 @@ namespace rectilinear {
 
     // Can be symmetric, so slow algorithm OK here:
     BrickPicker picker(v, 0, leftToPlace);
-    int64_t token = -1, prevToken = -1;
+    Token token = 0, prevToken = 0;
     CountsMap::iterator it;
     while(picker.next(baseCombination, maxCombination)) {
-      if(!encodingLocked || token == -1) {
+      if(!encodingLocked || token == 0) {
 	token = baseCombination.getTokenFromLayerSizes();
 	token = baseCombination.encodeConnectivity(token);
 
 	if(token != prevToken) {
 	  it = counts.find(token);
 	  if(it == counts.end()) {
-	    std::pair<CountsMap::iterator,bool> pp = counts.insert(std::pair<int64_t,Counts>(token, Counts()));
+	    std::pair<CountsMap::iterator,bool> pp = counts.insert(std::pair<Token,Counts>(token, Counts()));
 	    assert(pp.second);
 	    it = pp.first;
 	  }
@@ -2044,6 +2096,49 @@ namespace rectilinear {
 	baseCombination.removeLastBrick(); // Built in picker.next...
     }
     return true; // Done slowly!
+  }
+
+  bool CombinationBuilder::placeAllLeftToPlaceWithoutSymmetries(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
+    // Check if all layers can even be filled:
+    // "non-full" layers: Layers that are not filled by v:
+    int cntNonFillableLayers = 0;
+    for(uint8_t i = 0; i < maxCombination.height; i++) {
+      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+	cntNonFillableLayers++;
+    }
+    bool checkedLayers[MAX_HEIGHT];
+    for(uint8_t i = 0; i < maxCombination.height; i++)
+      checkedLayers[i] = false;
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      const LayerBrick &lb = *it;
+      uint8_t layer = lb.LAYER;
+      if(checkedLayers[layer])
+	continue;
+      if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
+	checkedLayers[layer] = true;
+	cntNonFillableLayers--;
+	if(cntNonFillableLayers == 0)
+	  break;
+      }
+    }
+    if(cntNonFillableLayers > 0)
+      return false; // Can't possibly fill!
+
+
+    // Simon with buckets optimization:
+    // Use optimization from Simon for each isolated connectivity:
+    std::vector<std::vector<LayerBrick> > buckets;
+    setUpBucketsForSimon(buckets, v);
+
+    // Try all combinations:
+    uint32_t *bucketIndices = new uint32_t[leftToPlace];
+    for(uint32_t numBuckets = 1; numBuckets <= leftToPlace && numBuckets <= buckets.size(); numBuckets++) {
+      // Pick 'leftToPlace' from the numBuckets number of buckets:
+      // First iterate over all ways of picking the buckets:
+      placeAllInBuckets(buckets, bucketIndices, 0, 0, numBuckets, leftToPlace);
+    }
+    delete[] bucketIndices;
+    return true; // Done by Simon ... with buckets!
   }
 
   uint64_t CombinationBuilder::countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal) {
@@ -2157,8 +2252,8 @@ namespace rectilinear {
 
     // Handle all layers to be filled:
     Brick *c = new Brick[N], *v2 = new Brick[v.size()];
-    for(uint8_t layer = 0; layer < maxCombination.height; layer++) {
-      uint64_t N2 = layer >= baseCombination.height ? maxCombination.layerSizes[layer] : maxCombination.layerSizes[layer] - baseCombination.layerSizes[layer];
+    for(uint8_t layer = 0; layer < maxCombination->height; layer++) {
+      uint64_t N2 = layer >= baseCombination.height ? maxCombination->layerSizes[layer] : maxCombination->layerSizes[layer] - baseCombination.layerSizes[layer];
       if(N2 == 0)
 	continue; // Skip full layer
 
@@ -2185,7 +2280,7 @@ namespace rectilinear {
 
   Counts NonEncodingCombinationBuilder::placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v) {
     assert(leftToPlace > 0);
-    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(maxCombination);
+    const bool canBeSymmetric180 = baseCombination.canBecomeSymmetric(*maxCombination);
 
     // Special case: 1 left to place, and can not be symmetric:
     if(!canBeSymmetric180 && leftToPlace == 1)
@@ -2194,20 +2289,20 @@ namespace rectilinear {
     // Optimization: Check if all layers can be filled:
     // "non-full" layers: Layers that are not filled by v:
     int cntNonFullLayers = 0;
-    for(uint8_t i = 0; i < maxCombination.height; i++) {
-      if(i >= baseCombination.height || maxCombination.layerSizes[i] > baseCombination.layerSizes[i])
+    for(uint8_t i = 0; i < maxCombination->height; i++) {
+      if(i >= baseCombination.height || maxCombination->layerSizes[i] > baseCombination.layerSizes[i])
 	cntNonFullLayers++;
     }
     int cntNonFillableLayers = cntNonFullLayers;
     bool checkedLayers[MAX_HEIGHT];
-    for(uint8_t i = 0; i < maxCombination.height; i++)
+    for(uint8_t i = 0; i < maxCombination->height; i++)
       checkedLayers[i] = false;
     for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
       const LayerBrick &lb = *it;
       uint8_t layer = lb.LAYER;
       if(checkedLayers[layer])
 	continue;
-      if(layer >= baseCombination.height || maxCombination.layerSizes[layer] > baseCombination.layerSizes[layer]) {
+      if(layer >= baseCombination.height || maxCombination->layerSizes[layer] > baseCombination.layerSizes[layer]) {
 	checkedLayers[layer] = true;
 	cntNonFillableLayers--;
       }
@@ -2226,7 +2321,7 @@ namespace rectilinear {
     // Try all combinations:
     Counts ret;
     BrickPicker picker(v, 0, leftToPlace);
-    while(picker.next(baseCombination, maxCombination)) {
+    while(picker.next(baseCombination, *maxCombination)) {
       ret.all++;
       if(canBeSymmetric180 && baseCombination.is180Symmetric()) {
 	ret.symmetric180++;
@@ -2242,7 +2337,7 @@ namespace rectilinear {
 
   void CombinationBuilder::addCountsFrom(const CountsMap &countsFrom) {
     for(CountsMap::const_iterator it = countsFrom.begin(); it != countsFrom.end(); it++) {
-      int64_t token = it->first;
+      Token token = it->first;
       Counts toAdd = it->second;
 
       CountsMap::iterator it2;
@@ -2263,7 +2358,7 @@ namespace rectilinear {
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
-    const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
+    const uint8_t leftToPlace = maxCombination->size - baseCombination.size;
     Counts ret = placeAllLeftToPlace(leftToPlace, v);
     if(ret.all != 0)
       return ret;
@@ -2272,7 +2367,7 @@ namespace rectilinear {
     for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
       BrickPicker picker(v, 0, toPick);
 
-      while(picker.next(baseCombination, maxCombination)) {
+      while(picker.next(baseCombination, *maxCombination)) {
 	NonEncodingCombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination);
  	ret += builder.build();
 	for(uint8_t i = 0; i < toPick; i++)
@@ -2285,9 +2380,6 @@ namespace rectilinear {
   }
 
   void CombinationBuilder::build() {
-#ifdef TRACE
-    std::cout << "  Building on " << baseCombination << std::endl;
-#endif
     std::vector<LayerBrick> v;
     findPotentialBricksForNextWave(v);
 
@@ -2317,13 +2409,504 @@ namespace rectilinear {
     addWaveToNeighbours(-1);
   }
 
+  void CombinationBuilder::buildWithoutSymmetriesSeparately() {
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
+
+    const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
+    if(placeAllLeftToPlaceWithoutSymmetries(leftToPlace, v))
+      return;
+
+    addWaveToNeighbours(1);
+    for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
+      // Pick toPick from neighbours:
+      BrickPicker picker(v, 0, toPick);
+
+      while(picker.next(baseCombination, maxCombination)) {
+	bool nextEncodingLocked = encodingLocked || toPick == 1;
+	CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, nextEncodingLocked);
+
+ 	builder.buildWithoutSymmetriesSeparately();
+ 	addCountsFrom(builder.counts);
+
+	for(uint8_t i = 0; i < toPick; i++)
+	  baseCombination.removeLastBrick();
+      }
+    } // for toPick
+    addWaveToNeighbours(-1);
+  }
+
+  Lemma4CacheManager::Lemma4CacheManager(const Combination &maxCombination) : maxCombination(maxCombination) {
+    // Set up base size 1 counts:
+    CountsMap allKnown;
+    Combination::setupKnownCounts(allKnown);
+    Token token = maxCombination.getTokenFromLayerSizes();
+    Token rToken = Combination::reverseToken(token);
+
+    Counts fromAll = allKnown.find(token) == allKnown.end() ? allKnown[rToken] : allKnown[token];
+    fromAll.all *= maxCombination.layerSizes[0]; // For each brick in base
+    fromAll.symmetric180 *= maxCombination.layerSizes[0];
+    // Both directions:
+    fromAll.all *= 2;
+    fromAll.all -= fromAll.symmetric180; // Otherwise symmetric are over-counted
+    base1Counts = fromAll;
+#ifdef DEBUG
+    // Double-check:
+    BrickPlane *neighbours = new BrickPlane[MAX_HEIGHT];
+    for(int i = 0; i < MAX_HEIGHT; i++)
+      neighbours[i].reset();
+    Base b;
+    CombinationBuilder cb(b, neighbours, maxCombination);
+    cb.build();
+    delete[] neighbours;
+    assert(cb.counts.size() == 1);
+    Counts xCheck = cb.counts.begin()->second;
+    assert(xCheck == fromAll);
+#endif
+  }
+
+  bool Lemma4Cache::get(const Base &b, CountsMap &m) {
+    assert(b.layerSize != 1);
+    BaseResultsMap::const_iterator it = cache.find(b);
+    if(it != cache.end()) {
+      m = it->second;
+      return true;
+    }
+    return false;
+  }
+
+  void Lemma4Cache::set(const Base &b, const CountsMap &m) {
+    cache[b] = m;
+  }
+
+  Counts Lemma4CacheManager::getBase1Counts() {
+    return base1Counts;
+  }
+
+  void Lemma4CacheManager::computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours) {
+    const uint8_t &baseSize = b.layerSize;
+    assert(baseSize != 1);
+    // Cache becomes too big if largest base size is included:
+    if(baseSize <= 2 || baseSize < maxCombination.layerSizes[0]) {
+      if(caches[baseSize].get(b, m))
+	return;
+    }
+
+    CombinationBuilder cb(b, neighbours, maxCombination);
+    cb.build();
+    CountsMap toCache;
+    for(CountsMap::const_iterator it = cb.counts.begin(); it != cb.counts.end(); it++) {
+      // Keep only color encoding from counts map:
+      Token token = it->first;
+      Token rToken = 0;
+      for(uint8_t i = 0; i < b.layerSize; i++) {
+	rToken = rToken * 10 + (token%10);
+	token/=10;
+      }
+      token = 0;
+      for(uint8_t i = 0; i < b.layerSize; i++) {
+	token = token * 10 + (rToken%10);
+	rToken/=10;
+      }
+      toCache[token] = it->second;
+    }
+
+    if(baseSize <= 2 || baseSize < maxCombination.layerSizes[0]) {
+      caches[baseSize].set(b, toCache); // set
+    }
+    m = toCache; // final get
+  }
+
+  /*
+    Compute the token for first layer from:
+    - baseCombination with coloring A of two layers
+    - secondLayer with the subset of second layer. This is normalized!
+    - cacheToken from the counts where first layer is ignored. Represented by coloring B 
+    - baseToken from maxCombination.getTokenFromLayerSizes()
+    Take care when computing token here: cacheToken only tells about normalized base!
+  */
+  Token Lemma4CacheManager::computeToken(const Combination &baseCombination,
+					 const CBase &secondLayer,
+					 Token cacheToken,
+					 const Token baseToken) const {
+    const uint8_t &s1 = baseCombination.layerSizes[0], &s2 = baseCombination.layerSizes[1];
+    uint8_t colorsA[2][MAX_LAYER_SIZE], colorsB[MAX_LAYER_SIZE]; // A from baseCombination, B from cache
+    for(uint8_t i = 0; i < s1; i++)
+      colorsA[0][i] = baseCombination.colors[0][i];
+    for(uint8_t i = 0; i < s2; i++)
+      colorsA[1][i] = baseCombination.colors[1][i];
+
+    for(int8_t i = s2-1; i >= 0; i--) {
+      colorsB[secondLayer.bricks[i].second] = cacheToken%10; // secondLayer.bricks[i].second is original position
+      cacheToken /= 10;
+    }
+    // Connect colors of A:
+    bool improved = true;
+    while(improved) {
+      improved = false;
+      for(uint8_t i = 0; i < s2; i++) {
+	if(colorsA[1][i] == 1)
+	  continue; // Can't be improved
+	// Try to improve color i of A:
+	for(uint8_t j = 0; j < s2; j++) {
+	  if(j == i)
+	    continue;
+	  if(colorsB[j] == colorsB[i] && colorsA[1][j] < colorsA[1][i]) {
+	    for(uint8_t k = 0; k < s1; k++) {
+	      if(colorsA[0][k] == colorsA[1][i])
+		colorsA[0][k] = colorsA[1][j];
+	    }
+	    colorsA[1][i] = colorsA[1][j];
+	    improved = true;
+	    break;
+	  }
+	}
+      }
+    }
+    // Colors of A are now minimized: Re-encode:
+    Token token = baseToken*10+1;
+    for(uint8_t i = 1; i < s1; i++)
+      token = token * 10 + colorsA[0][i];
+    return token;
+  }
+
+  /*
+    Given tokens obtained after coloring first layer.
+    Counts for a smaller base b contribute (overcount) for a larger base B if for all bricks in B:
+    - If the brick is not in b: It shares a color of a brick in b.
+    - If the brick is in b: Bricks in b sharing the color should also share the color in B.
+    Parameters:
+    - t = small token
+    - T = big token
+    - base_t = Transformation from picked bricks to those used for token t
+    - base_T = Transformation from picked bricks to those used for token T
+    - t_to_T = Transformation from t to T
+  */
+  bool Lemma4CacheManager::didSmallerBaseContribute(Token t,
+						    Token T,
+						    const CBase &base_t,
+						    const CBase &base_T,
+						    const CBase &t_to_T) const {
+    // Decode tokens t and T:
+    const uint8_t &size_t = base_t.layerSize;
+    const uint8_t &size_T = base_T.layerSize;
+    uint8_t colors_t[MAX_LAYER_SIZE], colors_T[MAX_LAYER_SIZE];
+
+    // Use colors_T as temporary buffer for computing colors_t
+    for(int8_t i = size_t-1; i >= 0; i--) {
+      uint8_t color = t%10;
+      uint8_t ofBase_t = base_t.bricks[i].second;
+      colors_T[ofBase_t] = color;
+      t/=10;
+    }
+    for(int8_t i = size_t; i < size_T; i++)
+      colors_T[i] = 99;
+    for(int8_t i = 0; i < size_T; i++) {
+      uint8_t index_t = t_to_T.bricks[i].second;
+      colors_t[i] = colors_T[index_t];
+    }
+    // Done for colors_t. Now colors_T can be seat up (only one transformation step):
+    for(int8_t i = size_T-1; i >= 0; i--) {
+      uint8_t color = T%10;
+      colors_T[base_T.bricks[i].second] = color;
+      T/=10;
+    }
+
+    // Check each color in T:
+    for(uint8_t i = 0; i < size_T; i++) {
+      if(colors_t[i] == 99) {
+	// Unused brick in smaller base:
+	// Must connect to an existing brick (have same color):
+	bool connected = false;
+	for(uint8_t j = 0; j < size_T; j++) {
+	  if(colors_t[j] == 99)
+	    continue;
+	  if(colors_T[i] == colors_T[j]) {
+	    connected = true; // Another used brick has same color
+	    break;
+	  }
+	}
+	if(!connected)
+	  return false;
+      }
+      else {
+	// Check that all bricks with same color in t also have the same color in T:
+	uint8_t color_t = colors_t[i];
+	uint8_t color_T = colors_T[i];
+	for(uint8_t j = i+1; j < size_T; j++) {
+	  if(colors_t[j] == 99)
+	    continue;
+	  if((color_t == colors_t[j]) != (color_T == colors_T[j]))
+	    return false; // Should not result in same color
+	}
+      }
+    }
+    return true;
+  }
+
+  void CombinationBuilder::buildSymmetricOnly() {
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
+
+    const uint8_t leftToPlace = maxCombination.size - baseCombination.size;
+    if(placeAllSymmetricLeftToPlace(leftToPlace, v))
+      return; // Done in placeAllLeftToPlace()
+
+    addWaveToNeighbours(1);
+    for(uint8_t toPick = 1; toPick < leftToPlace; toPick++) {
+      // Pick toPick from neighbours:
+      BrickPicker picker(v, 0, toPick);
+
+      while(picker.next(baseCombination, maxCombination)) {
+	if(baseCombination.is180Symmetric()) {
+	  bool nextEncodingLocked = encodingLocked || toPick == 1;
+	  CombinationBuilder builder(baseCombination, waveStart+waveSize, toPick, neighbours, maxCombination, nextEncodingLocked);
+	  builder.buildSymmetricOnly();
+	  addCountsFrom(builder.counts);
+	}
+
+	for(uint8_t i = 0; i < toPick; i++)
+	  baseCombination.removeLastBrick();
+      }
+    } // for toPick
+    addWaveToNeighbours(-1);
+  }
+
+  Lemma4Info::Lemma4Info() : cacheToken(0), computedToken(0), count(0) {}
+  Lemma4Info::Lemma4Info(const Lemma4Info &x) : cacheToken(x.cacheToken), computedToken(x.computedToken), count(x.count){}
+  Lemma4Info::Lemma4Info(Token cacheToken, Token computedToken, uint64_t count) : cacheToken(cacheToken), computedToken(computedToken), count(count) {}
+
+  /*
+    Overview of Lemma 4 approach:
+    For each toPick in second layer size ... 1:
+    For all subsets 'secondLayer' of second layer bricks:
+    Count up for secondLayer, ignoring first layer.
+    For all actual supersets of secondLayer: Repair over-counts.
+   */
+  void CombinationBuilder::buildUsingLemma4(Lemma4CacheManager &Q) {
+    std::vector<LayerBrick> v;
+    findPotentialBricksForNextWave(v);
+    std::sort(v.begin(), v.end());
+    const Token baseToken = maxCombination.getTokenFromLayerSizes();
+    uint8_t base = baseCombination.layerSizes[0];
+
+    // Perform computations:
+    assert(waveStart == 0);
+    assert(waveSize == base);
+    Lemma4CacheMap m;
+    //buildUsingLemma4ForSizeMax(v, baseToken, m, maxCombination.layerSizes[1]);
+
+    // Ensure waves can be used in addWaveToNeighbours()
+    waveStart = base;
+    for(uint8_t toPick = maxCombination.layerSizes[1]; toPick > 1; toPick--) {
+      // Prepare baseCombination for second layer testing:
+      waveSize = toPick;
+      buildUsingLemma4ForSize2Plus(Q, v, baseToken, m, toPick);
+    }
+    buildUsingLemma4ForSize1(Q, v, baseToken, m);
+
+    // Reset:
+    waveStart = 0;
+    waveSize = base;
+  }
+
+  void CombinationBuilder::buildUsingLemma4ForSizeMax(const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick) {
+    // Pick toPick from v:
+    BrickPicker picker(v, 0, toPick);
+    uint8_t baseSize = baseCombination.size;
+    addWaveToNeighbours(1);
+    while(picker.next(baseCombination, maxCombination)) {
+      CombinationBuilder b(baseCombination, baseSize, toPick, neighbours, maxCombination, false);
+      b.buildWithoutSymmetriesSeparately();
+
+      // Count up
+      Base secondLayer(baseCombination, 1);
+      CBase normalizedSecondLayer(secondLayer);
+      normalizedSecondLayer.normalize();
+      uint8_t colors[MAX_LAYER_SIZE];
+#ifdef TRACE
+      std::cout << "  Build for size max " << (int)toPick << " of base " << baseCombination << " normalized: " << Base(normalizedSecondLayer) << std::endl;
+#endif
+      for(CountsMap::const_iterator it = b.counts.begin(); it != b.counts.end(); it++) {
+	Token cacheToken = it->first;
+	for(uint8_t i = 0; i < toPick; i++) {
+	  colors[toPick-1-i] = cacheToken%10;
+	  cacheToken/=10;
+	}
+	cacheToken = 0;
+	for(uint8_t i = 0; i < toPick; i++) {
+	  uint8_t color = colors[normalizedSecondLayer.bricks[i].second];
+	  cacheToken = 10*cacheToken + color;
+	}
+	Token computedToken = it->first;
+	counts[computedToken] += it->second;
+	m[secondLayer].push_back(Lemma4Info(cacheToken, computedToken, it->second.all));
+#ifdef TRACE
+	std::cout << "   computed " << computedToken << " -> cache " << cacheToken << " : " << it->second << std::endl; 
+#endif
+      }
+
+      for(uint8_t i = 0; i < toPick; i++)
+	baseCombination.removeLastBrick();
+    }
+    addWaveToNeighbours(-1);
+  }
+
+  void CombinationBuilder::buildUsingLemma4ForSize2Plus(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick) {
+    // Pick toPick from v:
+    BrickPicker picker(v, 0, toPick);
+    while(picker.next(baseCombination, maxCombination)) {
+      baseCombination.colorFull(); // colors can now be used reliably
+
+      // Build/cache X with counts from Q divided into tokens
+      Base secondLayer(baseCombination, 1);
+      CBase normalizedSecondLayer(secondLayer);
+      normalizedSecondLayer.normalize();
+      CountsMap X; // Contains counts built from secondLayer as base
+      Q.computeOrGet(Base(normalizedSecondLayer), X, neighbours);
+
+      // Add X to counts and cache for later:
+      for(CountsMap::const_iterator it = X.begin(); it != X.end(); it++) {
+	const Token &cacheToken = it->first;
+	const uint64_t &count = it->second.all;
+	const Token computedToken = Q.computeToken(baseCombination, normalizedSecondLayer, cacheToken, baseToken);
+	counts[computedToken].all += count; // Adding
+	m[secondLayer].push_back(Lemma4Info(cacheToken, computedToken, count)); // Caching
+      }
+
+      // Find bricks to build supersets with (in addition to second layer of baseCombination):
+      addWaveToNeighbours(1);
+      std::vector<LayerBrick> w; // Bricks to build supersets with
+      for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+	const Brick &b = it->first;
+	bool ok = true;
+	for(uint8_t i = 0; i < baseCombination.layerSizes[1]; i++) {
+	  if(neighbours[1].contains(b.isVertical, b.x, b.y)) {
+	    ok = false;
+	    break;
+	  }
+	}
+	if(ok)
+	  w.push_back(*it);
+      }
+      addWaveToNeighbours(-1);
+
+      // Subtract for supersets of second layer:
+      Combination largerCombination(baseCombination);
+      for(uint8_t Z = maxCombination.layerSizes[1]; Z > toPick; Z--) {
+	uint8_t diff = Z - toPick;
+	BrickPicker picker2(w, 0, diff); // TODO: Unecessary check against existing bricks in second layer of largerCombination!
+
+	// For all subsets of size Z taken from second layer: X overcount for them, which must be reduced:
+	while(picker2.next(largerCombination, maxCombination)) {
+	  Base largerSecondLayer(largerCombination, 1);
+	  CBase sortedLargerSecondLayer(largerSecondLayer);
+	  sortedLargerSecondLayer.sortBricks();
+	  const Base sortedLargerSecondLayerBase(sortedLargerSecondLayer);
+	  CBase normalizedLargerSecondLayer(sortedLargerSecondLayerBase);
+	  normalizedLargerSecondLayer.normalize();
+	  InfoVector &iv = m[Base(sortedLargerSecondLayer)];
+
+	  for(InfoVector::const_iterator it = iv.begin(); it != iv.end(); it++) {
+	    const Lemma4Info &info = *it;
+	    const Token &T = info.cacheToken;
+	    InfoVector &iv2 = m[secondLayer];
+	    bool anyZero = false;
+	    for(InfoVector::iterator it2 = iv2.begin(); it2 != iv2.end(); it2++) {
+	      const Token &t = it2->cacheToken; // Check if big T from X had over-counting:
+	      if(Q.didSmallerBaseContribute(t,
+					    T,
+					    normalizedSecondLayer,
+					    normalizedLargerSecondLayer,
+					    sortedLargerSecondLayer)) {
+		// Update how second layer should propagate in the future:
+		assert(it2->count >= info.count);
+		it2->count -= info.count;
+		if(it2->count == 0)
+		  anyZero = true;
+		assert(counts[it2->computedToken].all >= info.count);
+		counts[it2->computedToken].all -= info.count;
+	      }
+	    } // for InfoVector iv2
+
+	      // Optimization: Clean up iv2 in case of zeroes
+	    if(anyZero) {
+	      InfoVector iv3;
+	      for(InfoVector::iterator it2 = iv2.begin(); it2 != iv2.end(); it2++) {
+		if(it2->count != 0)
+		  iv3.push_back(*it2);
+	      }
+	      m[secondLayer] = iv3;
+	    }
+	  } // for InfoVector iv
+	  for(uint8_t i = 0; i < diff; i++)
+	    largerCombination.removeLastBrick();
+	} // for picker2.next()
+      } // for Z
+
+      // Clean up base combination:
+      for(uint8_t i = 0; i < toPick; i++)
+	baseCombination.removeLastBrick();
+    } // while(picker.next(baseCombination, maxCombination)) {
+  }
+
+  /*
+    For 1 brick to pick, many optimizations can be made:
+    - The base/sorted base is always just consisting of a single brick.
+    - The normalized base consists of FirstBrick.
+    - Cache X can be reused for all.
+   */
+  void CombinationBuilder::buildUsingLemma4ForSize1(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m) {
+    uint64_t XCount = Q.getBase1Counts().all;
+    std::map<Brick,Token> brickToToken; // Used to count "down" later
+
+    // Count up:
+    for(std::vector<LayerBrick>::const_iterator it = v.begin(); it != v.end(); it++) {
+      baseCombination.addBrick(*it);
+      baseCombination.colorFull(); // colors can now be used reliably
+
+      Base secondLayer;
+      secondLayer.bricks[0] = it->first;
+
+      // Add X to counts:
+      const Token computedToken = baseCombination.encodeConnectivity(baseToken);
+      brickToToken[it->first] = computedToken;
+      counts[computedToken].all += XCount;
+
+      // Clean up base combination:
+      baseCombination.removeLastBrick();
+    }
+
+    // Quick lookup for all ones:
+    Token allOnes[MAX_LAYER_SIZE];
+    allOnes[0] = 11;
+    for(int i = 1; i < MAX_LAYER_SIZE; i++)
+      allOnes[i] = 10*allOnes[i-1]+1;
+
+    // Count down:
+    for(Lemma4CacheMap::const_iterator it = m.begin(); it != m.end(); it++) {
+      const Base &biggerBase = it->first;
+      const InfoVector &iv = it->second;
+      // Find the coutn with all "1" and substract:
+      for(InfoVector::const_iterator it2 = iv.begin(); it2 != iv.end(); it2++) {
+	const Lemma4Info &info = *it2;
+	if(info.cacheToken == allOnes[biggerBase.layerSize-2]) {
+	  for(uint8_t i = 0; i < biggerBase.layerSize; i++) {
+	    counts[brickToToken[biggerBase.bricks[i]]].all -= info.count;
+	  }
+	  break; // Token with all ones handled
+	}
+      }
+    }
+  }
+
   SplitBuildingBuilder::SplitBuildingBuilder() : neighbours(NULL), baseCombination(NULL), maxCombination(NULL), manager(NULL), threadName("") {}
 
   SplitBuildingBuilder::SplitBuildingBuilder(const SplitBuildingBuilder &b) : neighbours(b.neighbours), baseCombination(b.baseCombination), maxCombination(b.maxCombination), manager(b.manager), threadName(b.threadName) {}
 
   SplitBuildingBuilder::SplitBuildingBuilder(BrickPlane *neighbours,
 					     Combination *baseCombination,
-					     Combination *maxCombination,
+					     Combination const * maxCombination,
 					     NormalBuildingManager *manager,
 					     int threadIndex) : neighbours(neighbours), baseCombination(baseCombination), maxCombination(maxCombination), manager(manager) {
     std::string names[26] = {
@@ -2338,13 +2921,13 @@ namespace rectilinear {
   }
 
   int NonEncodingCombinationBuilder::addFrom(NormalBuildingManager *manager, const std::string &threadName) {
-    waveSize = manager->next(baseCombination, maxCombination);
+    waveSize = manager->next(baseCombination, *maxCombination);
     if(waveSize > 0 &&
-       maxCombination.size >= 9 &&
+       maxCombination->size >= 9 &&
        baseCombination.size >= 4 &&
        baseCombination.size <= 6 &&
        threadName[0] == 'A')
-      std::cout << " " << threadName << " builds on " << baseCombination << " up to " << (int)maxCombination.size << std::endl;
+      std::cout << " " << threadName << " builds on " << baseCombination << " up to " << (int)maxCombination->size << std::endl;
     return waveSize;
   }
 
@@ -2355,9 +2938,9 @@ namespace rectilinear {
   }
 
   void SplitBuildingBuilder::build() {
-    NonEncodingCombinationBuilder b0(*baseCombination, 0, baseCombination->size, neighbours, *maxCombination); // Just used to mark initial bricks
+    NonEncodingCombinationBuilder b0(*baseCombination, 0, baseCombination->size, neighbours, maxCombination); // Just used to mark initial bricks
     b0.addWaveToNeighbours(1); // Adds blockers to neighbours for baseCombination
-    NonEncodingCombinationBuilder b(*baseCombination, baseCombination->size, 0, neighbours, *maxCombination);
+    NonEncodingCombinationBuilder b(*baseCombination, baseCombination->size, 0, neighbours, maxCombination);
 
     int picked;
     while((picked = b.addFrom(manager, threadName)) > 0) {
@@ -2379,15 +2962,17 @@ namespace rectilinear {
     Perform the first construction step and run splitting construction on step 2
     to collect and save after each step.
    */
-  Counts NonEncodingCombinationBuilder::buildWithPartials(int threadCount, Combination &maxCombination) {
+  Counts NonEncodingCombinationBuilder::buildWithPartials(int threadCount, const Combination &maxCombination) {
+    if(maxCombination.size == 1)
+      return Counts(1,1,0);
     Combination baseCombination; // Has only FirstBrick
     int token = (int)maxCombination.getTokenFromLayerSizes();
 
-    BrickPlane neighbours[MAX_BRICKS];
-    for(uint8_t i = 0; i < MAX_BRICKS; i++)
+    BrickPlane neighbours[MAX_HEIGHT];
+    for(uint8_t i = 0; i < MAX_HEIGHT; i++)
       neighbours[i].reset();
 
-    NonEncodingCombinationBuilder b1(baseCombination, 0, 1, neighbours, maxCombination);
+    NonEncodingCombinationBuilder b1(baseCombination, 0, 1, neighbours, &maxCombination);
     std::vector<LayerBrick> v;
     b1.findPotentialBricksForNextWave(v);
     b1.addWaveToNeighbours(1);
@@ -2420,22 +3005,23 @@ namespace rectilinear {
 	std::ifstream istream(partialFileName.c_str());
 
 	if(istream.good()) {
-	  std::cout << "Using " << partialFileName << std::endl;
 	  // Partial file exists: Use it!
 	  istream >> countsSplit.all >> countsSplit.symmetric180 >> countsSplit.symmetric90;
 	  istream.close();
 	}
 	else {
-	  NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, maxCombination);
+	  NonEncodingCombinationBuilder b2(baseCombination, 1, picked, neighbours, &maxCombination);
 	  countsSplit = b2.buildSplit(threadCount);
-	  // Write partials file:
-	  std::ofstream oStream(partialFileName.c_str());
-	  oStream << countsSplit.all << std::endl;
-	  oStream << countsSplit.symmetric180 << std::endl;
-	  oStream << countsSplit.symmetric90 << std::endl;
-	  oStream.flush();
-	  oStream.close();
-	  std::cout << "Wrote " << partialFileName << std::endl;
+	  // Write partials file if big enough:
+	  if(countsSplit.all > 10000000) {
+	    std::ofstream oStream(partialFileName.c_str());
+	    oStream << countsSplit.all << std::endl;
+	    oStream << countsSplit.symmetric180 << std::endl;
+	    oStream << countsSplit.symmetric90 << std::endl;
+	    oStream.flush();
+	    oStream.close();
+	    std::cout << "Wrote " << partialFileName << std::endl;
+	  }
 	}
 
 	manager.add(baseCombination, countsSplit);
@@ -2473,7 +3059,7 @@ namespace rectilinear {
     if(v.empty())
       return Counts();
 
-    const uint16_t leftToPlace = maxCombination.size - baseCombination.size;
+    const uint16_t leftToPlace = maxCombination->size - baseCombination.size;
     Counts ret = placeAllLeftToPlace(leftToPlace, v);
     if(ret.all != 0)
       return ret;
@@ -2489,7 +3075,7 @@ namespace rectilinear {
     for(int i = 0; i < workerCount; i++) {
       threadBuilders[i] = SplitBuildingBuilder(&neighbourCache[i*MAX_HEIGHT],
 					       &baseCombination,
-					       &maxCombination,
+					       maxCombination,
 					       &manager,
 					       i);
       threads[i] = new std::thread(&SplitBuildingBuilder::build, std::ref(threadBuilders[i]));
@@ -2508,11 +3094,11 @@ namespace rectilinear {
   void CombinationBuilder::report() {
     report(1);
   }
-  Counts CombinationBuilder::report(uint64_t returnToken) {
+  Counts CombinationBuilder::report(Token returnToken) {
     Counts ret;
     uint8_t layerSizes[MAX_HEIGHT];
     for(CountsMap::const_iterator it = counts.begin(); it != counts.end(); it++) {
-      uint64_t token = it->first;
+      Token token = it->first;
       if(token == 1)
 	continue; // Ignore token 1...
       Combination::getLayerSizesFromToken(token, layerSizes);
@@ -2679,6 +3265,7 @@ namespace rectilinear {
       toWrite >>= 1;
     }
   }
+
   void BitWriter::commit() {
     ostream->flush();
   }
@@ -2780,7 +3367,7 @@ namespace rectilinear {
       r.baseSymmetric180 = b180;
       r.baseSymmetric90 = b90;
       r.counts = it->second;
-      uint64_t token = it->first;
+      Token token = it->first;
       for(uint8_t i = 0; i < base-1; i++) {
 	r.colors[base-2-i] = token % 10 - 1;
 	token/=10;
@@ -2920,6 +3507,7 @@ namespace rectilinear {
 	good = false;
 	return false;
       }
+
       if(r.counts.all == 0) {
 	// Cross checks:
 	uint64_t readBase = readUInt64();
@@ -2978,24 +3566,24 @@ namespace rectilinear {
 
   BaseProducer::BaseProducer() : innerBuilder(NULL), writer(NULL), isBacked(false), reachSkips(0), mirrorSkips(0), noSkips(0) {}
 
-  BaseBuilder::~BaseBuilder() {
+  BaseProducer::~BaseProducer() {
     if(innerBuilder != NULL)
       delete innerBuilder;
   }
 
-  void BaseBuilder::setWriter(BitWriter *w) {
+  void BaseProducer::setWriter(BitWriter *w) {
     writer = w;
   }
 
-  void BaseBuilder::reset(const std::vector<int> &d) {
+  void BaseProducer::reset(const std::vector<int> &d) {
     distances = d;
     if(innerBuilder != NULL)
       delete innerBuilder;
     int size = (int)distances.size();
     if(size == 1)
-      innerBuilder = new Size1InnerBaseBuilder(distances[0]);
+      innerBuilder = new Size1InnerBaseProducer(distances[0]);
     else
-      innerBuilder = new InnerBaseBuilder(size-1, distances); // size - 1 to indicate last idx
+      innerBuilder = new InnerBaseProducer(size-1, distances); // size - 1 to indicate last idx
 
     // Clean up:
     // Clean up resultsMap:
@@ -3008,12 +3596,14 @@ namespace rectilinear {
 	rm[b] = it->second;
     }
     resultsMap = rm;
+#ifdef TRACE
     std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
+#endif
 
     bases.clear();
   }
 
-  int BaseBuilder::checkMirrorSymmetries(const Base &c, CBase &original) {
+  int BaseProducer::checkMirrorSymmetries(const Base &c, CBase &original) {
     Base mx(c);
     mx.mirrorX();
     if(resultsMap.find(mx) != resultsMap.end()) {
@@ -3034,11 +3624,42 @@ namespace rectilinear {
     return NORMAL;
   }
 
-  Size1InnerBaseBuilder::Size1InnerBaseBuilder(int16_t D) : encoded(0), d(0), D(D) {
+  SubsetProducer::SubsetProducer(const uint8_t from, const uint8_t to, const uint8_t toPick) : from(from), to(to), toPick(toPick), idx(from), inner(NULL) {
+    if(toPick == 1) {
+      idx--; // This is last builder: idx++ is done before
+    }
+    else {
+      inner = new SubsetProducer(idx+1, to, toPick-1);
+    }
+  }
+  SubsetProducer::~SubsetProducer() {
+    if(inner != NULL)
+      delete inner;
+  }
+  bool SubsetProducer::next(int *x) {
+    if(idx >= to)
+      return false;
+    if(inner != NULL && inner->next(x)) {
+      x[from] = idx;
+      return true;
+    }
+    idx++;
+    if(idx == to)
+      return false;
+    x[from] = idx;
+    if(inner != NULL) {
+      delete inner;
+      inner = new SubsetProducer(idx+1, to, toPick-1);
+      return inner->next(x);
+    }
+    return true;
+  }
+
+  Size1InnerBaseProducer::Size1InnerBaseProducer(int16_t D) : encoded(0), d(0), D(D) {
     assert(D > 0);
   }
 
-  bool Size1InnerBaseBuilder::nextBase(Base &c) {
+  bool Size1InnerBaseProducer::nextBase(Base &c) {
     assert(c.bricks[0] == FirstBrick);
     while(true) {
       if(encoded == 8 && d == D)
@@ -3059,24 +3680,24 @@ namespace rectilinear {
     }
   }
 
-  void Size1InnerBaseBuilder::resetCombination(Base &c) {
+  void Size1InnerBaseProducer::resetCombination(Base &c) {
     c.bricks[1] = b;
   }
 
-  InnerBaseBuilder::InnerBaseBuilder(int16_t idx, const std::vector<int> &distances) :
+  InnerBaseProducer::InnerBaseProducer(int16_t idx, const std::vector<int> &distances) :
     idx(idx), encoded(8), d(distances[idx]), D(distances[idx]) {
     assert(idx >= 1);
     if(idx == 1)
-      inner = new Size1InnerBaseBuilder(distances[0]);
+      inner = new Size1InnerBaseProducer(distances[0]);
     else
-      inner = new InnerBaseBuilder(idx-1, distances);
+      inner = new InnerBaseProducer(idx-1, distances);
   }
 
-  InnerBaseBuilder::~InnerBaseBuilder() {
+  InnerBaseProducer::~InnerBaseProducer() {
     delete inner;
   }
 
-  bool InnerBaseBuilder::nextBase(Base &c) {
+  bool InnerBaseProducer::nextBase(Base &c) {
     while(true) {
       if(encoded == 8 && d == D) {
 	bool ret = inner->nextBase(c);
@@ -3109,7 +3730,7 @@ namespace rectilinear {
     }
   }
 
-  void InnerBaseBuilder::resetCombination(Base &c) {
+  void InnerBaseProducer::resetCombination(Base &c) {
     inner->resetCombination(c);
     c.bricks[idx+1] = b;
   }
@@ -3120,7 +3741,7 @@ namespace rectilinear {
     backedRegistrationBase = registrationBase;
   }
 
-  bool BaseProducer::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {    
+  bool BaseProducer::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
 
     if(isBacked) {
@@ -3129,7 +3750,7 @@ namespace rectilinear {
       isBacked = false;
       return true;
     }
-    
+
     uint8_t base = (uint8_t)distances.size() + 1;
     Base c; c.layerSize = base;
     while(true) {
@@ -3169,8 +3790,8 @@ namespace rectilinear {
 
 	  Base cleanSmallerBase(smallerBase);
 	  if(resultsMap.find(cleanSmallerBase) != resultsMap.end()) { // Known smaller base: Point to same original:
-	    if(++reachSkips % 100000 == 0)
-	      std::cout << "Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
+	    if(++reachSkips % 500000 == 0)
+	      std::cout << "  Skips: REACH " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	    continue;
 	  }
 	  else { // First time the smaller base is encountered: Mark it:
@@ -3196,15 +3817,13 @@ namespace rectilinear {
       if(mirrorSymmetryType != NORMAL) {
 	bases.push_back(BaseWithID(c, BaseIdentification(mirrorSymmetryType,mirrored)));
 	resultsMap[c] = CountsMap(); // Reserve to avoid repeats in output
-	if(++mirrorSkips % 50000 == 0)
-	  std::cout << "Skips: reach " << (reachSkips/1000) << " k, MIRROR " << (mirrorSkips/1000) << " k, none " << (noSkips/1000) << " k" << std::endl;
 	continue;
       }
 
       resultsMap[c] = CountsMap(); // Reserve the entry so that check for "seen" above works.
       bases.push_back(BaseWithID(c, BaseIdentification(NORMAL,CBase(c))));
-      if(++noSkips % 10000 == 0)
-	std::cout << "Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
+      if(++noSkips % 100000 == 0)
+	std::cout << "  Skips: reach " << (reachSkips/1000) << " k, mirror " << (mirrorSkips/1000) << " k, NONE " << (noSkips/1000) << " k" << std::endl;
       buildBase = registrationBase = c;
       return true;
     }
@@ -3215,11 +3834,10 @@ namespace rectilinear {
     resultsMap[registrationBase] = counts;
   }
 
-  void BaseBuilder::report(const Combination &maxCombination) {
+  void BaseProducer::report(const Combination &maxCombination) {
     int base = 1 + (int)distances.size();
     int colors[MAX_LAYER_SIZE]; // 0-indexed colors
     std::map<int,int> colorToCBaseSource;
-    std::cout << "Writing " << bases.size() << " bases" << std::endl;
     for(std::vector<BaseWithID>::const_iterator it = bases.begin(); it != bases.end(); it++) {
       const Base c = it->first;
       int baseType = it->second.first;
@@ -3247,7 +3865,7 @@ namespace rectilinear {
 	if(any)
 	  writer->writeBit(0); // Indicate we are still in same batch
 	any = true;
-	int64_t token = it3->first;
+	Token token = it3->first;
 	for(int i = 0; i < base; i++) {
 	  colors[base-1-i] = token % 10 - 1; // 1-indexed in token, 0 in colors
 	  token /= 10;
@@ -3283,10 +3901,8 @@ namespace rectilinear {
 	  }
 	}
 
-	for(int i = 1; i < base; i++) {
-	  assert(colors[i] <= base);
+	for(int i = 1; i < base; i++)
 	  writer->writeColor(colors[i]);
-	}
 	writer->writeCounts(it3->second);
 
 	// Write back for reuse:
@@ -3299,18 +3915,18 @@ namespace rectilinear {
     writer->commit();
   }
 
-  Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
+  Lemma3Runner::Lemma3Runner() : baseProducer(NULL),
 				 maxCombination(NULL),
 				 neighbours(NULL),
 				 threadName("") {}
-  Lemma3Runner::Lemma3Runner(const Lemma3Runner &b) : baseBuilder(b.baseBuilder),
+  Lemma3Runner::Lemma3Runner(const Lemma3Runner &b) : baseProducer(b.baseProducer),
 						      maxCombination(b.maxCombination),
 						      neighbours(b.neighbours),
 						      threadName(b.threadName) {}
-  Lemma3Runner::Lemma3Runner(BaseBuilder *b,
-			     Combination *maxCombination,
+  Lemma3Runner::Lemma3Runner(BaseProducer *b,
+			     Combination const * maxCombination,
 			     int threadIndex,
-			     BrickPlane *neighbours) : baseBuilder(b),
+			     BrickPlane *neighbours) : baseProducer(b),
 						       maxCombination(maxCombination),
 						       neighbours(neighbours) {
     std::string names[26] = {
@@ -3326,7 +3942,23 @@ namespace rectilinear {
 
   void Lemma3Runner::run() {
     Base buildBase, registrationBase;
-    while(baseBuilder->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
+
+    Lemma4CacheManager *Q = NULL;
+    if(maxCombination->height >= 3) {
+      // For Lemma 4:
+      Combination maxCombinationForLemma4Cache;
+      maxCombinationForLemma4Cache.height = maxCombination->height-1;
+      maxCombinationForLemma4Cache.size = 0;
+      for(uint8_t i = 1; i < maxCombination->height; i++) {
+	maxCombinationForLemma4Cache.layerSizes[i-1] = maxCombination->layerSizes[i];
+	maxCombinationForLemma4Cache.size += maxCombination->layerSizes[i];
+	for(uint8_t j = 0; j < maxCombination->layerSizes[i]; j++)
+	  maxCombinationForLemma4Cache.bricks[i-1][j] = maxCombination->bricks[i][j];
+      }
+      Q = new Lemma4CacheManager(maxCombinationForLemma4Cache);
+    }
+
+    while(baseProducer->nextBaseToBuildOn(buildBase, registrationBase, *maxCombination)) {
       if(maxCombination->layerSizes[0] < 4 &&
 	 maxCombination->size > 6 &&
 	 maxCombination->height > 2 &&
@@ -3334,19 +3966,25 @@ namespace rectilinear {
 	 threadName[0] == 'A')
 	std::cout << threadName << " builds on " << buildBase << std::endl;
       CombinationBuilder builder(buildBase, neighbours, *maxCombination);
-      builder.build();
-      baseBuilder->registerCounts(registrationBase, builder.counts);
+      if(maxCombination->height >= 3) {
+	builder.buildUsingLemma4(*Q);
+	builder.buildSymmetricOnly();
+#ifdef TRACE
+	std::cout << "Counts after building on " << buildBase << ":" << std::endl;
+	for(CountsMap::const_iterator it = builder.counts.begin(); it != builder.counts.end(); it++)
+	  std::cout << " " << it->first << ": " << it->second << std::endl;
+#endif
+      }
+      else {
+	builder.build();
+      }
+      baseProducer->registerCounts(registrationBase, builder.counts);
     }
-
     if(Q != NULL)
       delete Q;
   }
 
-  Lemma3::Lemma3(int base, int threadCount, const Combination &maxCombination):
-    base(base),
-    threadCount(threadCount),
-    token(maxCombination.getTokenFromLayerSizes()),
-    maxCombination(maxCombination) {
+  Lemma3::Lemma3(int base, int threadCount, const Combination &maxCombination): base(base), threadCount(threadCount), token(maxCombination.getTokenFromLayerSizes()), maxCombination(maxCombination) {
     assert(base >= 2);
     assert(base < maxCombination.size);
     assert(maxCombination.size <= MAX_BRICKS);
@@ -3357,7 +3995,7 @@ namespace rectilinear {
   }
 
   void Lemma3::precompute(int maxDist, bool overwriteFiles) {
-    BaseBuilder baseBuilder;
+    BaseProducer baseProducer;
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
@@ -3397,40 +4035,40 @@ namespace rectilinear {
       }
 
       BitWriter writer(fileName, maxCombination);
-      baseBuilder.setWriter(&writer);
+      baseProducer.setWriter(&writer);
       std::vector<int> distances;
 
-      precompute(&baseBuilder, distances, d);
+      precompute(&baseProducer, distances, d);
 
       std::chrono::duration<double, std::ratio<1> > duration(std::chrono::steady_clock::now() - timeStart);
       std::cout << "Precomputation done for max distance " << d << " in " << duration.count() << " seconds" << std::endl;
     }
   }
 
-  void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
-    baseBuilder->reset(distances);
+  void Lemma3::precompute(BaseProducer *baseProducer, std::vector<int> &distances) {
+    baseProducer->reset(distances);
 
     // Reuse known results:
     while(!knownResults.empty()) {
       Base buildBase, registrationBase;
 
       if(baseProducer->nextBaseToBuildOn(buildBase, registrationBase, maxCombination)) {
-	if(knownResults.find(buildBase) == knownResults.end()) {
-	  //std::cout << "ERROR: Unknown base: " << buildBase << std::endl;
-	  baseProducer->back(buildBase, registrationBase);
-	  knownResults.clear();
-	  break;
-	}
-	CountsMap &cm = knownResults[buildBase];
-	baseProducer->registerCounts(registrationBase, cm);
+       if(knownResults.find(buildBase) == knownResults.end()) {
+         //std::cout << "ERROR: Unknown base: " << buildBase << std::endl;
+         baseProducer->back(buildBase, registrationBase);
+         knownResults.clear();
+         break;
+       }
+       CountsMap &cm = knownResults[buildBase];
+       baseProducer->registerCounts(registrationBase, cm);
       }
       else {
-	baseProducer->report(maxCombination);
-	return; // Done for these distances
+       baseProducer->report(maxCombination);
+       return; // Done for these distances
       }
     }
 
-    // Known results exhauster: Compute:
+    // Known results exhausted: Compute:
     int workerCount = MAX(1, threadCount-1);
 
     BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
@@ -3441,7 +4079,7 @@ namespace rectilinear {
     std::thread **threads = new std::thread*[workerCount];
 
     for(int i = 0; i < workerCount; i++) {
-      builders[i] = Lemma3Runner(baseBuilder, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
+      builders[i] = Lemma3Runner(baseProducer, &maxCombination, i, &neighbourCache[i*MAX_HEIGHT]);
       threads[i] = new std::thread(&Lemma3Runner::run, std::ref(builders[i]));
     }
 
@@ -3453,10 +4091,10 @@ namespace rectilinear {
     delete[] builders;
     delete[] neighbourCache;
 
-    baseBuilder->report(maxCombination);
+    baseProducer->report(maxCombination);
   }
 
-  void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist) {
+  void Lemma3::precompute(BaseProducer *baseProducer, std::vector<int> &distances, int maxDist) {
     int S = (int)distances.size();
 
     if(S == base-2) {
@@ -3468,7 +4106,7 @@ namespace rectilinear {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
       distances.push_back(maxDist); // Last dist is max dist
-      precompute(baseBuilder, distances);
+      precompute(baseProducer, distances);
       distances.pop_back();
 
       std::chrono::duration<double, std::ratio<1> > duration(std::chrono::steady_clock::now() - timeStart);
@@ -3480,7 +4118,7 @@ namespace rectilinear {
     int prevD = distances.empty() ? 2 : distances[S-1];
     for(int d = prevD; d <= maxDist; d++) {
       distances.push_back(d);
-      precompute(baseBuilder, distances, maxDist);
+      precompute(baseProducer, distances, maxDist);
       distances.pop_back();
     }
   }

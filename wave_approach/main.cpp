@@ -91,7 +91,10 @@ int runSumPrecomputations(int leftToken, int base, int rightToken, int maxDist) 
 
     std::vector<Report> l, r;
     while(reader1.next(l)) {
-      bool ok = reader2.next(r); assert(ok);
+#ifdef DEBUG
+      bool ok =
+#endif
+      reader2.next(r); assert(ok);
       bool bs180 = false, bs90 = false, first = true; // All value initialization not necessary, but makes compiling with -Wall happy
 
       Base baseCombination;

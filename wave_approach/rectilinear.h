@@ -16,9 +16,9 @@
 #define MAX_HEIGHT 7
 #define MAX_LAYER_SIZE 9
 #else
-#define MAX_BRICKS 9
-#define MAX_HEIGHT 3
-#define MAX_LAYER_SIZE 4
+#define MAX_BRICKS 11
+#define MAX_HEIGHT 5
+#define MAX_LAYER_SIZE 6
 #endif
 
 // These are used in bitmap lookups for checking positions of bricks:
@@ -112,9 +112,10 @@ namespace rectilinear {
 
   const Brick FirstBrick = Brick(); // At 0,0, horizontal
 
+  typedef uint64_t Token;
   typedef std::pair<Brick,uint8_t> LayerBrick; // A brick placed at a given layer of a combination
   typedef std::pair<uint8_t,uint8_t> BrickIdentifier; // Identify a brick in a combination (layer, idx)
-  typedef std::map<int64_t,Counts> CountsMap; // token -> counts
+  typedef std::map<Token,Counts> CountsMap; // token -> counts
 
   /**
    * Cache for bricks placed in a plane or layer.
@@ -177,19 +178,19 @@ namespace rectilinear {
     void normalize();
     void addBrick(const Brick &b, const uint8_t layer);
     void addBrick(const LayerBrick &lb);
-    int64_t encodeConnectivity(int64_t token);
+    Token encodeConnectivity(Token baseToken);
     void removeLastBrick();
-    int64_t getTokenFromLayerSizes() const;
+    Token getTokenFromLayerSizes() const;
     bool isConnected();
     bool canBecomeSymmetric(const Combination &maxCombination) const;
     void colorFull();
-    static int64_t reverseToken(int64_t token);
-    static uint8_t heightOfToken(int64_t token);
-    static uint8_t sizeOfToken(int64_t token);
-    static void getLayerSizesFromToken(int64_t token, uint8_t *layerSizes);
+    static Token reverseToken(Token token);
+    static uint8_t heightOfToken(Token token);
+    static uint8_t sizeOfToken(Token token);
+    static void getLayerSizesFromToken(Token token, uint8_t *layerSizes);
     static int countBricksToBridge(const Combination &maxCombination);
     static void setupKnownCounts(CountsMap &m);
-    static bool checkCounts(uint64_t token, const Counts &c);
+    static bool checkCounts(Token token, const Counts &c);
   };
 
   struct CBase; // To be defined later. Needed here to allow for C++ compilation.
@@ -208,6 +209,7 @@ namespace rectilinear {
     Base();
     Base(const Base &b);
     Base(const CBase &b);
+    Base(const Combination &c, uint8_t layer); // Construct the base from a given layer
 
     bool operator <(const Base& b) const;
     bool operator ==(const Base& b) const;
@@ -284,6 +286,16 @@ namespace rectilinear {
   typedef std::map<Base,CountsMap> BaseResultsMap; // CountsMap for each base. Used for caching results during computation of precomputations.
   typedef std::map<Combination,Counts> CombinationCountsMap;
 
+  struct Lemma4Info {
+    Token cacheToken, computedToken;
+    uint64_t count;
+    Lemma4Info();
+    Lemma4Info(const Lemma4Info &x);
+    Lemma4Info(Token cacheToken, Token computedToken, uint64_t count);
+  };
+  typedef std::vector<Lemma4Info> InfoVector;
+  typedef std::map<Base,InfoVector> Lemma4CacheMap;
+
   /**
    * Helper class for serving the combinations that partials are starting on.
    * Does not serve rotational, nor mirror duplicates.
@@ -324,12 +336,38 @@ namespace rectilinear {
     Counts getCounts() const;
   };
 
+  class Lemma4Cache {
+    BaseResultsMap cache; // base -> counts
+  public:
+    void set(const Base &b, const CountsMap &m);
+    bool get(const Base &b, CountsMap &m);
+  };
+
+  class Lemma4CacheManager {
+    Lemma4Cache caches[MAX_LAYER_SIZE]; // base size -> cache
+    Combination maxCombination; // Used to construct
+    Counts base1Counts;
+  public:
+    Lemma4CacheManager(const Combination &maxCombination);
+    Counts getBase1Counts();
+    void computeOrGet(const Base &b, CountsMap &m, BrickPlane *neighbours);
+    Token computeToken(const Combination &baseCombination,
+		       const CBase &secondLayer,
+		       Token cacheToken,
+		       const Token baseToken) const;
+    bool didSmallerBaseContribute(Token t,
+				  Token T,
+				  const CBase &base_t,
+				  const CBase &base_T,
+				  const CBase &t_to_T) const;
+  };
+
   class CombinationBuilder {
     Combination baseCombination;
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
-    Combination maxCombination;
-    bool isFirstBuilder, encodingLocked;
+    const Combination &maxCombination;
+    bool encodingLocked;
   public:
     CountsMap counts;
 
@@ -337,20 +375,21 @@ namespace rectilinear {
 		       const uint8_t waveStart,
 		       const uint8_t waveSize,
 		       BrickPlane *neighbours,
-		       Combination &maxCombination,
+		       const Combination &maxCombination,
 		       bool encodingLocked);
 
     CombinationBuilder(const Base &c,
 		       BrickPlane *neighbours,
-		       Combination &maxCombination);
+		       const Combination &maxCombination);
 
-    CombinationBuilder(const CombinationBuilder& b);
-
-    CombinationBuilder();
+    CombinationBuilder(const CombinationBuilder &b);
 
     void build();
+    void buildWithoutSymmetriesSeparately();
+    void buildSymmetricOnly();
+    void buildUsingLemma4(Lemma4CacheManager &Q);
     void report();
-    Counts report(uint64_t returnToken); // Returns counts for token if present in results
+    Counts report(Token returnToken); // Returns counts for token if present in results
     void addWaveToNeighbours(int8_t add);
   private:
     void findPotentialBricksForNextWave(std::vector<LayerBrick> &v);
@@ -359,27 +398,33 @@ namespace rectilinear {
     void placeAllInBuckets(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t bucketI, uint32_t bucketIndicesI, uint32_t numBuckets, uint32_t leftToPlace);
     void setUpBucketsForSimon(std::vector<std::vector<LayerBrick> > &buckets, const std::vector<LayerBrick> &v);
     bool placeAllLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
+    bool placeAllSymmetricLeftToPlace(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v); // Return true if all done here
+    bool placeAllLeftToPlaceWithoutSymmetries(const uint8_t &leftToPlace, const std::vector<LayerBrick> &v);
     void addCountsFrom(const CountsMap &counts);
     uint64_t countInvalid(std::vector<std::vector<LayerBrick> > &buckets, uint32_t *bucketIndices, uint32_t numBuckets, uint32_t *bucketSizes, uint32_t bucketI, uint32_t bucketII, uint32_t pickedFromCurrentBucket, uint32_t pickedTotal);
+  private:
+    void buildUsingLemma4ForSizeMax(const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick);
+    void buildUsingLemma4ForSize2Plus(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m, const uint8_t toPick);
+    void buildUsingLemma4ForSize1(Lemma4CacheManager &Q, const std::vector<LayerBrick> &v, const Token baseToken, Lemma4CacheMap &m);
   };
 
   class NonEncodingCombinationBuilder {
-  public: // Public for std::cout status
+  public:
     Combination baseCombination;
   private:
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
-    Combination maxCombination;
+    Combination const * maxCombination;
   public:
     NonEncodingCombinationBuilder(const Combination &c,
 				  const uint8_t waveStart,
 				  const uint8_t waveSize,
 				  BrickPlane *neighbours,
-				  Combination &maxCombination);
+				  Combination const * maxCombination);
     NonEncodingCombinationBuilder(const NonEncodingCombinationBuilder& b);
     NonEncodingCombinationBuilder();
 
-    static Counts buildWithPartials(int threadCount, Combination &maxCombination);
+    static Counts buildWithPartials(int threadCount, const Combination &maxCombination);
     Counts build();
     int addFrom(NormalBuildingManager *manager, const std::string &threadName);
     void countAndRemoveFrom(NormalBuildingManager *manager, const Counts &counts, int toRemove);
@@ -394,7 +439,8 @@ namespace rectilinear {
 
   class SplitBuildingBuilder {
     BrickPlane *neighbours;
-    Combination *baseCombination, *maxCombination;
+    Combination *baseCombination;
+    Combination const * maxCombination;
     NormalBuildingManager *manager;
     std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() }, timePrev = timeStart;
     std::string threadName;
@@ -403,7 +449,7 @@ namespace rectilinear {
     SplitBuildingBuilder(const SplitBuildingBuilder &b);
     SplitBuildingBuilder(BrickPlane *neighbours,
 			 Combination *baseCombination,
-			 Combination *maxCombination,
+			 Combination const * maxCombination,
 			 NormalBuildingManager *manager,
 			 int threadIndex);
     void build();
@@ -451,8 +497,11 @@ namespace rectilinear {
     void writeUInt64(uint64_t toWrite); // Used for totals
   };
 
+  /*
+    A "Report" represents a batch of data from a base in a precomputation.
+   */
   struct Report {
-    uint8_t base, colors[6]; // Lemma 3 is only used up to base 7
+    uint8_t base, colors[4]; // Lemma 3 is only used up to base 4
     bool baseSymmetric180, baseSymmetric90;
     Counts counts;
     Base c;
@@ -488,32 +537,52 @@ namespace rectilinear {
     bool nextCountsMap(BaseResultsMap &m, const Token &baseToken);
   };
 
+  /*
+    Common interface for producing bases
+   */
   class IBaseProducer {
   public:
     virtual bool nextBase(Base &c) = 0;
     virtual void resetCombination(Base &c) = 0;
-    virtual ~IBaseProducer() = default;
+    virtual ~IBaseProducer() = default; // TODO: Add a note on why this is necessary (destructors do not work without it)
   };
 
-  class Size1InnerBaseBuilder final : public IBaseProducer {
-    int16_t encoded, d;
+  /*
+    Chooser a single brick
+   */
+  class SubsetProducer {
+    const uint8_t from, to, toPick;
+    int8_t idx;
+    SubsetProducer *inner;
+  public:
+    SubsetProducer(const uint8_t from, const uint8_t to, const uint8_t toPick);
+    ~SubsetProducer();
+    bool next(int *x);
+  };
+
+  /*
+    Produce any single brick up to distance D
+   */
+  class Size1InnerBaseProducer final : public IBaseProducer {
+    int16_t encoded; // Encoding with 'isVertical' and sign of x and y
+    int16_t d; // 0 <= d <= D increasing as bricks are produced
     const int16_t D;
     Brick b;
   public:
-    Size1InnerBaseBuilder(int16_t D);
+    Size1InnerBaseProducer(int16_t D);
     bool nextBase(Base &c);
     void resetCombination(Base &c);
   };
 
-  class InnerBaseBuilder final : public IBaseProducer {
+  class InnerBaseProducer final : public IBaseProducer {
     const int16_t idx;
     int16_t encoded, d;
     const int16_t D;
     IBaseProducer * inner;
     Brick b;
   public:
-    InnerBaseBuilder(int16_t size, const std::vector<int> &distances);
-    ~InnerBaseBuilder();
+    InnerBaseProducer(int16_t size, const std::vector<int> &distances);
+    ~InnerBaseProducer();
     bool nextBase(Base &c);
     void resetCombination(Base &c);
   };
@@ -521,7 +590,7 @@ namespace rectilinear {
   typedef std::pair<int,CBase> BaseIdentification;
   typedef std::pair<Base,BaseIdentification> BaseWithID; // Used to identify how base was computed
 
-  class BaseBuilder {
+  class BaseProducer {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter *writer;
@@ -534,8 +603,8 @@ namespace rectilinear {
     int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
   public:
-    BaseBuilder();
-    ~BaseBuilder();
+    BaseProducer();
+    ~BaseProducer();
     bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
     void back(const Base &buildBase, const Base &registrationBase);
     void registerCounts(const Base &registrationBase, const CountsMap &counts);
@@ -545,15 +614,15 @@ namespace rectilinear {
   };
 
   class Lemma3Runner {
-    BaseBuilder *baseBuilder;
-    Combination *maxCombination;
+    BaseProducer *baseProducer;
+    Combination const * maxCombination; // Notice: Not a reference in order to get local reference in thread
     BrickPlane *neighbours;
     std::string threadName;
   public:
     Lemma3Runner();
     Lemma3Runner(const Lemma3Runner &b);
-    Lemma3Runner(BaseBuilder *b,
-		 Combination *maxCombination,
+    Lemma3Runner(BaseProducer *b,
+		 Combination const * maxCombination,
 		 int threadIndex,
 		 BrickPlane *neighbours);
     void run();
@@ -565,12 +634,12 @@ namespace rectilinear {
     const Combination &maxCombination;
     BaseResultsMap knownResults;
   public:
-    Lemma3(int base, int threads, Combination &maxCombination);
+    Lemma3(int base, int threads, const Combination &maxCombination);
     void precompute(int maxDist);
     void precompute(int maxDist, bool overwriteFiles);
   private:
-    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances);
-    void precompute(BaseBuilder *baseBuilder, std::vector<int> &distances, int maxDist);
+    void precompute(BaseProducer *baseProducer, std::vector<int> &distances);
+    void precompute(BaseProducer *baseProducer, std::vector<int> &distances, int maxDist);
   };
 }
 
