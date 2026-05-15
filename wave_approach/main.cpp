@@ -259,8 +259,14 @@ int runPrecomputations(int argc, char** argv) {
   int threads = argc > 4 ? get(argv[4]) : std::thread::hardware_concurrency();
 
   std::cout << "Precomputing refinement " << token << " up to distance of " << maxDist << " using " << threads << " threads" << std::endl;
+
   Lemma3 lemma3(base, threads, maxCombination);
+#ifdef DEBUG
+  std::cout << "Running debug mode: Files are overwritten!" << std::endl;
+  lemma3.precompute(maxDist, true);
+#else
   lemma3.precompute(maxDist);
+#endif
 
   std::chrono::duration<double, std::ratio<1> > duration = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<1> > >(std::chrono::steady_clock::now() - timeStart);
   std::cout << "Total precomputation time: " << duration.count() << " seconds" << std::endl;
@@ -294,10 +300,8 @@ int runPrecomputationComparison(int argc, char** argv) {
       std::cout << " Other read" << std::endl;
 #endif
       cnt++;
-      if(!ok) {
-	std::cerr << "Base pair mismatch for d=" << d << std::endl;
-	return 4;
-      }
+      if(!ok)
+	std::cerr << "Data missing from second stream!" << std::endl;
       if(r1.size() != r2.size()) {
 	std::cerr << "Report size does not match!" << std::endl;
 	std::cerr << "Sizes: " << r1.size() << " / " << r2.size() << std::endl;

@@ -16,9 +16,9 @@
 #define MAX_HEIGHT 7
 #define MAX_LAYER_SIZE 9
 #else
-#define MAX_BRICKS 11
-#define MAX_HEIGHT 5
-#define MAX_LAYER_SIZE 6
+#define MAX_BRICKS 9
+#define MAX_HEIGHT 3
+#define MAX_LAYER_SIZE 4
 #endif
 
 // These are used in bitmap lookups for checking positions of bricks:
@@ -364,7 +364,9 @@ namespace rectilinear {
   };
 
   class NonEncodingCombinationBuilder {
+  public: // Public for std::cout status
     Combination baseCombination;
+  private:
     uint8_t waveStart, waveSize;
     BrickPlane *neighbours;
     Combination maxCombination;
@@ -442,6 +444,7 @@ namespace rectilinear {
     void writeUInt8(uint8_t toWrite); // Used for symmetric90 - only when base = 4
     void writeCounts(const Counts &c);
     static bool areLargeCountsRequired(const Combination &maxCombination);
+    void commit();
   private:
     void flushBits();
     void writeUInt32(uint32_t toWrite); // Used for total
@@ -467,7 +470,7 @@ namespace rectilinear {
     std::ifstream *istream;
     uint8_t bits, bitIdx, base;
     uint64_t sumTotal, sumSymmetric180, sumSymmetric90, lines;
-    bool largeCountsRequired;
+    bool largeCountsRequired, good;
 
     bool readBit();
     uint8_t readColor();
@@ -481,6 +484,8 @@ namespace rectilinear {
     BitReader(const Combination &maxCombination, int D, std::string directorySuffix);
     ~BitReader();
     bool next(std::vector<Report> &v);
+    bool isGood() const;
+    bool nextCountsMap(BaseResultsMap &m, const Token &baseToken);
   };
 
   class IBaseProducer {
@@ -520,6 +525,8 @@ namespace rectilinear {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter *writer;
+    bool isBacked;
+    Base backedBuildBase, backedRegistrationBase;
   public:
     BaseResultsMap resultsMap; // Base -> Result
     std::vector<BaseWithID> bases;
@@ -530,7 +537,8 @@ namespace rectilinear {
     BaseBuilder();
     ~BaseBuilder();
     bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
-    void registerCounts(Base &registrationBase, CountsMap counts);
+    void back(const Base &buildBase, const Base &registrationBase);
+    void registerCounts(const Base &registrationBase, const CountsMap &counts);
     void report(const Combination &maxCombination);
     void setWriter(BitWriter *writer);
     void reset(const std::vector<int> &distances);
@@ -554,7 +562,8 @@ namespace rectilinear {
   class Lemma3 {
     int base, threadCount, token;
     CountsMap counts;
-    Combination maxCombination;
+    const Combination &maxCombination;
+    BaseResultsMap knownResults;
   public:
     Lemma3(int base, int threads, Combination &maxCombination);
     void precompute(int maxDist);

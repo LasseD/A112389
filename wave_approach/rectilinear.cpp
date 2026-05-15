@@ -2365,7 +2365,7 @@ namespace rectilinear {
       std::chrono::duration<double, std::ratio<60> > duration(std::chrono::steady_clock::now() - timePrev);
       if(duration > std::chrono::duration<double, std::ratio<60> >(1)) {
 	std::chrono::duration<double, std::ratio<60> > fullDuration(std::chrono::steady_clock::now() - timeStart);
-	std::cout << "Time elapsed: " << fullDuration.count() << " minutes" << std::endl;
+	std::cout << "Time elapsed: " << fullDuration.count() << " minutes for " << b.baseCombination << std::endl;
 	timePrev = std::chrono::steady_clock::now();
       }
       Counts c = b.build();
@@ -2679,6 +2679,9 @@ namespace rectilinear {
       toWrite >>= 1;
     }
   }
+  void BitWriter::commit() {
+    ostream->flush();
+  }
 
   Report::Report() : base(0), baseSymmetric180(false), baseSymmetric90(false) {}
 
@@ -2848,7 +2851,8 @@ namespace rectilinear {
     sumSymmetric180(0),
     sumSymmetric90(0),
     lines(0),
-    largeCountsRequired(BitWriter::areLargeCountsRequired(maxCombination)) {
+    largeCountsRequired(BitWriter::areLargeCountsRequired(maxCombination)),
+    good(true) {
     std::stringstream ss;
     ss << "base_" << (int)base << "_size_" << (int)maxCombination.size;
     ss << "_refinement_" << (int)maxCombination.getTokenFromLayerSizes();
@@ -2859,8 +2863,8 @@ namespace rectilinear {
     bool firstBit = readBit();
     std::cout << "  Reader set up for " << fileName << std::endl;
     if(!firstBit) {
-      std::cerr << "Invalid stream!" << std::endl;
-      int *kil = NULL; kil[2] = 3;
+      good = false;
+      std::cerr << "   Empty stream!" << std::endl;
     }
   }
   BitReader::~BitReader() {
@@ -2912,6 +2916,10 @@ namespace rectilinear {
       sumSymmetric180 += r.counts.symmetric180;
       sumSymmetric90 += r.counts.symmetric90;
 
+      if(!istream->good()) {
+	good = false;
+	return false;
+      }
       if(r.counts.all == 0) {
 	// Cross checks:
 	uint64_t readBase = readUInt64();
@@ -2931,6 +2939,7 @@ namespace rectilinear {
 	  std::cerr << " Total 90 degree symmetries: " << readSumSymmetric90 << " vs " << sumSymmetric90 << std::endl;
 	  std::cerr << " Lines: " << readLines << " vs " << lines << std::endl;
 	  assert(false);
+	  good = false;
 	}
 	return false;
       }
@@ -2940,7 +2949,34 @@ namespace rectilinear {
     }
   }
 
-  BaseBuilder::BaseBuilder() : innerBuilder(NULL), writer(NULL), reachSkips(0), mirrorSkips(0), noSkips(0) {}
+  bool BitReader::isGood() const {
+    return good;
+  }
+
+  bool BitReader::nextCountsMap(BaseResultsMap &m, const Token &baseToken) {
+    std::vector<Report> v;
+    if(!next(v)) {
+      return false;
+    }
+    // Transform reports int counts map:
+    CountsMap cm;
+    Base b;
+    // TODO: Use a map based on base
+    for(std::vector<Report>::const_iterator it = v.begin(); it != v.end(); it++) {
+      Token token = baseToken;
+      token = 10 * token + 1; // First color is always 1
+      for(uint8_t i = 0; i < it->base-1; i++) {
+	assert(it->colors[i] <= it->base);
+	token = 10 * token + (it->colors[i]+1);
+      }
+      cm[token] = it->counts;
+      b = it->c;
+    }
+    m[b] = cm;
+    return true;
+  }
+
+  BaseProducer::BaseProducer() : innerBuilder(NULL), writer(NULL), isBacked(false), reachSkips(0), mirrorSkips(0), noSkips(0) {}
 
   BaseBuilder::~BaseBuilder() {
     if(innerBuilder != NULL)
@@ -3078,8 +3114,22 @@ namespace rectilinear {
     c.bricks[idx+1] = b;
   }
 
-  bool BaseBuilder::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
+  void BaseProducer::back(const Base &buildBase, const Base &registrationBase) {
+    isBacked = true;
+    backedBuildBase = buildBase;
+    backedRegistrationBase = registrationBase;
+  }
+
+  bool BaseProducer::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {    
     std::lock_guard<std::mutex> guard(mutex);
+
+    if(isBacked) {
+      buildBase = backedBuildBase;
+      registrationBase = backedRegistrationBase;
+      isBacked = false;
+      return true;
+    }
+    
     uint8_t base = (uint8_t)distances.size() + 1;
     Base c; c.layerSize = base;
     while(true) {
@@ -3160,7 +3210,7 @@ namespace rectilinear {
     }
   }
 
-  void BaseBuilder::registerCounts(Base &registrationBase, CountsMap counts) {
+  void BaseProducer::registerCounts(const Base &registrationBase, const CountsMap &counts) {
     std::lock_guard<std::mutex> guard(mutex);
     resultsMap[registrationBase] = counts;
   }
@@ -3169,6 +3219,7 @@ namespace rectilinear {
     int base = 1 + (int)distances.size();
     int colors[MAX_LAYER_SIZE]; // 0-indexed colors
     std::map<int,int> colorToCBaseSource;
+    std::cout << "Writing " << bases.size() << " bases" << std::endl;
     for(std::vector<BaseWithID>::const_iterator it = bases.begin(); it != bases.end(); it++) {
       const Base c = it->first;
       int baseType = it->second.first;
@@ -3232,8 +3283,10 @@ namespace rectilinear {
 	  }
 	}
 
-	for(int i = 1; i < base; i++)
+	for(int i = 1; i < base; i++) {
+	  assert(colors[i] <= base);
 	  writer->writeColor(colors[i]);
+	}
 	writer->writeCounts(it3->second);
 
 	// Write back for reuse:
@@ -3243,6 +3296,7 @@ namespace rectilinear {
       } // for it3
       resultsMap[c] = cmForOriginalBase;
     } // for bases
+    writer->commit();
   }
 
   Lemma3Runner::Lemma3Runner() : baseBuilder(NULL),
@@ -3283,9 +3337,16 @@ namespace rectilinear {
       builder.build();
       baseBuilder->registerCounts(registrationBase, builder.counts);
     }
+
+    if(Q != NULL)
+      delete Q;
   }
 
-  Lemma3::Lemma3(int base, int threadCount, Combination &maxCombination): base(base), threadCount(threadCount), token(maxCombination.getTokenFromLayerSizes()), maxCombination(maxCombination) {
+  Lemma3::Lemma3(int base, int threadCount, const Combination &maxCombination):
+    base(base),
+    threadCount(threadCount),
+    token(maxCombination.getTokenFromLayerSizes()),
+    maxCombination(maxCombination) {
     assert(base >= 2);
     assert(base < maxCombination.size);
     assert(maxCombination.size <= MAX_BRICKS);
@@ -3307,10 +3368,31 @@ namespace rectilinear {
       std::string fileName = ss.str();
 
       if(!overwriteFiles) {
-	std::ifstream istream(fileName.c_str());
-	if(istream.good()) {
-	  std::cout << "Precomputation for d=" << d << " already exists. Skipping!" << std::endl;
-	  continue;
+	bool checkFile = false;
+	{
+	  std::ifstream istream(fileName.c_str());
+	  if(istream.good()) {
+	    std::cout << "Precomputation file for d=" << d << " exists. Checking..." << std::endl;
+	    checkFile = true;
+	  }
+	}
+
+	// Check last existing file for completion:
+	if(checkFile) {
+	  // Read file and perform cross check:
+	  BitReader reader(maxCombination, d, "");
+	  knownResults.clear();
+	  Token baseToken = maxCombination.getTokenFromLayerSizes();
+	  while(reader.isGood() && reader.nextCountsMap(knownResults, baseToken))
+	    ;
+	  if(!reader.isGood()) {
+	    std::cout << "Incomplete file. Rewriting file. Recovered results: " << knownResults.size() << std::endl;
+	  }
+	  else {
+	    knownResults.clear(); // All OK
+	    std::cout << "File OK." << std::endl;
+	    continue;
+	  }
 	}
       }
 
@@ -3328,6 +3410,27 @@ namespace rectilinear {
   void Lemma3::precompute(BaseBuilder *baseBuilder, std::vector<int> &distances) {
     baseBuilder->reset(distances);
 
+    // Reuse known results:
+    while(!knownResults.empty()) {
+      Base buildBase, registrationBase;
+
+      if(baseProducer->nextBaseToBuildOn(buildBase, registrationBase, maxCombination)) {
+	if(knownResults.find(buildBase) == knownResults.end()) {
+	  //std::cout << "ERROR: Unknown base: " << buildBase << std::endl;
+	  baseProducer->back(buildBase, registrationBase);
+	  knownResults.clear();
+	  break;
+	}
+	CountsMap &cm = knownResults[buildBase];
+	baseProducer->registerCounts(registrationBase, cm);
+      }
+      else {
+	baseProducer->report(maxCombination);
+	return; // Done for these distances
+      }
+    }
+
+    // Known results exhauster: Compute:
     int workerCount = MAX(1, threadCount-1);
 
     BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
