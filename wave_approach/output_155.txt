@@ -1,0 +1,8 @@
+<155> 1338785905226577 (718180)
+Computation time: 211578 seconds
+
+Code line for sums-for-token.py:
+    '155', 1338785905226577, 718180,
+
+Code line for Combination::setupKnownCounts():
+    m[155] = Counts(1338785905226577, 718180, 0);

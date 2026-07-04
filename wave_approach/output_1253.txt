@@ -1,0 +1,8 @@
+<1253> 13876950263616988 (1367292)
+Computation time: 5.53282e+06 seconds
+
+Code line for sums-for-token.py:
+    '1253', 13876950263616988, 1367292,
+
+Code line for Combination::setupKnownCounts():
+    m[1253] = Counts(13876950263616988, 1367292, 0);
