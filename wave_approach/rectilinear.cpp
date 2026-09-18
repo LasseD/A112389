@@ -3448,10 +3448,10 @@ namespace rectilinear {
     std::string fileName = ss.str();
     istream = new std::ifstream(fileName.c_str(), std::ios::binary);
     bool firstBit = readBit();
-    std::cout << "  Reader set up for " << fileName << std::endl;
+    std::cout << " Reader set up for " << fileName << std::endl;
     if(!firstBit) {
       good = false;
-      std::cerr << "   Empty stream!" << std::endl;
+      std::cerr << "  Empty stream!" << std::endl;
     }
   }
   BitReader::~BitReader() {
@@ -3548,23 +3548,23 @@ namespace rectilinear {
     }
     // Transform reports int counts map:
     CountsMap cm;
-    Base b;
+    Base b = v.begin()->c;
     // TODO: Use a map based on base
     for(std::vector<Report>::const_iterator it = v.begin(); it != v.end(); it++) {
       Token token = baseToken;
       token = 10 * token + 1; // First color is always 1
       for(uint8_t i = 0; i < it->base-1; i++) {
-	assert(it->colors[i] <= it->base);
+	assert(it->colors[i] < it->base); // colors indexed from 0
 	token = 10 * token + (it->colors[i]+1);
       }
       cm[token] = it->counts;
-      b = it->c;
+      assert(b == it->c);
     }
     m[b] = cm;
     return true;
   }
 
-  BaseProducer::BaseProducer() : innerBuilder(NULL), writer(NULL), isBacked(false), reachSkips(0), mirrorSkips(0), noSkips(0) {}
+  BaseProducer::BaseProducer(const BaseResultsMap &knownResults) : innerBuilder(NULL), writer(NULL), fileResultsMap(knownResults), reachSkips(0), mirrorSkips(0), noSkips(0) {}
 
   BaseProducer::~BaseProducer() {
     if(innerBuilder != NULL)
@@ -3585,7 +3585,8 @@ namespace rectilinear {
     else
       innerBuilder = new InnerBaseProducer(size-1, distances); // size - 1 to indicate last idx
 
-    // Clean up:
+    bases.clear();
+
     // Clean up resultsMap:
     // Keep smaller bases, as they might be relevant later:
     uint8_t base = d.size() + 1;
@@ -3596,11 +3597,9 @@ namespace rectilinear {
 	rm[b] = it->second;
     }
     resultsMap = rm;
-#ifdef TRACE
+#ifdef DEBUG
     std::cout << "  Reusing " << resultsMap.size() << " bases" << std::endl;
 #endif
-
-    bases.clear();
   }
 
   int BaseProducer::checkMirrorSymmetries(const Base &c, CBase &original) {
@@ -3735,21 +3734,23 @@ namespace rectilinear {
     c.bricks[idx+1] = b;
   }
 
-  void BaseProducer::back(const Base &buildBase, const Base &registrationBase) {
-    isBacked = true;
-    backedBuildBase = buildBase;
-    backedRegistrationBase = registrationBase;
+  bool BaseProducer::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
+    while(true) {
+      bool ret = nextBaseToBuildOnNoCache(buildBase, registrationBase, maxCombination);
+      if(!ret)
+	return false;
+
+      // Check cache:
+      BaseResultsMap::const_iterator it = fileResultsMap.find(registrationBase);
+      if(it == fileResultsMap.end())
+	return true; // Not in cache: All good
+
+      registerCounts(registrationBase, it->second);
+    }
   }
 
-  bool BaseProducer::nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
+  bool BaseProducer::nextBaseToBuildOnNoCache(Base &buildBase, Base &registrationBase, const Combination &maxCombination) {
     std::lock_guard<std::mutex> guard(mutex);
-
-    if(isBacked) {
-      buildBase = backedBuildBase;
-      registrationBase = backedRegistrationBase;
-      isBacked = false;
-      return true;
-    }
 
     uint8_t base = (uint8_t)distances.size() + 1;
     Base c; c.layerSize = base;
@@ -3995,7 +3996,7 @@ namespace rectilinear {
   }
 
   void Lemma3::precompute(int maxDist, bool overwriteFiles) {
-    BaseProducer baseProducer;
+    BaseResultsMap knownResults;
     for(int d = 2; d <= maxDist; d++) {
       std::chrono::time_point<std::chrono::steady_clock> timeStart { std::chrono::steady_clock::now() };
 
@@ -4013,6 +4014,7 @@ namespace rectilinear {
 	    std::cout << "Precomputation file for d=" << d << " exists. Checking..." << std::endl;
 	    checkFile = true;
 	  }
+	  // Block to ensure closure of istream
 	}
 
 	// Check last existing file for completion:
@@ -4028,11 +4030,13 @@ namespace rectilinear {
 	  }
 	  else {
 	    knownResults.clear(); // All OK
-	    std::cout << "File OK." << std::endl;
+	    std::cout << "  File OK." << std::endl;
 	    continue;
 	  }
 	}
       }
+
+      BaseProducer baseProducer(knownResults);
 
       BitWriter writer(fileName, maxCombination);
       baseProducer.setWriter(&writer);
@@ -4048,27 +4052,6 @@ namespace rectilinear {
   void Lemma3::precompute(BaseProducer *baseProducer, std::vector<int> &distances) {
     baseProducer->reset(distances);
 
-    // Reuse known results:
-    while(!knownResults.empty()) {
-      Base buildBase, registrationBase;
-
-      if(baseProducer->nextBaseToBuildOn(buildBase, registrationBase, maxCombination)) {
-       if(knownResults.find(buildBase) == knownResults.end()) {
-         //std::cout << "ERROR: Unknown base: " << buildBase << std::endl;
-         baseProducer->back(buildBase, registrationBase);
-         knownResults.clear();
-         break;
-       }
-       CountsMap &cm = knownResults[buildBase];
-       baseProducer->registerCounts(registrationBase, cm);
-      }
-      else {
-       baseProducer->report(maxCombination);
-       return; // Done for these distances
-      }
-    }
-
-    // Known results exhausted: Compute:
     int workerCount = MAX(1, threadCount-1);
 
     BrickPlane *neighbourCache = new BrickPlane[workerCount * MAX_HEIGHT];
