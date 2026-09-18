@@ -16,9 +16,9 @@
 #define MAX_HEIGHT 7
 #define MAX_LAYER_SIZE 9
 #else
-#define MAX_BRICKS 11
-#define MAX_HEIGHT 5
-#define MAX_LAYER_SIZE 6
+#define MAX_BRICKS 9
+#define MAX_HEIGHT 3
+#define MAX_LAYER_SIZE 4
 #endif
 
 // These are used in bitmap lookups for checking positions of bricks:
@@ -594,19 +594,17 @@ namespace rectilinear {
     std::vector<int> distances;
     IBaseProducer *innerBuilder;
     BitWriter *writer;
-    bool isBacked;
-    Base backedBuildBase, backedRegistrationBase;
   public:
-    BaseResultsMap resultsMap; // Base -> Result
+    BaseResultsMap resultsMap, fileResultsMap; // Base -> Result
     std::vector<BaseWithID> bases;
     std::mutex mutex;
     int checkMirrorSymmetries(const Base &c, CBase &mirrrored); // Return true if handled here
     uint64_t reachSkips, mirrorSkips, noSkips;
+    bool nextBaseToBuildOnNoCache(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
   public:
-    BaseProducer();
+    BaseProducer(const BaseResultsMap &knownResults);
     ~BaseProducer();
     bool nextBaseToBuildOn(Base &buildBase, Base &registrationBase, const Combination &maxCombination);
-    void back(const Base &buildBase, const Base &registrationBase);
     void registerCounts(const Base &registrationBase, const CountsMap &counts);
     void report(const Combination &maxCombination);
     void setWriter(BitWriter *writer);
@@ -632,7 +630,6 @@ namespace rectilinear {
     int base, threadCount, token;
     CountsMap counts;
     const Combination &maxCombination;
-    BaseResultsMap knownResults;
   public:
     Lemma3(int base, int threads, const Combination &maxCombination);
     void precompute(int maxDist);
