@@ -1,0 +1,8 @@
+<263> 2077242826111952 (27498922)
+Computation time: 1.49546e+06 seconds
+
+Code line for sums-for-token.py:
+    '263', 2077242826111952, 27498922,
+
+Code line for Combination::setupKnownCounts():
+    m[263] = Counts(2077242826111952, 27498922, 0);

@@ -1,0 +1,8 @@
+<254> 7017458196473746 (59483570)
+Computation time: 8051.1 seconds
+
+Code line for sums-for-token.py:
+    '254', 7017458196473746, 59483570,
+
+Code line for Combination::setupKnownCounts():
+    m[254] = Counts(7017458196473746, 59483570, 0);
