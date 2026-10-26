@@ -16,9 +16,9 @@
 #define MAX_HEIGHT 7
 #define MAX_LAYER_SIZE 9
 #else
-#define MAX_BRICKS 9
-#define MAX_HEIGHT 3
-#define MAX_LAYER_SIZE 4
+#define MAX_BRICKS 11
+#define MAX_HEIGHT 4
+#define MAX_LAYER_SIZE 5
 #endif
 
 // These are used in bitmap lookups for checking positions of bricks:

@@ -180,7 +180,7 @@ The example shows the yellow bricks forming a non-symmetric layer. For symmetric
 
 ## Lemma 3 "Generalization of Lemma 2"
 
-Lemma 2 can be generalised to belts of larger sizes. Here the same considerations are made: symmetric models can be built on symmetric belts and connectivity should be ensured for all counted models. This is achieved by grouping models by their connectivity. See the code base for implementation details.
+Lemma 2 can be generalized to belts of larger sizes. Here the same considerations are made: symmetric models can be built on symmetric belts and connectivity should be ensured for all counted models. This is achieved by grouping models by their connectivity. See the code base for implementation details.
 
 ### Applying Lemma 3 in Practice
 
@@ -188,7 +188,7 @@ We have used Lemma 3 to create files of "precomputations" where all bases are it
 
 Our software can use the precomputation files to compute refinements. As an example can <2242> be considered as having the belt on second layer, so the number of models can be computed by the precomputations of base two with a layer of 2 bricks on top(base_2_size_4_refinement_22) and the precomputations with three layers, the extreme ones with two bricks and the middle with 4 (base_2_size_8_refinement_242).
 
-The feasibily of this approach comes from two aspects:
+The feasability of this approach comes from two aspects:
 
 - Keeping the belts small. For belts of size 2 to 4 this is achievable on normal hardware, while experiments show that a non-standard amount of storage (more than 1TB) and significant computation time is needed for belts of size 5 and up.
 
